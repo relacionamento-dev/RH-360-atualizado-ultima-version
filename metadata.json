@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Rh 360",
+  "description": "Protótipo visual navegável de um SaaS de gestão de RH completo para empresas, com processos configuráveis (requisição de vaga, recrutamento, admissão, férias, desligamento e outros), motor de aprovação por alçadas e SLA, perfil 360 do colaborador, intranet e integrações com ERPs (Protheus, RM, Intor/Senior).",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
