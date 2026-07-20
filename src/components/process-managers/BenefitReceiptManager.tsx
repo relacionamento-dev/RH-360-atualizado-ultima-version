@@ -8,10 +8,12 @@ import { useAppConfig } from '../../contexts/AppConfigContext';
 import { Card, Table } from '../ui/CardAndTable';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
+import { Select } from '../ui/Select';
 
 export default function BenefitReceiptManager({ process, onNewRequest }: { process: RHProcess, onNewRequest: () => void }) {
   const { config, updateConfig } = useAppConfig();
   const [searchTerm, setSearchTerm] = useState('');
+  const [loteFilter, setLoteFilter] = useState('all');
 
   const receipts = config.solicitacoes.filter(r => r.processId === process.id);
   
@@ -81,12 +83,17 @@ export default function BenefitReceiptManager({ process, onNewRequest }: { proce
             />
           </div>
           <div className="flex gap-2">
-            <select className="bg-white border border-gray-200 rounded-[12px] px-3 py-2 text-[12px] font-bold outline-none">
-              <option>Lote: Todos</option>
-              <option>Lote 001/26</option>
-              <option>Lote 002/26</option>
-            </select>
-            <Button variant="ghost" size="sm" leftIcon={<ListFilter className="w-4 h-4" />}>Filtros</Button>
+            <Select
+              ariaLabel="Filtrar por lote"
+              className="min-w-[150px]"
+              value={loteFilter}
+              onChange={setLoteFilter}
+              options={[
+                { value: 'all', label: 'Lote: Todos' },
+                { value: '001/26', label: 'Lote 001/26' },
+                { value: '002/26', label: 'Lote 002/26' },
+              ]}
+            />
           </div>
         </div>
 
@@ -113,8 +120,8 @@ export default function BenefitReceiptManager({ process, onNewRequest }: { proce
               </div>
             )},
             { header: '', accessor: 'id', render: (id) => (
-              <Button variant="ghost" size="icon" onClick={() => updateConfig({ currentRequestId: id })}>
-                <Eye className="w-5 h-5 text-gray-300 hover:text-orange-500" />
+              <Button variant="ghost" size="icon" title="Ver recibo" aria-label="Ver recibo" onClick={() => updateConfig({ currentRequestId: id })}>
+                <Eye className="w-5 h-5 text-gray-500 hover:text-orange-500" />
               </Button>
             )}
           ]}

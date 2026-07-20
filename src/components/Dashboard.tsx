@@ -13,6 +13,7 @@ import { Card, Table } from './ui/CardAndTable';
 import { Badge } from './ui/Badge';
 import { PageHeader } from './ui/FormAndHeader';
 import { Avatar, SLABar, EmptyState } from './ui/Misc';
+import { getStatusVariant, isPendingStatus } from '../utils/requestStatus';
 
 interface DashboardProps {
   onNavigate: (view: string, id?: string) => void;
@@ -23,47 +24,45 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
 
   const totalEmployeesCount = config.colaboradores.filter(c => c.status === 'Ativo').length;
   const openJobsCount = config.vagas.filter(v => v.status === 'Aberto').length;
-  const pendingRequestsCount = config.solicitacoes.filter(s => s.status === 'Em Análise' || s.status === 'Enviada').length;
-  
-  // Derived specific counters for the requirement
-  const inAnalysisCount = config.solicitacoes.filter(s => s.status === 'Em Análise').length;
-  const myApprovalsCount = config.tarefas.filter(t => t.assignedTo === config.usuarioAtual.id && t.status === 'Pendente' && t.title.toLowerCase().includes('aprovar')).length;
-  const groupQueueCount = config.tarefas.filter(t => t.assignedTo === 'Grupo' && t.status === 'Pendente').length; // Simplified
+  // Aprovações pendentes derivam das solicitações (mesma fonte/status das listas),
+  // não de tarefas por assignedTo que não casava com o usuário logado.
+  const pendingApprovalsCount = config.solicitacoes.filter(s => isPendingStatus(s.status)).length;
   const overdueCount = config.tarefas.filter(t => t.status === 'Atrasada' || (t.status === 'Pendente' && new Date(t.dueDate) < new Date())).length;
-  const aiSuggestionsCount = 0; // IA disabled by default
 
+  // trendType reflete o SIGNIFICADO (pos = melhora → verde, neg = piora → vermelho);
+  // direction segue o sinal do número (seta pra cima/baixo).
   const stats = [
-    { 
-      label: 'Colaboradores Ativos', 
-      value: totalEmployeesCount.toLocaleString('pt-BR'), 
-      change: '+12%', 
-      trend: 'up', 
+    {
+      label: 'Colaboradores Ativos',
+      value: totalEmployeesCount.toLocaleString('pt-BR'),
+      change: '+12%',
+      direction: 'up' as const,
+      trendType: 'pos' as const,
       icon: <Users className="w-5 h-5" />,
-      color: 'blue'
     },
-    { 
-      label: 'Vagas Abertas', 
-      value: openJobsCount.toString(), 
-      change: '+5', 
-      trend: 'up', 
+    {
+      label: 'Vagas Abertas',
+      value: openJobsCount.toString(),
+      change: '+5',
+      direction: 'up' as const,
+      trendType: 'pos' as const,
       icon: <Briefcase className="w-5 h-5" />,
-      color: 'orange'
     },
-    { 
-      label: 'Aprovações Pendentes', 
-      value: myApprovalsCount.toString(), 
-      change: '-2', 
-      trend: 'down', 
+    {
+      label: 'Aprovações Pendentes',
+      value: pendingApprovalsCount.toString(),
+      change: '-2',
+      direction: 'down' as const,
+      trendType: 'pos' as const, // menos pendências = melhora
       icon: <CheckCircle2 className="w-5 h-5" />,
-      color: 'green'
     },
-    { 
-      label: 'SLA Vencido', 
-      value: overdueCount.toString(), 
-      change: '+1', 
-      trend: 'up', 
+    {
+      label: 'SLA Vencido',
+      value: overdueCount.toString(),
+      change: '+1',
+      direction: 'up' as const,
+      trendType: 'neg' as const, // mais SLA vencido = piora
       icon: <Clock className="w-5 h-5" />,
-      color: 'red'
     }
   ];
 
@@ -77,17 +76,6 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     status: req.status,
     sla: Math.floor(Math.random() * 40) + 60 // Mock SLA for demo
   }));
-
-  const getStatusVariant = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'aprovada':
-      case 'concluída': return 'green';
-      case 'em análise': return 'amber';
-      case 'devolvida': return 'purple';
-      case 'reprovada': return 'red';
-      default: return 'blue';
-    }
-  };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -114,13 +102,13 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
               <div className={`p-3 rounded-[8px] bg-gray-50 text-gray-500`}>
                 {stat.icon}
               </div>
-              <div className={`flex items-center gap-1 text-[12px] font-bold ${stat.trend === 'up' ? 'text-green-600' : 'text-blue-600'}`}>
+              <div className={`flex items-center gap-1 text-[12px] font-bold ${stat.trendType === 'pos' ? 'text-green-600' : 'text-red-600'}`}>
                 {stat.change}
-                {stat.trend === 'up' ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                {stat.direction === 'up' ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
               </div>
             </div>
             <div className="mt-4">
-              <p className="label-caps opacity-60">{stat.label}</p>
+              <p className="label-caps opacity-80">{stat.label}</p>
               <h3 className="text-2xl font-bold text-[var(--color-brand-text-primary)] mt-1 tabular-nums">{stat.value}</h3>
             </div>
           </Card>
@@ -154,8 +142,8 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                   )},
                   { header: 'SLA', accessor: 'sla', render: (val) => <SLABar progress={val} /> },
                   { header: 'STATUS', accessor: 'status', render: (val) => <Badge variant={getStatusVariant(val)}>{val}</Badge> },
-                  { header: '', accessor: 'actions', render: (_, row) => (
-                    <Button variant="ghost" size="icon" onClick={() => onNavigate('request-detail', row.id)}>
+                  { header: 'AÇÕES', accessor: 'actions', render: (_, row) => (
+                    <Button variant="ghost" size="icon" title="Ver detalhes" aria-label="Ver detalhes" onClick={() => onNavigate('request-detail', row.id)}>
                       <ChevronRight size={16} />
                     </Button>
                   )}
@@ -250,7 +238,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
               <div className="p-3 border border-[var(--color-brand-border)] rounded-[8px] space-y-3">
                 <div className="flex items-center justify-between">
                   <Badge variant="blue">Entrevista</Badge>
-                  <span className="text-[12px] font-medium text-gray-400">10:30 - 11:30</span>
+                  <span className="text-[12px] font-medium text-gray-500">10:30 - 11:30</span>
                 </div>
                 <p className="font-bold text-[14px]">Desenvolvedor Frontend Sênior</p>
                 <div className="flex items-center gap-2">
@@ -260,7 +248,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
               </div>
               <div className="p-3 border border-dashed border-[var(--color-brand-border)] rounded-[8px] flex items-center justify-center py-6 text-center">
                 <div>
-                  <p className="text-[13px] font-medium text-gray-400">Nenhum outro compromisso hoje</p>
+                  <p className="text-[13px] font-medium text-gray-500">Nenhum outro compromisso hoje</p>
                   <Button variant="ghost" size="sm" className="mt-2">Ver agenda completa</Button>
                 </div>
               </div>
@@ -280,7 +268,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                   onClick={() => onNavigate(action.view)}
                   className="p-4 rounded-[8px] bg-[var(--color-brand-bg)] border border-[var(--color-brand-border)] hover:border-[var(--color-brand-primary)] hover:bg-orange-50 transition-all text-center group"
                 >
-                  <div className="text-gray-400 group-hover:text-[var(--color-brand-primary)] flex justify-center mb-2 transition-colors">
+                  <div className="text-gray-500 group-hover:text-[var(--color-brand-primary)] flex justify-center mb-2 transition-colors">
                     {action.icon}
                   </div>
                   <span className="text-[12px] font-bold text-gray-600 group-hover:text-[var(--color-brand-text-primary)] transition-colors">{action.label}</span>

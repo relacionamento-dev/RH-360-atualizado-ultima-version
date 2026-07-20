@@ -8,6 +8,7 @@ import { Card, Table } from './ui/CardAndTable';
 import { Badge } from './ui/Badge';
 import { PageHeader } from './ui/FormAndHeader';
 import { Avatar, Modal } from './ui/Misc';
+import { Select } from './ui/Select';
 import { useAppConfig } from '../contexts/AppConfigContext';
 
 interface EmployeesModuleProps {
@@ -148,47 +149,43 @@ export default function EmployeesModule({ onNavigate }: EmployeesModuleProps) {
               </div>
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Empresa</label>
-                <select 
+                <Select
+                  ariaLabel="Filtrar por empresa"
+                  className="w-full"
                   value={filters.company}
-                  onChange={(e) => setFilters({...filters, company: e.target.value})}
-                  className="w-full p-2 bg-white border border-[var(--color-brand-border)] rounded-[6px] text-[12px] outline-none"
-                >
-                  <option value="">Todas</option>
-                  {config.empresas.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                </select>
+                  onChange={(v) => setFilters({...filters, company: v})}
+                  options={[{ value: '', label: 'Todas' }, ...config.empresas.map(c => ({ value: c.name, label: c.name }))]}
+                />
               </div>
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Filial</label>
-                <select 
+                <Select
+                  ariaLabel="Filtrar por filial"
+                  className="w-full"
                   value={filters.branch}
-                  onChange={(e) => setFilters({...filters, branch: e.target.value})}
-                  className="w-full p-2 bg-white border border-[var(--color-brand-border)] rounded-[6px] text-[12px] outline-none"
-                >
-                  <option value="">Todas</option>
-                  {config.filiais.map(f => <option key={f} value={f}>{f}</option>)}
-                </select>
+                  onChange={(v) => setFilters({...filters, branch: v})}
+                  options={[{ value: '', label: 'Todas' }, ...config.filiais.map(f => ({ value: f, label: f }))]}
+                />
               </div>
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Setor</label>
-                <select 
+                <Select
+                  ariaLabel="Filtrar por setor"
+                  className="w-full"
                   value={filters.department}
-                  onChange={(e) => setFilters({...filters, department: e.target.value})}
-                  className="w-full p-2 bg-white border border-[var(--color-brand-border)] rounded-[6px] text-[12px] outline-none"
-                >
-                  <option value="">Todos</option>
-                  {config.setores.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                </select>
+                  onChange={(v) => setFilters({...filters, department: v})}
+                  options={[{ value: '', label: 'Todos' }, ...config.setores.map(s => ({ value: s.name, label: s.name }))]}
+                />
               </div>
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Cargo</label>
-                <select 
+                <Select
+                  ariaLabel="Filtrar por cargo"
+                  className="w-full"
                   value={filters.role}
-                  onChange={(e) => setFilters({...filters, role: e.target.value})}
-                  className="w-full p-2 bg-white border border-[var(--color-brand-border)] rounded-[6px] text-[12px] outline-none"
-                >
-                  <option value="">Todos</option>
-                  {config.cargos.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+                  onChange={(v) => setFilters({...filters, role: v})}
+                  options={[{ value: '', label: 'Todos' }, ...config.cargos.map(c => ({ value: c, label: c }))]}
+                />
               </div>
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Gestor</label>
@@ -201,17 +198,19 @@ export default function EmployeesModule({ onNavigate }: EmployeesModuleProps) {
               </div>
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Status</label>
-                <select 
+                <Select
+                  ariaLabel="Filtrar por status"
+                  className="w-full"
                   value={filters.status}
-                  onChange={(e) => setFilters({...filters, status: e.target.value})}
-                  className="w-full p-2 bg-white border border-[var(--color-brand-border)] rounded-[6px] text-[12px] outline-none"
-                >
-                  <option value="">Todos</option>
-                  <option value="Ativo">Ativo</option>
-                  <option value="Afastado">Afastado</option>
-                  <option value="Pré-admissão">Pré-admissão</option>
-                  <option value="Desligado">Desligado</option>
-                </select>
+                  onChange={(v) => setFilters({...filters, status: v})}
+                  options={[
+                    { value: '', label: 'Todos' },
+                    { value: 'Ativo', label: 'Ativo' },
+                    { value: 'Afastado', label: 'Afastado' },
+                    { value: 'Pré-admissão', label: 'Pré-admissão' },
+                    { value: 'Desligado', label: 'Desligado' },
+                  ]}
+                />
               </div>
               <div className="md:col-span-4 flex justify-end gap-2 pt-2">
                 <Button variant="ghost" size="sm" onClick={() => setFilters({
@@ -250,7 +249,7 @@ export default function EmployeesModule({ onNavigate }: EmployeesModuleProps) {
                   <Eye className="w-4 h-4" />
                 </Button>
                 <div className="relative group/menu">
-                  <Button variant="ghost" size="icon">
+                  <Button variant="ghost" size="icon" title="Mais ações" aria-label="Mais ações">
                     <MoreHorizontal className="w-4 h-4" />
                   </Button>
                   <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-100 rounded-lg shadow-xl py-1 z-50 invisible group-hover/menu:visible opacity-0 group-hover/menu:opacity-100 transition-all transform scale-95 group-hover/menu:scale-100">

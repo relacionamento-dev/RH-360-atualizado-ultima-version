@@ -8,21 +8,7 @@ import { Card, Table } from '../ui/CardAndTable';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { SLABar } from '../ui/Misc';
-
-const statusVariants: Record<string, 'blue' | 'amber' | 'green' | 'red' | 'purple' | 'gray'> = {
-  'Rascunho': 'gray',
-  'Aberto': 'blue',
-  'Enviada': 'blue',
-  'Em Aprovação': 'amber',
-  'Devolvida': 'purple',
-  'Devolvido': 'purple',
-  'Aprovada': 'green',
-  'Reprovada': 'red',
-  'Concluído': 'green',
-  'Concluída': 'green',
-  'Cancelada': 'red',
-  'Cancelado': 'red',
-};
+import { getStatusVariant } from '../../utils/requestStatus';
 
 interface GenericProcessManagerProps {
   process: RHProcess;
@@ -98,15 +84,15 @@ export default function GenericProcessManager({ process, onNewRequest }: Generic
             { header: 'ALVO / COLABORADOR', accessor: 'alvo', render: (val) => <span className="font-bold text-[14px] text-gray-900">{val}</span> },
             { header: 'ETAPA', accessor: 'etapaAtual', render: (val) => <span className="font-bold text-[13px] text-blue-600 uppercase tracking-tight">{val}</span> },
             { header: 'RESPONSÁVEL', accessor: 'responsavelAtual', render: (val) => <span className="font-bold text-[12px] text-gray-600">{val}</span> },
-            { header: 'STATUS', accessor: 'status', render: (val) => <Badge variant={statusVariants[val] || 'gray'}>{val}</Badge> },
+            { header: 'STATUS', accessor: 'status', render: (val) => <Badge variant={getStatusVariant(val)}>{val}</Badge> },
             { header: 'SLA', accessor: 'slaStatus', render: (val) => (
               <div className="flex flex-col items-center gap-1">
                 <SLABar progress={val === 'critical' ? 95 : val === 'warning' ? 70 : 40} />
               </div>
             )},
             { header: 'AÇÕES', accessor: 'id', render: (_, row) => (
-              <Button variant="ghost" size="icon" onClick={() => updateConfig({ currentRequestId: row.id })}>
-                <Eye className="w-5 h-5 text-gray-300 hover:text-orange-500" />
+              <Button variant="ghost" size="icon" title="Ver detalhes" aria-label="Ver detalhes" onClick={() => updateConfig({ currentRequestId: row.id })}>
+                <Eye className="w-5 h-5 text-gray-500 hover:text-orange-500" />
               </Button>
             )}
           ]}

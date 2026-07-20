@@ -19,8 +19,10 @@ export default function TaskCenterModule() {
   const tasks = config.tarefas.map(t => {
     const relatedReq = config.solicitacoes.find(r => r.id === t.relatedRequestId);
     
+    // Tipo derivado do próprio conteúdo da tarefa (não do assignedTo casar com o
+    // usuário logado), para o contador refletir exatamente as linhas da lista.
     let type = 'Pendência';
-    if (t.title.toLowerCase().includes('aprovar') && t.assignedTo === config.usuarioAtual.id) {
+    if (t.title.toLowerCase().includes('aprovar')) {
       type = 'Aprovação';
     } else if (t.assignedTo === 'Grupo') {
       type = 'Fila de Grupo';
@@ -44,7 +46,8 @@ export default function TaskCenterModule() {
       requester: relatedReq?.solicitante || 'Sistema',
       date: new Date(t.createdAt).toLocaleDateString('pt-BR'),
       sla: t.status === 'Atrasada' ? 100 : Math.floor(Math.random() * 40) + 40,
-      slaStatus: t.status === 'Atrasada' ? 'critical' : 'normal',
+      // Crítico = atrasada ou pendente com prazo vencido (mesma noção da lista).
+      slaStatus: (t.status === 'Atrasada' || (t.status === 'Pendente' && !!t.dueDate && new Date(t.dueDate) < new Date())) ? 'critical' : 'normal',
       group: t.assignedTo === config.usuarioAtual.id ? 'Meus Pendentes' : 'Grupo'
     };
   });

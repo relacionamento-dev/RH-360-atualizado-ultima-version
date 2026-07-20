@@ -109,7 +109,7 @@ export default function RecruitmentKanban({ process, onNewRequest }: { process: 
                              <p className="text-[10px] font-bold text-gray-400 uppercase mt-0.5">{cand.data?.cargo || 'Analista Sênior'}</p>
                            </div>
                          </div>
-                         <button className="text-gray-300 hover:text-gray-600">
+                         <button title="Mais ações" aria-label="Mais ações" className="text-gray-500 hover:text-gray-700 min-w-[44px] min-h-[44px] inline-flex items-center justify-center">
                            <MoreHorizontal size={16} />
                          </button>
                        </div>

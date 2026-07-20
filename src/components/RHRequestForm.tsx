@@ -254,7 +254,7 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
   return (
     <div className="flex flex-col h-screen bg-[#F8FAFC]">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shrink-0 sticky top-0 z-20">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-8 py-4 flex items-center justify-between shrink-0 sticky top-0 z-20">
         <div className="flex items-center gap-6">
           <button 
             onClick={onBack}
@@ -293,7 +293,7 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
 
       {/* Main Layout */}
       <main className="flex-1 overflow-hidden flex">
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8">
           <div className="max-w-4xl mx-auto space-y-8 pb-12">
             
             {/* Requester Info */}
@@ -403,32 +403,32 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
         </aside>
       </main>
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 px-8 py-4 flex items-center justify-between shrink-0 sticky bottom-0 z-20">
+      {/* Footer — empilha e usa botões full-width em telas pequenas */}
+      <footer className="bg-white border-t border-gray-200 px-4 sm:px-8 py-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0 sticky bottom-0 z-20">
         <div className="flex items-center gap-4">
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             onClick={() => handleSave(true)}
             disabled={isSaving}
             leftIcon={<Save size={18} />}
-            className="text-gray-500 font-bold"
+            className="text-gray-500 font-bold w-full sm:w-auto"
           >
             Salvar Rascunho
           </Button>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col items-end mr-2 text-right">
-            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Campos Obrigatórios</span>
+        <div className="flex items-center justify-between sm:justify-end gap-3">
+          <div className="flex flex-col items-start sm:items-end text-left sm:text-right">
+            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Campos Obrigatórios</span>
             <span className="text-[11px] font-black text-gray-900">{filledMandatoryCount} preenchidos de {visibleMandatoryCount}</span>
           </div>
-          <Button 
+          <Button
             onClick={(e) => {
               console.log('[RHRequestForm] Submit button clicked', { isFormValid });
               handleSave(false, e);
             }}
             disabled={isSaving || !isFormValid}
-            className="bg-orange-500 hover:bg-orange-600 shadow-lg shadow-orange-500/20 px-10 h-12 font-black rounded-xl"
+            className="bg-orange-500 hover:bg-orange-600 shadow-lg shadow-orange-500/20 px-6 sm:px-10 h-12 font-black rounded-xl"
             rightIcon={<ChevronRight size={20} />}
           >
             {isSaving ? 'Enviando...' : 'Confirmar e Enviar'}

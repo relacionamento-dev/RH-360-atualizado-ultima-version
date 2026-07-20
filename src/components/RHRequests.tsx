@@ -17,6 +17,8 @@ import { PageHeader } from './ui/FormAndHeader';
 import { Avatar, SLABar, EmptyState } from './ui/Misc';
 import RHRequestForm from './RHRequestForm';
 import { Modal } from './ui/Misc';
+import { Select } from './ui/Select';
+import { getStatusVariant, isPendingStatus } from '../utils/requestStatus';
 import { useAppConfig } from '../contexts/AppConfigContext';
 import { useToast } from './ToastContext';
 import { FormRenderer } from './FormRenderer';
@@ -26,21 +28,6 @@ import RecruitmentKanban from './process-managers/RecruitmentKanban';
 import BenefitReceiptManager from './process-managers/BenefitReceiptManager';
 import HierarchyManager from './process-managers/HierarchyManager';
 import GenericProcessManager from './process-managers/GenericProcessManager';
-
-const statusVariants: Record<string, 'blue' | 'amber' | 'green' | 'red' | 'purple' | 'gray'> = {
-  'Rascunho': 'gray',
-  'Aberto': 'blue',
-  'Enviada': 'blue',
-  'Em Aprovação': 'amber',
-  'Devolvida': 'purple',
-  'Devolvido': 'purple',
-  'Aprovada': 'green',
-  'Reprovada': 'red',
-  'Concluído': 'green',
-  'Concluída': 'green',
-  'Cancelada': 'red',
-  'Cancelado': 'red',
-};
 
 const iconMap: Record<string, any> = {
   'UserPlus': <UserPlus />,
@@ -249,18 +236,22 @@ function ConsultationPanel({ type, onOpenDetail, initialProcessId }: { type: 'mi
   const { config } = useAppConfig();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProcessId, setSelectedProcessId] = useState(initialProcessId || 'all');
-  
+  const [selectedStatus, setSelectedStatus] = useState('all');
+
   const requests = config.solicitacoes.filter(req => {
     // Search filter
-    const matchesSearch = 
+    const matchesSearch =
       req.numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (req.alvo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       req.solicitante.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     if (!matchesSearch) return false;
 
     // Process filter
     if (selectedProcessId !== 'all' && req.processId !== selectedProcessId) return false;
+
+    // Status filter
+    if (selectedStatus !== 'all' && req.status !== selectedStatus) return false;
 
     // Type filter
     if (type === 'mine') {
@@ -311,10 +302,13 @@ function ConsultationPanel({ type, onOpenDetail, initialProcessId }: { type: 'mi
     return true; // global
   });
 
+  // Contadores derivados do MESMO array já filtrado que popula a lista, usando o
+  // conjunto canônico de pendências (não só 'Em Análise', que ignorava as
+  // solicitações recém-criadas em 'Pendente de Aprovação').
   const stats = {
     total: requests.length,
     slaEstourado: requests.filter(r => r.slaStatus === 'critical').length,
-    emAnalise: requests.filter(r => r.status === 'Em Análise').length,
+    emAndamento: requests.filter(r => isPendingStatus(r.status)).length,
   };
 
   return (
@@ -322,16 +316,16 @@ function ConsultationPanel({ type, onOpenDetail, initialProcessId }: { type: 'mi
       {/* Indicadores */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="p-4 bg-white border-l-4 border-l-blue-500">
-          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Total de Processos</p>
+          <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Total de Processos</p>
           <p className="text-2xl font-black text-gray-900">{stats.total}</p>
         </Card>
         <Card className="p-4 bg-white border-l-4 border-l-red-500">
-          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">SLA Estourado</p>
+          <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">SLA Estourado</p>
           <p className="text-2xl font-black text-red-600">{stats.slaEstourado}</p>
         </Card>
         <Card className="p-4 bg-white border-l-4 border-l-amber-500">
-          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Em Análise</p>
-          <p className="text-2xl font-black text-amber-600">{stats.emAnalise}</p>
+          <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Em Andamento</p>
+          <p className="text-2xl font-black text-amber-600">{stats.emAndamento}</p>
         </Card>
       </div>
 
@@ -348,20 +342,32 @@ function ConsultationPanel({ type, onOpenDetail, initialProcessId }: { type: 'mi
             />
           </div>
           <div className="flex items-center gap-2">
-            <select 
-              className="bg-white hairline-border rounded-[8px] px-3 py-2 text-[12px] font-bold outline-none"
+            <Select
+              ariaLabel="Filtrar por processo"
+              className="min-w-[150px]"
               value={selectedProcessId}
-              onChange={(e) => setSelectedProcessId(e.target.value)}
-            >
-              <option value="all">Todos Processos</option>
-              {config.processos.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-            <select className="bg-white hairline-border rounded-[8px] px-3 py-2 text-[12px] font-bold outline-none">
-              <option>Todos Status</option>
-            </select>
-            <Button variant="ghost" size="sm" leftIcon={<Filter className="w-4 h-4" />}>Filtros</Button>
+              onChange={setSelectedProcessId}
+              options={[
+                { value: 'all', label: 'Todos Processos' },
+                ...config.processos.map(p => ({ value: p.id, label: p.name })),
+              ]}
+            />
+            <Select
+              ariaLabel="Filtrar por status"
+              className="min-w-[150px]"
+              value={selectedStatus}
+              onChange={setSelectedStatus}
+              options={[
+                { value: 'all', label: 'Todos Status' },
+                { value: 'Pendente de Aprovação', label: 'Pendente de Aprovação' },
+                { value: 'Em Análise', label: 'Em Análise' },
+                { value: 'Em Aprovação', label: 'Em Aprovação' },
+                { value: 'Devolvida', label: 'Devolvida' },
+                { value: 'Concluída', label: 'Concluída' },
+                { value: 'Reprovada', label: 'Reprovada' },
+                { value: 'Cancelada', label: 'Cancelada' },
+              ]}
+            />
           </div>
         </div>
         {requests.length > 0 ? (
@@ -388,23 +394,20 @@ function ConsultationPanel({ type, onOpenDetail, initialProcessId }: { type: 'mi
                   <p className="text-[11px] font-bold text-blue-600 uppercase">{row.responsavelAtual}</p>
                 </div>
               )},
-              { header: 'STATUS', accessor: 'status', render: (val) => <Badge variant={statusVariants[val] || 'gray'}>{val}</Badge> },
+              { header: 'STATUS', accessor: 'status', render: (val) => <Badge variant={getStatusVariant(val)}>{val}</Badge> },
               { header: 'ORIGEM', accessor: 'category', render: (val) => (
-                <span className="text-[11px] font-bold text-gray-400 uppercase">{val}</span>
+                <span className="text-[11px] font-bold text-gray-500 uppercase">{val}</span>
               )},
               { header: 'SLA', accessor: 'slaStatus', render: (val, row) => (
                 <div className="flex flex-col items-center gap-1">
                   <SLABar progress={val === 'critical' ? 95 : val === 'warning' ? 70 : 40} />
-                  <span className="text-[10px] font-bold text-gray-400">Aging: 2d</span>
+                  <span className="text-[10px] font-bold text-gray-500">Aging: 2d</span>
                 </div>
               )},
-              { header: '', accessor: 'id', render: (_, row) => (
+              { header: 'AÇÕES', accessor: 'id', render: (_, row) => (
                 <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => onOpenDetail(row)}>
-                    <Eye className="w-5 h-5 text-gray-400" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => onOpenDetail(row)}>
-                    <MoreHorizontal className="w-5 h-5 text-gray-400" />
+                  <Button variant="ghost" size="icon" title="Ver detalhes" aria-label="Ver detalhes" onClick={() => onOpenDetail(row)}>
+                    <Eye className="w-5 h-5 text-gray-500" />
                   </Button>
                 </div>
               )}

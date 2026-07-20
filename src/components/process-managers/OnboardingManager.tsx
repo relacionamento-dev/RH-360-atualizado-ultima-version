@@ -9,6 +9,7 @@ import { Card, Table } from '../ui/CardAndTable';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { SLABar, Avatar } from '../ui/Misc';
+import { Select } from '../ui/Select';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface OnboardingManagerProps {
@@ -19,13 +20,19 @@ interface OnboardingManagerProps {
 export default function OnboardingManager({ process, onNewRequest }: OnboardingManagerProps) {
   const { config, updateConfig, updateOnboardingTask } = useAppConfig();
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [selectedOnboardingId, setSelectedOnboardingId] = useState<string | null>(null);
 
   const onboardingRequests = config.solicitacoes.filter(r => r.processId === process.id);
-  
-  const filteredRequests = onboardingRequests.filter(r => 
-    r.numero.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (r.alvo || '').toLowerCase().includes(searchTerm.toLowerCase())
+
+  // Mesma derivação de status usada no badge da linha, para o filtro casar com a lista.
+  const rowStatus = (r: RHRequest) =>
+    r.slaStatus === 'critical' ? 'Atrasado' : r.status === 'Concluída' ? 'Concluído' : 'Em Andamento';
+
+  const filteredRequests = onboardingRequests.filter(r =>
+    (r.numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.alvo || '').toLowerCase().includes(searchTerm.toLowerCase())) &&
+    (statusFilter === 'all' || rowStatus(r) === statusFilter)
   );
 
   const selectedRequest = onboardingRequests.find(r => r.id === selectedOnboardingId);
@@ -96,13 +103,18 @@ export default function OnboardingManager({ process, onNewRequest }: OnboardingM
             />
           </div>
           <div className="flex gap-2">
-            <select className="bg-white border border-gray-200 rounded-[12px] px-3 py-2 text-[12px] font-bold outline-none">
-              <option>Status: Todos</option>
-              <option>Em Andamento</option>
-              <option>Atrasado</option>
-              <option>Concluído</option>
-            </select>
-            <Button variant="ghost" size="sm" leftIcon={<Filter className="w-4 h-4" />}>Filtros</Button>
+            <Select
+              ariaLabel="Filtrar por status"
+              className="min-w-[150px]"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { value: 'all', label: 'Status: Todos' },
+                { value: 'Em Andamento', label: 'Em Andamento' },
+                { value: 'Atrasado', label: 'Atrasado' },
+                { value: 'Concluído', label: 'Concluído' },
+              ]}
+            />
           </div>
         </div>
 
@@ -145,8 +157,8 @@ export default function OnboardingManager({ process, onNewRequest }: OnboardingM
               return <Badge variant="blue">EM ANDAMENTO</Badge>;
             }},
             { header: '', accessor: 'id', render: (id) => (
-              <Button variant="ghost" size="icon" onClick={() => setSelectedOnboardingId(id)}>
-                <Eye className="w-5 h-5 text-gray-300 hover:text-orange-500" />
+              <Button variant="ghost" size="icon" title="Ver onboarding" aria-label="Ver onboarding" onClick={() => setSelectedOnboardingId(id)}>
+                <Eye className="w-5 h-5 text-gray-500 hover:text-orange-500" />
               </Button>
             )}
           ]}

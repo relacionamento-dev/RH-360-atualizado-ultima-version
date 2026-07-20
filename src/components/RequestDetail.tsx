@@ -12,27 +12,12 @@ import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { motion, AnimatePresence } from 'motion/react';
 import { PROCESS_DEFINITIONS } from '../processDefinitions';
+import { getStatusVariant } from '../utils/requestStatus';
 
 interface RequestDetailProps {
   requestId: string;
   onBack: () => void;
 }
-
-const statusColors = {
-  'Aberto': 'bg-blue-50 text-blue-700 border-blue-100',
-  'Enviada': 'bg-blue-50 text-blue-700 border-blue-100',
-  'Em Análise': 'bg-orange-50 text-orange-700 border-orange-100',
-  'Em Aprovação': 'bg-orange-50 text-orange-700 border-orange-100',
-  'Concluído': 'bg-green-50 text-green-700 border-green-100',
-  'Concluída': 'bg-green-50 text-green-700 border-green-100',
-  'Devolvido': 'bg-purple-50 text-purple-700 border-purple-100',
-  'Devolvida': 'bg-purple-50 text-purple-700 border-purple-100',
-  'Reprovado': 'bg-red-50 text-red-700 border-red-100',
-  'Reprovada': 'bg-red-50 text-red-700 border-red-100',
-  'Cancelado': 'bg-gray-50 text-gray-700 border-gray-100',
-  'Rascunho': 'bg-gray-50 text-gray-700 border-gray-100',
-  'Pendente de Aprovação': 'bg-orange-50 text-orange-700 border-orange-100'
-};
 
 export default function RequestDetail({ requestId, onBack }: RequestDetailProps) {
   const { config, updateConfig, updateRequest, approveRequest, rejectRequest, returnRequest, cancelRequest } = useAppConfig();
@@ -170,7 +155,7 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
     }
 
     if (fieldDef?.type === 'status' || key === 'status') {
-      return <Badge className={statusColors[value as keyof typeof statusColors] || 'bg-gray-100 text-gray-700'}>{value}</Badge>;
+      return <Badge variant={getStatusVariant(String(value))}>{value}</Badge>;
     }
 
     // Selects guardam o valor técnico (aumento_quadro) — exibir o rótulo
@@ -244,7 +229,7 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-xl font-black text-gray-900 tracking-tight">{request.processName || 'Processo Administrativo'}</h1>
-                <Badge className={statusColors[request.status as keyof typeof statusColors] || 'bg-gray-100 text-gray-600'}>
+                <Badge variant={getStatusVariant(request.status)}>
                   {request.status}
                 </Badge>
               </div>
@@ -258,9 +243,9 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
         </div>
       </header>
 
-      {/* Content */}
-      <main className="flex-1 overflow-hidden flex">
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-8 pb-24 xl:pb-12">
+      {/* Content — em telas &lt; xl vira coluna única (uma só rolagem); em xl, dois painéis */}
+      <main className="flex-1 xl:overflow-hidden overflow-y-auto flex flex-col xl:flex-row">
+        <div className="flex-1 xl:overflow-y-auto custom-scrollbar p-8 pb-24 xl:pb-12">
           <div className="max-w-5xl mx-auto space-y-8 pb-12">
             
             {/* 1. IDENTIFICAÇÃO DO SOLICITANTE */}
@@ -394,9 +379,9 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
           </div>
         </div>
 
-        {/* Sidebar */}
-        <aside className="w-96 bg-white border-l border-brand-border flex flex-col shrink-0 hidden xl:flex">
-          <div className="p-8 flex-1 overflow-y-auto custom-scrollbar space-y-10">
+        {/* Sidebar — abaixo do conteúdo em telas menores, painel lateral em xl */}
+        <aside className="w-full xl:w-96 bg-white border-t xl:border-t-0 xl:border-l border-brand-border flex flex-col shrink-0">
+          <div className="p-8 xl:flex-1 xl:overflow-y-auto custom-scrollbar space-y-10">
             {/* AUDIT TRAIL */}
             <div className="space-y-8">
               <div className="flex items-center justify-between border-b border-gray-50 pb-4">

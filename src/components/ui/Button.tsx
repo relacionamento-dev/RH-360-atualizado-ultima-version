@@ -26,7 +26,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       sm: 'px-3 py-1.5 text-[11px] uppercase tracking-wider',
       md: 'px-4 py-2 text-[13px]',
       lg: 'px-6 py-3 text-[15px]',
-      icon: 'p-2',
+      icon: 'p-2 min-w-[44px] min-h-[44px]',
     };
 
     const widthStyles = fullWidth ? 'w-full' : '';

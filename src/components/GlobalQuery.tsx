@@ -6,18 +6,9 @@ import { Card, Table } from './ui/CardAndTable';
 import { Badge } from './ui/Badge';
 import { PageHeader } from './ui/FormAndHeader';
 import { SLABar, EmptyState } from './ui/Misc';
+import { Select } from './ui/Select';
+import { getStatusVariant } from '../utils/requestStatus';
 import { RHRequest } from '../types';
-
-const statusVariants: Record<string, 'blue' | 'amber' | 'green' | 'red' | 'purple' | 'gray'> = {
-  'Rascunho': 'gray',
-  'Enviada': 'blue',
-  'Em Análise': 'amber',
-  'Devolvida': 'purple',
-  'Aprovada': 'green',
-  'Reprovada': 'red',
-  'Concluída': 'green',
-  'Cancelada': 'red',
-};
 
 export default function GlobalQuery() {
   const { config, updateConfig } = useAppConfig();
@@ -72,7 +63,7 @@ export default function GlobalQuery() {
       <Card className="p-6 bg-gray-50/30 border-dashed">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-gray-400 uppercase ml-1">Busca Geral</label>
+            <label className="text-[11px] font-bold text-gray-500 uppercase ml-1">Busca Geral</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input 
@@ -86,63 +77,76 @@ export default function GlobalQuery() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-gray-400 uppercase ml-1">Processo</label>
-            <select 
-              className="w-full bg-white border border-[var(--color-brand-border)] rounded-[8px] px-3 py-2 text-[13px] outline-none"
+            <label className="text-[11px] font-bold text-gray-500 uppercase ml-1">Processo</label>
+            <Select
+              ariaLabel="Filtrar por processo"
+              className="w-full"
               value={filters.processo}
-              onChange={(e) => setFilters(prev => ({ ...prev, processo: e.target.value }))}
-            >
-              <option value="all">Todos os Processos</option>
-              {config.processos.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+              onChange={(v) => setFilters(prev => ({ ...prev, processo: v }))}
+              options={[
+                { value: 'all', label: 'Todos os Processos' },
+                ...config.processos.map(p => ({ value: p.id, label: p.name })),
+              ]}
+            />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-gray-400 uppercase ml-1">Empresa / Filial</label>
+            <label className="text-[11px] font-bold text-gray-500 uppercase ml-1">Empresa / Filial</label>
             <div className="flex gap-2">
-              <select 
-                className="flex-1 bg-white border border-[var(--color-brand-border)] rounded-[8px] px-3 py-2 text-[13px] outline-none"
+              <Select
+                ariaLabel="Filtrar por empresa"
+                className="flex-1"
                 value={filters.empresa}
-                onChange={(e) => setFilters(prev => ({ ...prev, empresa: e.target.value }))}
-              >
-                <option value="all">Empresa</option>
-                {config.empresas.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-              </select>
-              <select 
-                className="flex-1 bg-white border border-[var(--color-brand-border)] rounded-[8px] px-3 py-2 text-[13px] outline-none"
+                onChange={(v) => setFilters(prev => ({ ...prev, empresa: v }))}
+                options={[
+                  { value: 'all', label: 'Empresa' },
+                  ...config.empresas.map(c => ({ value: c.name, label: c.name })),
+                ]}
+              />
+              <Select
+                ariaLabel="Filtrar por filial"
+                className="flex-1"
                 value={filters.filial}
-                onChange={(e) => setFilters(prev => ({ ...prev, filial: e.target.value }))}
-              >
-                <option value="all">Filial</option>
-                {config.filiais.map(f => <option key={f} value={f}>{f}</option>)}
-              </select>
+                onChange={(v) => setFilters(prev => ({ ...prev, filial: v }))}
+                options={[
+                  { value: 'all', label: 'Filial' },
+                  ...config.filiais.map(f => ({ value: f, label: f })),
+                ]}
+              />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-gray-400 uppercase ml-1">Status / Origem</label>
+            <label className="text-[11px] font-bold text-gray-500 uppercase ml-1">Status / Origem</label>
             <div className="flex gap-2">
-              <select 
-                className="flex-1 bg-white border border-[var(--color-brand-border)] rounded-[8px] px-3 py-2 text-[13px] outline-none"
+              <Select
+                ariaLabel="Filtrar por status"
+                className="flex-1"
                 value={filters.status}
-                onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
-              >
-                <option value="all">Status</option>
-                <option value="Em Análise">Em Análise</option>
-                <option value="Devolvida">Devolvida</option>
-                <option value="Concluída">Concluída</option>
-                <option value="Reprovada">Reprovada</option>
-              </select>
-              <select 
-                className="flex-1 bg-white border border-[var(--color-brand-border)] rounded-[8px] px-3 py-2 text-[13px] outline-none"
+                onChange={(v) => setFilters(prev => ({ ...prev, status: v }))}
+                options={[
+                  { value: 'all', label: 'Status' },
+                  { value: 'Pendente de Aprovação', label: 'Pendente de Aprovação' },
+                  { value: 'Em Análise', label: 'Em Análise' },
+                  { value: 'Em Aprovação', label: 'Em Aprovação' },
+                  { value: 'Devolvida', label: 'Devolvida' },
+                  { value: 'Concluída', label: 'Concluída' },
+                  { value: 'Reprovada', label: 'Reprovada' },
+                  { value: 'Cancelada', label: 'Cancelada' },
+                ]}
+              />
+              <Select
+                ariaLabel="Filtrar por origem"
+                className="flex-1"
                 value={filters.origem}
-                onChange={(e) => setFilters(prev => ({ ...prev, origem: e.target.value }))}
-              >
-                <option value="all">Origem</option>
-                <option value="manual">Manual</option>
-                <option value="esteira-automatico">Automático</option>
-                <option value="esteira-sugestao">Sugestão</option>
-              </select>
+                onChange={(v) => setFilters(prev => ({ ...prev, origem: v }))}
+                options={[
+                  { value: 'all', label: 'Origem' },
+                  { value: 'manual', label: 'Manual' },
+                  { value: 'esteira-automatico', label: 'Automático' },
+                  { value: 'esteira-sugestao', label: 'Sugestão' },
+                ]}
+              />
             </div>
           </div>
         </div>
@@ -177,7 +181,7 @@ export default function GlobalQuery() {
                   <p className="text-[10px] font-bold text-blue-600 uppercase">{row.responsavelAtual || 'SISTEMA'}</p>
                 </div>
               )},
-              { header: 'STATUS', accessor: 'status', render: (val) => <Badge variant={statusVariants[val] || 'gray'}>{val}</Badge> },
+              { header: 'STATUS', accessor: 'status', render: (val) => <Badge variant={getStatusVariant(val)}>{val}</Badge> },
               { header: 'SLA', accessor: 'slaStatus', render: (val) => (
                 <div className="flex flex-col items-center gap-1">
                   <SLABar progress={val === 'critical' ? 95 : val === 'warning' ? 70 : 40} />
@@ -189,9 +193,9 @@ export default function GlobalQuery() {
                   <span className="text-[11px] font-bold">{new Date(val).toLocaleDateString('pt-BR')}</span>
                 </div>
               )},
-              { header: '', accessor: 'id', render: (_, row) => (
-                <Button variant="ghost" size="icon" onClick={() => openDetail(row)}>
-                  <Eye size={18} className="text-gray-400" />
+              { header: 'AÇÕES', accessor: 'id', render: (_, row) => (
+                <Button variant="ghost" size="icon" title="Ver detalhes" aria-label="Ver detalhes" onClick={() => openDetail(row)}>
+                  <Eye size={18} className="text-gray-500" />
                 </Button>
               )}
             ]}
