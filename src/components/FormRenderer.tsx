@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { computeAnchoredPosition, AnchoredPosition } from '../utils/anchoredPosition';
 import { FormField, ProcessDefinition } from '../types';
 import { Button } from './ui/Button';
 import { 
   FileText, Plus, Trash2, Calendar, DollarSign, Percent, 
-  Clock, User, Hash, Search, List, ChevronDown, Check,
+  User, Hash, Search, List, ChevronDown, Check,
   X, Edit2, CheckCircle2, Calculator, Table, Signature,
   History, Info, Lock, Unlock, Zap, Copy, Layers,
   CheckSquare, ToggleLeft, ToggleRight, Radio, Mail, Phone,
@@ -35,32 +36,14 @@ const WEEK_LABELS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 
 const CALENDAR_WIDTH = 320;
 const CALENDAR_FALLBACK_HEIGHT = 360; // usado só antes da 1ª medição real
-const CALENDAR_GAP = 8; // espaço entre o campo e o popover
 const VIEWPORT_MARGIN = 8; // margem mínima até a borda da viewport
 
-type CalendarPosition = { top: number; left: number; width: number };
+type CalendarPosition = AnchoredPosition;
 
-// Posiciona o popover em coordenadas de viewport (position: fixed), com flip
-// para cima quando não cabe abaixo e clamp para nunca sair da tela.
-const computeCalendarPosition = (anchor: HTMLElement, height: number): CalendarPosition => {
-  const rect = anchor.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  const width = Math.min(CALENDAR_WIDTH, viewportWidth - VIEWPORT_MARGIN * 2);
-  const spaceBelow = viewportHeight - rect.bottom - CALENDAR_GAP;
-  const spaceAbove = rect.top - CALENDAR_GAP;
-
-  // Só inverte se não couber embaixo E houver mais espaço em cima
-  const openUpward = spaceBelow < height && spaceAbove > spaceBelow;
-  const rawTop = openUpward ? rect.top - CALENDAR_GAP - height : rect.bottom + CALENDAR_GAP;
-
-  const maxTop = viewportHeight - height - VIEWPORT_MARGIN;
-  const top = maxTop < VIEWPORT_MARGIN ? VIEWPORT_MARGIN : Math.min(Math.max(rawTop, VIEWPORT_MARGIN), maxTop);
-  const left = Math.min(Math.max(rect.left, VIEWPORT_MARGIN), viewportWidth - width - VIEWPORT_MARGIN);
-
-  return { top, left, width };
-};
+// Reaproveita o utilitário compartilhado de posicionamento por portal, fixando
+// a largura do calendário em 320px.
+const computeCalendarPosition = (anchor: HTMLElement, height: number): CalendarPosition =>
+  computeAnchoredPosition(anchor, height, { width: CALENDAR_WIDTH, gap: 8, margin: VIEWPORT_MARGIN });
 
 const localDateFromString = (value: string) => {
   if (!value) return null;
@@ -221,7 +204,11 @@ export function FormRenderer({
         return errorsChanged ? next : prev;
       });
     }
-  }, [formData.tipoRequisicao, definition.steps]); // Trigger specifically when tipoRequisicao changes to follow requirement
+    // Reage a qualquer mudança em formData, não só a `tipoRequisicao`: qualquer
+    // campo pode ser o controlador de uma `condition` (ex.: `operacao` no
+    // processo 6). Converge porque a remoção é idempotente — a passagem seguinte
+    // não encontra mais nada a apagar e `hasChanged` fica false.
+  }, [formData, definition.steps]);
 
   // Notify parent of changes and validity
   useEffect(() => {
@@ -235,14 +222,6 @@ export function FormRenderer({
     let isValid = true;
     
     fields.forEach(field => {
-      // Check section visibility for Process '1'
-      if (definition.processId === '1') {
-        const fieldSection = field.section || 'Geral';
-        const tipo = formData.tipoRequisicao;
-        if (fieldSection === 'Reposição' && tipo !== 'reposicao') return;
-        if (fieldSection === 'Transformação' && tipo !== 'transformacao') return;
-      }
-
       if (field.condition && !field.condition(formData)) return;
       
       const fieldId = field.id || (field as any).name;
@@ -422,7 +401,9 @@ export function FormRenderer({
 
     const isReadOnlyField = readOnly || (field as any).origin === 'F' || (field as any).origin === 'K';
     
-    if (hideActions && (field.type === 'signature' || field.type === 'file')) return null;
+    // 'file' precisa aparecer no formulário de abertura (anexos obrigatórios por
+    // tipo). Só 'signature' fica reservado para telas de assinatura.
+    if (hideActions && field.type === 'signature') return null;
 
     const rawValue = formData[fieldId];
     let value = rawValue;
@@ -442,12 +423,7 @@ export function FormRenderer({
     const Label = () => (
       <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5 ml-1">
         {field.label} {field.required && <span className="text-red-500">*</span>}
-        {field.origin === 'F' && (
-          <div className="flex items-center gap-1 bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-[4px] border border-blue-100 cursor-help" title="Campo preenchido automaticamente pelo sistema (Somente Leitura)">
-            <Badge variant="blue">FONTE</Badge>
-            <Clock size={8} />
-          </div>
-        )}
+        {/* origin 'F' não exibe selo — só o fundo levemente acinzentado indica leitura */}
         {field.origin === 'K' && <Badge variant="purple">CALC</Badge>}
       </label>
     );
@@ -459,7 +435,7 @@ export function FormRenderer({
     ) : null;
 
     const inputBaseClass = `w-full bg-white border ${error ? 'border-red-500' : 'border-gray-200'} rounded-[12px] px-4 py-2.5 text-[13px] font-bold text-gray-900 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all`;
-    const readOnlyClass = field.origin === 'F' ? 'bg-blue-50/20 border-blue-100 text-blue-900' : field.origin === 'K' ? 'bg-purple-50/20 border-purple-100 text-purple-900 font-black' : 'bg-gray-50 text-gray-500 cursor-not-allowed';
+    const readOnlyClass = field.origin === 'F' ? 'bg-gray-50 border-gray-200 text-gray-700' : field.origin === 'K' ? 'bg-purple-50/20 border-purple-100 text-purple-900 font-black' : 'bg-gray-50 text-gray-500 cursor-not-allowed';
 
     const isColaborador = config.usuarioAtual.profile === 'Colaborador';
     const isCurrentUserTarget = definition.targetMode === 'CURRENT_USER';
@@ -467,6 +443,19 @@ export function FormRenderer({
     switch (field.type) {
       case 'zoom':
         if (isColaborador && isCurrentUserTarget) return null;
+
+        const zoomEntity = field.zoomConfig?.entity;
+        const isEmployeeZoom = !zoomEntity || zoomEntity === 'employee';
+
+        // Limpa o alvo e todos os campos autopreenchidos (origin F).
+        const clearSelection = () => {
+          const updates: Record<string, any> = { [fieldId]: '', [`${fieldId}Id`]: '' };
+          const currentStep = definition.steps[0];
+          currentStep.fields.forEach(f => {
+            if ((f as any).origin === 'F') updates[(f as any).id || (f as any).name] = '';
+          });
+          setFormData(prev => ({ ...prev, ...updates }));
+        };
 
         const renderZoom = () => {
           const entity = field.zoomConfig?.entity;
@@ -665,7 +654,11 @@ export function FormRenderer({
                   }
                 });
                 setFormData(prev => ({ ...prev, ...updates }));
-              }} 
+              }}
+              value={value ? String(value) : ''}
+              selectedId={formData[`${fieldId}Id`]}
+              onClear={clearSelection}
+              readOnly={isReadOnlyField}
               label=""
               placeholder={field.placeholder}
             />
@@ -675,7 +668,9 @@ export function FormRenderer({
         return (
           <div key={fieldId} id={`field-${fieldId}`} className="col-span-1 md:col-span-3 space-y-3">
             <Label />
-            {!value ? renderZoom() : (
+            {/* EmployeeZoom mantém a linha (Empresa/Filial/busca) visível e gerencia
+                o estado selecionado internamente. Demais entidades trocam para o card. */}
+            {isEmployeeZoom ? renderZoom() : (!value ? renderZoom() : (
               <div className="flex items-center justify-between p-4 bg-orange-50 border border-orange-100 rounded-[12px]">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 font-black text-[10px]">
@@ -687,23 +682,16 @@ export function FormRenderer({
                   </div>
                 </div>
                 {!isReadOnlyField && (
-                  <button 
+                  <button
                     type="button"
-                    onClick={() => {
-                      const updates: Record<string, any> = { [fieldId]: '' };
-                      const currentStep = definition.steps[0];
-                      currentStep.fields.forEach(f => {
-                         if ((f as any).origin === 'F') updates[(f as any).id || (f as any).name] = '';
-                      });
-                      setFormData(prev => ({ ...prev, ...updates }));
-                    }}
+                    onClick={clearSelection}
                     className="p-1.5 hover:bg-orange-100 rounded-full text-orange-400 transition-colors"
                   >
                     <X size={16} />
                   </button>
                 )}
               </div>
-            )}
+            ))}
             <ErrorMsg />
           </div>
         );
@@ -919,21 +907,31 @@ export function FormRenderer({
           </div>
         );
 
-      case 'textarea':
+      case 'textarea': {
+        const textValue = value !== null && value !== undefined ? String(value) : '';
         return (
           <div key={fieldId} id={`field-${fieldId}`} className="col-span-1 md:col-span-3">
             <Label />
-            <textarea
-              value={value !== null && value !== undefined ? String(value) : ''}
-              onChange={(e) => handleChange(fieldId, e.target.value)}
-              disabled={isReadOnlyField}
-              rows={3}
-              placeholder={field.placeholder}
-              className={`${inputBaseClass} resize-none ${isReadOnlyField ? readOnlyClass : 'hover:border-gray-300'}`}
-            />
+            <div className="relative">
+              <textarea
+                value={textValue}
+                onChange={(e) => handleChange(fieldId, e.target.value)}
+                disabled={isReadOnlyField}
+                rows={3}
+                maxLength={field.maxLength}
+                placeholder={field.placeholder}
+                className={`${inputBaseClass} resize-none ${field.maxLength ? 'pb-6' : ''} ${isReadOnlyField ? readOnlyClass : 'hover:border-gray-300'}`}
+              />
+              {field.maxLength && (
+                <span className="absolute bottom-2 right-3 text-[10px] font-bold text-gray-400 tabular-nums pointer-events-none">
+                  {textValue.length}/{field.maxLength}
+                </span>
+              )}
+            </div>
             <ErrorMsg />
           </div>
         );
+      }
 
       case 'boolean':
       case 'toggle':
@@ -1024,20 +1022,52 @@ export function FormRenderer({
           </div>
         );
 
-      case 'file':
+      case 'file': {
+        const fileName = value ? String(value) : '';
         return (
           <div key={fieldId} id={`field-${fieldId}`} className="col-span-1 md:col-span-3">
             <Label />
-            <div className="border-2 border-dashed border-gray-100 rounded-[20px] p-8 text-center bg-gray-50/50 hover:bg-gray-50 hover:border-orange-200 transition-all cursor-pointer group">
-              <div className="w-12 h-12 bg-white rounded-[16px] flex items-center justify-center mx-auto mb-3 shadow-sm group-hover:scale-110 transition-transform text-gray-400 group-hover:text-orange-500">
-                <Plus size={24} />
+            {fileName ? (
+              <div className="flex items-center justify-between p-4 bg-gray-50 border border-gray-200 rounded-[16px]">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 bg-white rounded-[12px] flex items-center justify-center text-orange-500 shadow-sm shrink-0">
+                    <FileText size={16} />
+                  </div>
+                  <p className="text-[12px] font-bold text-gray-700 truncate">{fileName}</p>
+                </div>
+                {!isReadOnlyField && (
+                  <button
+                    type="button"
+                    onClick={() => handleChange(fieldId, '')}
+                    className="p-1.5 hover:bg-gray-200 rounded-full text-gray-400 transition-colors shrink-0"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
               </div>
-              <p className="text-[12px] font-black text-gray-900">Clique ou arraste o arquivo</p>
-              <p className="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-wider">PDF, PNG ou JPG (máx 10MB)</p>
-            </div>
+            ) : (
+              <label className="block border-2 border-dashed border-gray-100 rounded-[20px] p-8 text-center bg-gray-50/50 hover:bg-gray-50 hover:border-orange-200 transition-all cursor-pointer group">
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg"
+                  disabled={isReadOnlyField}
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleChange(fieldId, file.name);
+                  }}
+                />
+                <div className="w-12 h-12 bg-white rounded-[16px] flex items-center justify-center mx-auto mb-3 shadow-sm group-hover:scale-110 transition-transform text-gray-400 group-hover:text-orange-500">
+                  <Plus size={24} />
+                </div>
+                <p className="text-[12px] font-black text-gray-900">Arraste e solte os arquivos aqui ou clique para selecionar</p>
+                <p className="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-wider">Formatos permitidos: PDF, JPG, PNG. Tamanho máximo: 10MB por arquivo.</p>
+              </label>
+            )}
             <ErrorMsg />
           </div>
         );
+      }
 
       case 'checklist':
         return (
@@ -1226,21 +1256,14 @@ export function FormRenderer({
       );
     }
 
+    // A visibilidade da seção deriva dos campos: se nenhum campo passa na sua
+    // `condition`, a seção inteira some (ver `visibleFields` abaixo). Não há
+    // regra por nome de seção — vale para qualquer processo.
     const sections = Array.from(new Set(fields.map(f => f.section || 'Geral')));
-    
-    // Filter sections based on strict requirement for Process ID '1'
-    const filteredSections = sections.filter(section => {
-      if (definition.processId !== '1') return true;
-      
-      const tipo = formData.tipoRequisicao;
-      if (section === 'Reposição') return tipo === 'reposicao';
-      if (section === 'Transformação') return tipo === 'transformacao';
-      return true;
-    });
-    
+
     return (
       <div className="space-y-8">
-        {filteredSections.map(section => {
+        {sections.map(section => {
           const sectionFields = fields.filter(f => (f.section || 'Geral') === section);
           const visibleFields = sectionFields.filter(f => !f.condition || f.condition(formData));
           

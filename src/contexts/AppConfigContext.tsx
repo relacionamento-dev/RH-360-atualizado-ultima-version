@@ -52,7 +52,11 @@ interface AppConfigContextType {
 }
 
 const INITIAL_STATE: AppConfig = {
-  version: '1.0.1',
+  // Bump ao mudar o seed (novos colaboradores EMP-024..029 e vínculo employeeId dos
+  // usuários JYNX): força a reidratação a descartar o localStorage antigo, senão os
+  // colaboradores desatualizados persistidos sobrescrevem os novos e o solicitante
+  // fica com matrícula 00000 / setor N/A.
+  version: '1.0.2',
   empresaAtual: COMPANIES[0],
   usuarioAtual: DEMO_USERS[0], // Admin by default
   usuariosDemo: DEMO_USERS,
@@ -105,7 +109,11 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
         if (parsed.version !== INITIAL_STATE.version) {
           return INITIAL_STATE;
         }
-        return { ...INITIAL_STATE, ...parsed, activeView: 'login' };
+        // processDefinitions carrega funções (condition/calculate/validation) que o
+        // JSON.stringify descarta. Reidratar do localStorage devolveria campos sem
+        // `condition`, tornando todas as seções visíveis e obrigatórias — por isso
+        // a definição vem sempre do código, que é a fonte da verdade.
+        return { ...INITIAL_STATE, ...parsed, processDefinitions: PROCESS_DEFINITIONS, activeView: 'login' };
       } catch (e) {
         return INITIAL_STATE;
       }
@@ -114,7 +122,10 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    // Não persistir processDefinitions: serializá-lo perde as funções e ainda
+    // ocupa espaço à toa, já que a definição é sempre lida do código.
+    const { processDefinitions: _processDefinitions, ...persistable } = config;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persistable));
   }, [config]);
 
   const updateConfig = (updates: Partial<AppConfig>) => {
@@ -707,11 +718,14 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
           addNotification('Onboarding Alocado', 'O próximo passo de onboarding foi agendado para o RH.');
         }
 
-        if (processId === '15') {
+        // Esteira: só sugere abrir Requisição de Vaga se o desligamento pediu reposição.
+        // `reposicao` agora é radio 'Sim'/'Não' (antes era boolean) — cobre ambos.
+        const pediuReposicao = req.data?.reposicao === 'Sim' || req.data?.reposicao === true;
+        if (processId === '15' && pediuReposicao) {
           const replacementTask: Task = {
             id: `task-${Date.now() + 4}`,
-            title: `Solicitação de Reposição - ${req.colaborador || req.alvo || 'Colaborador'}`,
-            description: `Criar requisição de reposição para o desligamento concluído.`,
+            title: `Sugestão de Requisição de Vaga - ${req.colaborador || req.alvo || 'Colaborador'}`,
+            description: `Desligamento concluído com reposição necessária. Abrir Requisição de Vaga (reposição).`,
             assignedTo: 'RH-001',
             dueDate: new Date(Date.now() + 72 * 3600000).toISOString(),
             status: 'Pendente',
@@ -729,7 +743,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
             prazo: new Date(Date.now() + 72 * 3600000).toISOString()
           };
           newTarefas = [replacementTask, ...newTarefas];
-          addNotification('Requisição de Reposição', 'Tarefa para criação de reposição foi gerada para o RH.');
+          addNotification('Sugestão de Requisição de Vaga', 'O desligamento exige reposição — sugestão de abertura de vaga gerada para o RH.');
         }
       }
 

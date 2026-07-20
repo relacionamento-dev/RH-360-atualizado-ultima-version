@@ -51,7 +51,26 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
     );
   }
 
-  const requester = config.colaboradores.find(e => e.id === request.requesterId);
+  // `requesterId` guarda o id do USUÁRIO, mas os dados cadastrais (matrícula,
+  // setor, CC, filial) vivem em Employee — comparar direto com `colaboradores`
+  // nunca casava, pois os namespaces são disjuntos (JYNX-00x vs EMP-0xx).
+  const requesterUser = config.usuariosDemo.find(u => u.id === request.requesterId);
+  const requesterEmployee =
+    config.colaboradores.find(e => e.id === requesterUser?.employeeId) ||
+    config.colaboradores.find(e => e.id === request.requesterId);
+
+  // Snapshots antigos gravaram sentinelas quando não havia colaborador vinculado
+  const fromSnapshot = (v?: string) => (v && v !== 'N/A' && v !== '00000' ? v : undefined);
+  const snap = request.requesterSnapshot;
+  const requester = {
+    name: snap?.name || requesterUser?.name || requesterEmployee?.name || request.solicitante,
+    registration: fromSnapshot(snap?.registration) || requesterEmployee?.registration,
+    role: fromSnapshot(snap?.role) || requesterEmployee?.role || requesterUser?.role,
+    department: fromSnapshot(snap?.department) || requesterEmployee?.department,
+    costCenter: fromSnapshot(snap?.costCenter) || requesterEmployee?.costCenter,
+    branch: fromSnapshot(snap?.branch) || requesterEmployee?.branch,
+    manager: requesterEmployee?.manager,
+  };
   const targetEmployee = config.colaboradores.find(e => e.id === request.employeeId);
   const processId = request.processId || '';
   const processDef = PROCESS_DEFINITIONS[processId];
@@ -108,17 +127,31 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
   };
 
+  // A chave em `request.data` é `id || name`. Vários campos podem compartilhar o
+  // mesmo `id` (cargo ↔ cargoRep ↔ cargoNovo), então desempata pela `condition`
+  // avaliada sobre os próprios dados salvos — é o campo que estava visível.
+  const findFieldDef = (key: string) => {
+    if (!processDef) return null;
+    const matches = processDef.steps
+      .flatMap(step => step.fields)
+      .filter(f => ((f as any).id || f.name) === key);
+    if (matches.length === 0) return null;
+    return matches.find(f => !f.condition || f.condition(request.data)) || matches[0];
+  };
+
+  // options aceita string[] ou { label, value }[] — exibe sempre o rótulo
+  const getOptionLabel = (fieldDef: any, value: any): string => {
+    const options = fieldDef?.options;
+    if (!Array.isArray(options)) return String(value);
+    const match = options.find((opt: any) => (opt && typeof opt === 'object' ? opt.value : opt) === value);
+    if (match === undefined) return String(value);
+    return typeof match === 'object' ? String(match.label ?? value) : String(match);
+  };
+
   const renderValue = (key: string, value: any) => {
     if (value === undefined || value === null || value === '') return <span className="text-gray-300">—</span>;
 
-    // Find field definition
-    let fieldDef = null;
-    if (processDef) {
-      for (const step of processDef.steps) {
-        fieldDef = step.fields.find(f => f.name === key);
-        if (fieldDef) break;
-      }
-    }
+    const fieldDef = findFieldDef(key);
 
     if (fieldDef?.type === 'currency' || key.toLowerCase().includes('salario') || key.toLowerCase().includes('remuneracao') || key.toLowerCase().includes('valor')) {
       return <span className="font-mono font-bold text-gray-900">{formatCurrency(value)}</span>;
@@ -138,6 +171,14 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
 
     if (fieldDef?.type === 'status' || key === 'status') {
       return <Badge className={statusColors[value as keyof typeof statusColors] || 'bg-gray-100 text-gray-700'}>{value}</Badge>;
+    }
+
+    // Selects guardam o valor técnico (aumento_quadro) — exibir o rótulo
+    if (fieldDef?.type === 'select' || fieldDef?.type === 'radio' || fieldDef?.type === 'multiselect') {
+      const labels = Array.isArray(value)
+        ? value.map(v => getOptionLabel(fieldDef, v)).join(', ')
+        : getOptionLabel(fieldDef, value);
+      return <span className="font-bold text-gray-900">{labels}</span>;
     }
 
     return <span className="font-bold text-gray-900">{String(value)}</span>;
@@ -247,11 +288,11 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
                 </div>
                 <div className="space-y-1">
                   <span className="label-caps">Filial / Unidade</span>
-                  <p className="text-[16px] font-black text-gray-900">{requester?.branch || 'Matrix Corp - Matriz'}</p>
+                  <p className="text-[16px] font-black text-gray-900">{requester?.branch || '—'}</p>
                 </div>
                 <div className="space-y-1">
                   <span className="label-caps">Gestor Direto</span>
-                  <p className="text-[16px] font-black text-gray-900">Claudio Mendes</p>
+                  <p className="text-[16px] font-black text-gray-900">{requester?.manager || '—'}</p>
                 </div>
               </div>
             </div>
@@ -300,16 +341,11 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
                     // Find label from process definition
                     let label = key;
                     let gridCols = 1;
-                    if (processDef) {
-                      for (const step of processDef.steps) {
-                        const field = step.fields.find(f => f.name === key);
-                        if (field) {
-                          label = field.label;
-                          gridCols = field.gridCols || 1;
-                          if (field.type === 'section' || field.type === 'info') return null;
-                          break;
-                        }
-                      }
+                    const field = findFieldDef(key);
+                    if (field) {
+                      label = field.label;
+                      gridCols = field.gridCols || 1;
+                      if (field.type === 'section' || field.type === 'info') return null;
                     }
 
                     // Skip internal fields

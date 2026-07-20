@@ -373,6 +373,7 @@ export interface FormField {
   };
   section?: string;
   gridCols?: number;
+  maxLength?: number; // textareas: limite + contador "x/max"
   calculate?: (data: any) => any;
   condition?: (data: any) => boolean;
 }

@@ -53,37 +53,12 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
   const [isSaving, setIsSaving] = useState(false);
   const [visibleMandatoryCount, setVisibleMandatoryCount] = useState(0);
   const [filledMandatoryCount, setFilledMandatoryCount] = useState(0);
-  const [lastTipoRequisicao, setLastTipoRequisicao] = useState<string | null>(null);
 
-  // Clear data when tipoRequisicao changes
-  useEffect(() => {
-    if (processId === '1' && lastTipoRequisicao !== null && currentFormData.tipoRequisicao !== lastTipoRequisicao) {
-      // Fields to clear
-      const fieldsToClear: string[] = [];
-      
-      // If it was Reposição, clear those fields
-      if (lastTipoRequisicao === 'reposicao') {
-        fieldsToClear.push('colaboradorSubstituido', 'colaboradorSubstituidoId', 'setorRep', 'ccRep', 'cargoRep');
-      }
-      // If it was Transformação, clear those fields
-      if (lastTipoRequisicao === 'transformacao') {
-        fieldsToClear.push('colaboradorTransformacao', 'colaboradorTransformacaoId', 'cargoAtual', 'cargoNovo', 'ccAtual', 'ccNovo');
-      }
-      // If it was Aumento de Quadro, clear those fields
-      if (lastTipoRequisicao === 'aumento_quadro') {
-        fieldsToClear.push('setor', 'centroCusto', 'cargo');
-      }
-
-      if (fieldsToClear.length > 0) {
-        setCurrentFormData(prev => {
-          const next = { ...prev };
-          fieldsToClear.forEach(f => delete next[f]);
-          return next;
-        });
-      }
-    }
-    setLastTipoRequisicao(currentFormData.tipoRequisicao || '');
-  }, [currentFormData.tipoRequisicao, processId]);
+  // A limpeza de campos ocultos é feita pelo FormRenderer, que percorre as
+  // `condition` de todos os campos e apaga pela chave real (`id || name`). A
+  // lista literal que existia aqui usava os `name` (setorRep, cargoNovo…),
+  // enquanto os dados são gravados sob os `id` (setor, cargo), então não
+  // limpava esses campos — e ainda competia com o mecanismo genérico.
 
   // Handle calculation of mandatory fields
   useEffect(() => {
@@ -93,15 +68,8 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
     let filledTotal = 0;
 
     fields.forEach(field => {
-      const section = field.section || 'Geral';
-      let isSectionVisible = true;
-      if (processId === '1') {
-        const tipo = currentFormData.tipoRequisicao;
-        if (section === 'Reposição' && tipo !== 'reposicao') isSectionVisible = false;
-        if (section === 'Transformação' && tipo !== 'transformacao') isSectionVisible = false;
-      }
-
-      const isVisible = isSectionVisible && (!field.condition || field.condition(currentFormData));
+      // Só conta o que está visível agora — mesma `condition` usada pelo FormRenderer
+      const isVisible = !field.condition || field.condition(currentFormData);
       if (isVisible && field.required) {
         visibleTotal++;
         const fieldId = (field as any).id || (field as any).name;
@@ -119,7 +87,8 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
   // Handle Reposição and Transformação auto-fill logic
   useEffect(() => {
     if (processId === '1') {
-      if (currentFormData.tipoRequisicao === 'reposicao' && currentFormData.colaboradorSubstituido) {
+      const isReposicao = currentFormData.tipoRequisicao === 'reposicao' || currentFormData.tipoRequisicao === 'substituicao';
+      if (isReposicao && currentFormData.colaboradorSubstituido) {
         const emp = config.colaboradores.find(e => e.name === currentFormData.colaboradorSubstituido);
         if (emp) {
           setCurrentFormData(prev => {
@@ -255,6 +224,33 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
     );
   }
 
+  // Etapas do painel lateral. Para o desligamento (processId '15') o fluxo reflete
+  // o tipo escolhido: Justa Causa insere "Análise Jurídica" antes da aprovação.
+  const flowSteps: { label: string; desc: string; group?: string }[] = (() => {
+    if (processId === '15') {
+      const isJustaCausa = currentFormData.tipoDesligamento === 'justa_causa';
+      return [
+        { label: 'Solicitação', desc: 'Preenchimento do formulário' },
+        ...(isJustaCausa ? [{ label: 'Análise Jurídica', desc: 'Validação da justa causa' }] : []),
+        { label: 'Aprovação', desc: 'Avaliação e aprovação' },
+        { label: 'Cálculo de Benefícios', desc: 'Rescisão e verbas', group: 'Benefícios' },
+        { label: 'Conclusão', desc: 'Finalização do processo' },
+      ];
+    }
+    return [
+      { label: 'Solicitação', desc: 'Preenchimento do formulário' },
+      { label: 'Aprovação', desc: 'Validação pelo responsável' },
+      { label: 'Conclusão', desc: 'Efetivação e auditoria' },
+    ];
+  })();
+
+  // Aprovador e SLA derivados das etapas de aprovação do processo (não hardcoded).
+  const approvals = process.approvals || [];
+  const aprovadorLabel = approvals.length ? approvals.map(a => a.name).join(' → ') : 'RH / Gestor';
+  const totalSlaHoras = approvals.reduce((acc, a) => acc + (a.slaUnit === 'd' ? a.sla * 24 : a.sla), 0);
+  const slaLabel = totalSlaHoras > 0 ? `${totalSlaHoras}h` : '48h';
+  const slaEstimadoLabel = totalSlaHoras > 0 ? `${totalSlaHoras} Horas Úteis` : '48 Horas Úteis';
+
   return (
     <div className="flex flex-col h-screen bg-[#F8FAFC]">
       {/* Header */}
@@ -289,7 +285,7 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
         <div className="flex items-center gap-3">
           <div className="hidden md:flex flex-col items-end mr-4 text-right">
             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">SLA Estimado</span>
-            <span className="text-[12px] font-black text-gray-900">48 Horas Úteis</span>
+            <span className="text-[12px] font-black text-gray-900">{slaEstimadoLabel}</span>
           </div>
           <Button variant="outline" onClick={onBack} className="rounded-xl font-bold border-gray-200">Cancelar</Button>
         </div>
@@ -352,10 +348,6 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
                     <span className="text-[11px] font-bold text-gray-400 uppercase">Categoria</span>
                     <span className="text-[11px] font-black text-gray-900 uppercase">{process.category}</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-gray-400 uppercase">Visibilidade</span>
-                    <span className="text-[11px] font-black text-green-600 uppercase">Público</span>
-                  </div>
                 </div>
               </div>
             </div>
@@ -364,30 +356,32 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
             <div className="space-y-4">
               <h4 className="text-[11px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50 pb-2">Etapas</h4>
               <div className="space-y-4">
-                {[
-                  { id: 1, label: 'Solicitação', status: 'current', desc: 'Preenchimento do formulário' },
-                  { id: 2, label: 'Aprovação', status: 'pending', desc: 'Validação pelo responsável' },
-                  { id: 3, label: 'Conclusão', status: 'pending', desc: 'Efetivação e auditoria' }
-                ].map((step, idx) => (
-                  <div key={step.id} className="flex gap-4 group">
-                    <div className="flex flex-col items-center">
-                      <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black z-10 ${
-                        step.status === 'done' ? 'bg-green-500 text-white' : 
-                        step.status === 'current' ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 
-                        'bg-gray-100 text-gray-400'
-                      }`}>
-                        {step.status === 'done' ? <Check size={12} /> : step.id}
+                {flowSteps.map((step, idx) => {
+                  const isCurrent = idx === 0; // "Solicitação" é a etapa atual na abertura
+                  return (
+                    <div key={`${step.label}-${idx}`} className="flex gap-4 group">
+                      <div className="flex flex-col items-center">
+                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black z-10 ${
+                          isCurrent ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'bg-gray-100 text-gray-400'
+                        }`}>
+                          {idx + 1}
+                        </div>
+                        {idx < flowSteps.length - 1 && <div className="w-[1.5px] flex-1 bg-gray-100 my-1" />}
                       </div>
-                      {idx < 2 && <div className="w-[1.5px] flex-1 bg-gray-100 my-1" />}
+                      <div className="pb-4">
+                        <div className="flex items-center gap-2">
+                          <p className={`text-[12px] font-black leading-tight ${isCurrent ? 'text-gray-900' : 'text-gray-400'}`}>
+                            {step.label}
+                          </p>
+                          {step.group && (
+                            <span className="text-[8px] font-black text-orange-500 uppercase tracking-wider bg-orange-50 border border-orange-100 px-1.5 py-0.5 rounded">{step.group}</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-gray-400 font-bold tracking-tight mt-0.5">{step.desc}</p>
+                      </div>
                     </div>
-                    <div className="pb-4">
-                      <p className={`text-[12px] font-black leading-tight ${step.status !== 'pending' ? 'text-gray-900' : 'text-gray-400'}`}>
-                        {step.label}
-                      </p>
-                      <p className="text-[10px] text-gray-400 font-bold tracking-tight mt-0.5">{step.desc}</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -397,11 +391,11 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
               <div className="space-y-2">
                  <div className="flex items-center justify-between p-2 rounded-lg bg-gray-50 border border-gray-100">
                     <span className="text-[10px] font-black text-gray-400 uppercase">Aprovador</span>
-                    <span className="text-[10px] font-black text-gray-900">RH / Gestor</span>
+                    <span className="text-[10px] font-black text-gray-900 text-right">{aprovadorLabel}</span>
                  </div>
                  <div className="flex items-center justify-between p-2 rounded-lg bg-gray-50 border border-gray-100">
                     <span className="text-[10px] font-black text-gray-400 uppercase">SLA</span>
-                    <span className="text-[10px] font-black text-gray-900">48h</span>
+                    <span className="text-[10px] font-black text-gray-900">{slaLabel}</span>
                  </div>
               </div>
             </div>

@@ -2,6 +2,23 @@ import { ProcessDefinition, TargetMode } from './types';
 
 const ROLES = ['Analista de RH', 'Desenvolvedor', 'Gerente Comercial', 'Analista Financeiro', 'Coordenador Operacional'];
 
+// Requisição de Vaga: o tipo escolhido define quais seções aparecem.
+// Reposição e Substituição compartilham a mesma seção ("Dados da Reposição").
+const isAumentoQuadro = (data: any) => data.tipoRequisicao === 'aumento_quadro';
+const isReposicao = (data: any) => data.tipoRequisicao === 'reposicao' || data.tipoRequisicao === 'substituicao';
+const isTransformacao = (data: any) => data.tipoRequisicao === 'transformacao';
+
+// Desligamento: campos e anexos obrigatórios mudam conforme o tipo.
+const isPedidoDemissao = (data: any) => data.tipoDesligamento === 'pedido_demissao';
+const isSemJustaCausa = (data: any) => data.tipoDesligamento === 'sem_justa_causa';
+const isJustaCausa = (data: any) => data.tipoDesligamento === 'justa_causa';
+const isFimContrato = (data: any) => data.tipoDesligamento === 'fim_contrato';
+const isAcordo = (data: any) => data.tipoDesligamento === 'acordo';
+const hasTipo = (data: any) => !!data.tipoDesligamento;
+// Pedido, Sem Justa Causa e Acordo têm aviso prévio; Justa Causa e Fim de Contrato não.
+const hasAvisoPrevio = (data: any) => ['pedido_demissao', 'sem_justa_causa', 'acordo'].includes(data.tipoDesligamento);
+const hasColaboradorAlvo = (data: any) => !!data.colaboradorId;
+
 export const PROCESS_DEFINITIONS: Record<string, ProcessDefinition> = {
   '1': {
     processId: '1',
@@ -18,6 +35,7 @@ export const PROCESS_DEFINITIONS: Record<string, ProcessDefinition> = {
             options: [
               { label: 'Aumento de Quadro', value: 'aumento_quadro' },
               { label: 'Reposição de Vaga', value: 'reposicao' },
+              { label: 'Substituição', value: 'substituicao' },
               { label: 'Transformação de Cargo', value: 'transformacao' }
             ], 
             required: true, 
@@ -26,23 +44,23 @@ export const PROCESS_DEFINITIONS: Record<string, ProcessDefinition> = {
           { name: 'empresa', label: 'Empresa Contratante', type: 'select', origin: 'C', options: ['RH360 Holding', 'RH360 Filial SP', 'RH360 Filial RJ'], required: true, section: 'Dados da Vaga' },
           { name: 'filial', label: 'Unidade / Filial', type: 'select', origin: 'C', options: ['Matriz', 'Centro de Distribuição', 'Escritório'], required: true, section: 'Dados da Vaga' },
           
-          { name: 'setor', label: 'Departamento / Setor', type: 'select', origin: 'C', options: ['TI', 'RH', 'Financeiro', 'Vendas', 'Operações'], required: true, section: 'Dados da Vaga', condition: (data: any) => data.tipoRequisicao === 'aumento_quadro' },
-          { name: 'centroCusto', label: 'Centro de Custo', type: 'select', origin: 'C', options: ['1010 - ADM', '2020 - TI', '3030 - COM'], required: true, section: 'Dados da Vaga', condition: (data: any) => data.tipoRequisicao === 'aumento_quadro' },
-          { name: 'cargo', label: 'Cargo Pretendido', type: 'select', origin: 'C', options: ROLES, required: true, section: 'Dados da Vaga', condition: (data: any) => data.tipoRequisicao === 'aumento_quadro' },
+          { name: 'setor', label: 'Departamento / Setor', type: 'select', origin: 'C', options: ['TI', 'RH', 'Financeiro', 'Vendas', 'Operações'], required: true, section: 'Dados da Vaga', condition: isAumentoQuadro },
+          { name: 'centroCusto', label: 'Centro de Custo', type: 'select', origin: 'C', options: ['1010 - ADM', '2020 - TI', '3030 - COM'], required: true, section: 'Dados da Vaga', condition: isAumentoQuadro },
+          { name: 'cargo', label: 'Cargo Pretendido', type: 'select', origin: 'C', options: ROLES, required: true, section: 'Dados da Vaga', condition: isAumentoQuadro },
           
           { name: 'quantidadeVagas', label: 'Quantidade de Vagas', type: 'number', origin: 'C', defaultValue: 1, required: true, section: 'Dados da Vaga' },
           { name: 'dataDesejada', label: 'Previsão de Início', type: 'date', origin: 'C', required: true, section: 'Dados da Vaga' },
           
-          { name: 'colaboradorSubstituido', label: 'Colaborador a Substituir', type: 'zoom', origin: 'C', condition: (data: any) => data.tipoRequisicao === 'reposicao', required: true, section: 'Dados da Reposição', zoomConfig: { entity: 'employee', fields: ['name', 'registration'] } },
-          { name: 'setorRep', id: 'setor', label: 'Setor da Vaga', type: 'text', origin: 'F', condition: (data: any) => data.tipoRequisicao === 'reposicao', section: 'Dados da Reposição' },
-          { name: 'ccRep', id: 'centroCusto', label: 'Centro de Custo', type: 'text', origin: 'F', condition: (data: any) => data.tipoRequisicao === 'reposicao', section: 'Dados da Reposição' },
-          { name: 'cargoRep', id: 'cargo', label: 'Cargo da Vaga', type: 'text', origin: 'F', condition: (data: any) => data.tipoRequisicao === 'reposicao', section: 'Dados da Reposição' },
+          { name: 'colaboradorSubstituido', label: 'Colaborador a Substituir', type: 'zoom', origin: 'C', condition: isReposicao, required: true, section: 'Dados da Reposição', zoomConfig: { entity: 'employee', fields: ['name', 'registration'] } },
+          { name: 'setorRep', id: 'setor', label: 'Setor da Vaga', type: 'text', origin: 'F', condition: isReposicao, section: 'Dados da Reposição' },
+          { name: 'ccRep', id: 'centroCusto', label: 'Centro de Custo', type: 'text', origin: 'F', condition: isReposicao, section: 'Dados da Reposição' },
+          { name: 'cargoRep', id: 'cargo', label: 'Cargo da Vaga', type: 'text', origin: 'F', condition: isReposicao, section: 'Dados da Reposição' },
 
-          { name: 'colaboradorTransformacao', label: 'Colaborador Impactado', type: 'zoom', origin: 'C', condition: (data: any) => data.tipoRequisicao === 'transformacao', required: true, section: 'Dados da Transformação', zoomConfig: { entity: 'employee', fields: ['name', 'registration'] } },
-          { name: 'cargoAtual', label: 'Cargo Atual', type: 'text', origin: 'F', condition: (data: any) => data.tipoRequisicao === 'transformacao', section: 'Dados da Transformação' },
-          { name: 'cargoNovo', id: 'cargo', label: 'Novo Cargo Proposto', type: 'select', origin: 'C', options: ROLES, condition: (data: any) => data.tipoRequisicao === 'transformacao', section: 'Dados da Transformação', required: true },
-          { name: 'ccAtual', label: 'Centro de Custo Atual', type: 'text', origin: 'F', condition: (data: any) => data.tipoRequisicao === 'transformacao', section: 'Dados da Transformação' },
-          { name: 'ccNovo', id: 'centroCusto', label: 'Novo Centro de Custo', type: 'select', origin: 'C', options: ['1010 - ADM', '2020 - TI', '3030 - COM'], condition: (data: any) => data.tipoRequisicao === 'transformacao', section: 'Dados da Transformação', required: true },
+          { name: 'colaboradorTransformacao', label: 'Colaborador Impactado', type: 'zoom', origin: 'C', condition: isTransformacao, required: true, section: 'Dados da Transformação', zoomConfig: { entity: 'employee', fields: ['name', 'registration'] } },
+          { name: 'cargoAtual', label: 'Cargo Atual', type: 'text', origin: 'F', condition: isTransformacao, section: 'Dados da Transformação' },
+          { name: 'cargoNovo', id: 'cargo', label: 'Novo Cargo Proposto', type: 'select', origin: 'C', options: ROLES, condition: isTransformacao, section: 'Dados da Transformação', required: true },
+          { name: 'ccAtual', label: 'Centro de Custo Atual', type: 'text', origin: 'F', condition: isTransformacao, section: 'Dados da Transformação' },
+          { name: 'ccNovo', id: 'centroCusto', label: 'Novo Centro de Custo', type: 'select', origin: 'C', options: ['1010 - ADM', '2020 - TI', '3030 - COM'], condition: isTransformacao, section: 'Dados da Transformação', required: true },
 
           { name: 'tipoContrato', label: 'Regime de Contratação', type: 'select', origin: 'C', options: ['CLT', 'PJ', 'Temporário', 'Estágio'], required: true, section: 'Condições da Contratação' },
           { name: 'modalidade', label: 'Modalidade de Trabalho', type: 'select', origin: 'C', options: ['Presencial', 'Híbrido', 'Remoto'], required: true, section: 'Condições da Contratação' },
@@ -384,21 +402,65 @@ export const PROCESS_DEFINITIONS: Record<string, ProcessDefinition> = {
       {
         name: 'Solicitação de Desligamento',
         fields: [
-          { name: 'colaboradorId', label: 'Colaborador', type: 'zoom', origin: 'C', required: true, section: 'Dados do Colaborador', zoomConfig: { entity: 'employee', fields: ['name', 'registration'] } },
-          { name: 'cargo', label: 'Cargo', type: 'text', origin: 'F', section: 'Dados do Colaborador' },
-          { name: 'setor', label: 'Setor', type: 'text', origin: 'F', section: 'Dados do Colaborador' },
-          { name: 'centroCusto', label: 'Centro de Custo', type: 'text', origin: 'F', section: 'Dados do Colaborador' },
-          { name: 'admissao', label: 'Data de Admissão', type: 'date', origin: 'F', section: 'Dados do Colaborador' },
+          // --- Colaborador: campo de busca único ---
+          { name: 'colaboradorId', label: 'Chapa do colaborador', type: 'zoom', origin: 'C', required: true, placeholder: 'Digite a chapa ou busque o colaborador', section: 'Colaborador', zoomConfig: { entity: 'employee', fields: ['name', 'registration'] } },
 
-          { name: 'tipoDesligamento', label: 'Tipo de Desligamento', type: 'select', origin: 'C', options: ['Pedido de Demissão', 'Sem Justa Causa', 'Com Justa Causa', 'Término de Contrato'], required: true, section: 'Tipo e Motivo' },
-          { name: 'motivo', label: 'Motivo Complementar', type: 'textarea', origin: 'C', required: false, gridCols: 3, section: 'Tipo e Motivo' },
+          // --- Dados carregados automaticamente (origin F, aparecem após seleção).
+          //     Empresa e Filial ficam na linha do colaborador (EmployeeZoom), não aqui. ---
+          { name: 'cargo', label: 'Cargo', type: 'text', origin: 'F', section: 'Dados carregados automaticamente', condition: hasColaboradorAlvo },
+          { name: 'setor', label: 'Setor', type: 'text', origin: 'F', section: 'Dados carregados automaticamente', condition: hasColaboradorAlvo },
+          { name: 'centroCusto', label: 'Centro de custo', type: 'text', origin: 'F', section: 'Dados carregados automaticamente', condition: hasColaboradorAlvo },
+          { name: 'admissao', label: 'Data de admissão', type: 'date', origin: 'F', section: 'Dados carregados automaticamente', condition: hasColaboradorAlvo },
+          { name: 'gestor', label: 'Gestor direto', type: 'text', origin: 'F', section: 'Dados carregados automaticamente', condition: hasColaboradorAlvo },
 
-          { name: 'avisoPrevio', label: 'Aviso Prévio', type: 'select', origin: 'C', options: ['Trabalhado', 'Indenizado', 'Dispensado'], required: true, section: 'Datas (aviso prévio e último dia)' },
-          { name: 'ultimoDia', label: 'Último Dia Trabalhado', type: 'date', origin: 'C', required: true, section: 'Datas (aviso prévio e último dia)' },
+          // --- Tipo e motivo (motivo condicional ao tipo) ---
+          { name: 'tipoDesligamento', label: 'Tipo de desligamento', type: 'select', origin: 'C', required: true, section: 'Dados do Desligamento', options: [
+            { label: 'Pedido de Demissão', value: 'pedido_demissao' },
+            { label: 'Sem Justa Causa', value: 'sem_justa_causa' },
+            { label: 'Justa Causa', value: 'justa_causa' },
+            { label: 'Fim de Contrato', value: 'fim_contrato' },
+            { label: 'Acordo (art. 484-A)', value: 'acordo' }
+          ] },
+          { name: 'tipoDesligamentoInfo', label: 'Os campos e anexos obrigatórios são ajustados automaticamente conforme o tipo selecionado.', type: 'info', section: 'Dados do Desligamento' },
 
-          { name: 'reposicao', label: 'Necessário Substituição / Reposição?', type: 'boolean', origin: 'C', section: 'Observações' },
-          { name: 'observacao', label: 'Observações', type: 'textarea', origin: 'C', gridCols: 3, section: 'Observações' },
-          { name: 'anexo', label: 'Documentação de Suporte', type: 'file', origin: 'C', section: 'Observações' }
+          // Pedido de Demissão → motivo opcional
+          { name: 'motivoDemissao', id: 'motivo', label: 'Motivo', type: 'textarea', origin: 'C', required: false, maxLength: 500, gridCols: 3, section: 'Dados do Desligamento', condition: isPedidoDemissao },
+          // Sem Justa Causa → motivo (select) obrigatório + complementar
+          { name: 'motivoSemJusta', id: 'motivo', label: 'Motivo', type: 'select', origin: 'C', required: true, section: 'Dados do Desligamento', options: ['Desempenho', 'Reestruturação', 'Redução de quadro', 'Fim de projeto', 'Outro'], condition: isSemJustaCausa },
+          { name: 'motivoComplementar', label: 'Motivo complementar', type: 'textarea', origin: 'C', required: false, maxLength: 500, gridCols: 3, section: 'Dados do Desligamento', condition: isSemJustaCausa },
+          // Justa Causa → motivo detalhado obrigatório
+          { name: 'motivoJustaCausa', id: 'motivo', label: 'Motivo detalhado', type: 'textarea', origin: 'C', required: true, maxLength: 500, gridCols: 3, section: 'Dados do Desligamento', condition: isJustaCausa },
+          // Acordo → motivo obrigatório
+          { name: 'motivoAcordo', id: 'motivo', label: 'Motivo', type: 'textarea', origin: 'C', required: true, maxLength: 500, gridCols: 3, section: 'Dados do Desligamento', condition: isAcordo },
+
+          // --- Aviso prévio (varia por tipo) ---
+          { name: 'avisoPrevioDemissao', id: 'avisoPrevio', label: 'Aviso prévio', type: 'radio', origin: 'C', required: true, section: 'Aviso Prévio e Datas', options: ['Cumprido', 'Dispensado'], condition: isPedidoDemissao },
+          { name: 'avisoPrevioSemJusta', id: 'avisoPrevio', label: 'Aviso prévio', type: 'radio', origin: 'C', required: true, section: 'Aviso Prévio e Datas', options: ['Trabalhado', 'Indenizado', 'Dispensado'], condition: isSemJustaCausa },
+          { name: 'avisoPrevioAcordoInfo', label: 'Aviso prévio indenizado pela metade (art. 484-A).', type: 'info', section: 'Aviso Prévio e Datas', condition: isAcordo },
+
+          // --- Datas: três campos com efeitos distintos ---
+          { name: 'dataAvisoPrevio', label: 'Data do aviso prévio', type: 'date', origin: 'C', required: true, section: 'Aviso Prévio e Datas', condition: hasAvisoPrevio },
+          { name: 'dataTerminoContrato', label: 'Data de término do contrato', type: 'date', origin: 'C', required: true, section: 'Aviso Prévio e Datas', condition: isFimContrato },
+          { name: 'ultimoDiaTrabalhado', label: 'Último dia trabalhado', type: 'date', origin: 'C', required: true, section: 'Aviso Prévio e Datas', condition: hasTipo },
+          { name: 'dataPrevistaDesligamento', label: 'Data prevista do desligamento', type: 'date', origin: 'C', required: true, section: 'Aviso Prévio e Datas', condition: hasTipo },
+
+          // --- Reposição: obrigatória só em Sem Justa Causa ---
+          { name: 'reposicaoObrig', id: 'reposicao', label: 'Necessário reposição?', type: 'radio', origin: 'C', required: true, section: 'Reposição', options: ['Sim', 'Não'], condition: isSemJustaCausa },
+          { name: 'reposicaoOpc', id: 'reposicao', label: 'Necessário reposição?', type: 'radio', origin: 'C', required: false, section: 'Reposição', options: ['Sim', 'Não'], condition: (data: any) => hasTipo(data) && !isSemJustaCausa(data) },
+
+          // --- Verbas e observações ---
+          { name: 'verbasSemJusta', id: 'verbas', label: 'Verbas e observações', type: 'textarea', origin: 'C', required: false, maxLength: 300, gridCols: 3, section: 'Verbas e Observações', condition: isSemJustaCausa },
+          { name: 'verbasAcordo', id: 'verbas', label: 'Verbas reduzidas (art. 484-A)', type: 'textarea', origin: 'C', required: false, maxLength: 300, gridCols: 3, section: 'Verbas e Observações', condition: isAcordo },
+          { name: 'observacao', label: 'Observações gerais', type: 'textarea', origin: 'C', required: false, maxLength: 300, gridCols: 3, section: 'Verbas e Observações', condition: hasTipo },
+
+          // --- Exame demissional (ASO): obrigatório na conclusão ---
+          { name: 'asoData', label: 'Agendamento do exame demissional (ASO)', type: 'date', origin: 'C', required: false, section: 'Exame Demissional (ASO)', condition: hasTipo },
+          { name: 'asoAnexo', label: 'ASO — Exame Demissional (obrigatório na conclusão)', type: 'file', origin: 'C', required: false, section: 'Exame Demissional (ASO)', condition: hasTipo },
+
+          // --- Anexos condicionais ao tipo ---
+          { name: 'cartaDemissao', label: 'Carta de demissão', type: 'file', origin: 'C', required: true, section: 'Anexos', condition: isPedidoDemissao },
+          { name: 'documentosComprobatorios', label: 'Documentos comprobatórios', type: 'file', origin: 'C', required: true, section: 'Anexos', condition: isJustaCausa },
+          { name: 'anexoGeral', label: 'Anexos (opcional)', type: 'file', origin: 'C', required: false, section: 'Anexos', condition: hasTipo }
         ]
       }
     ]

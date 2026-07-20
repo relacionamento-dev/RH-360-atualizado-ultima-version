@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { Search, UserCheck } from 'lucide-react';
 import { useAppConfig } from '../../contexts/AppConfigContext';
+import { AnchoredDropdown } from '../ui/AnchoredDropdown';
 
 interface ApprovedCandidateZoomProps {
   onSelect: (item: any) => void;
@@ -12,6 +13,7 @@ export function ApprovedCandidateZoom({ onSelect, label, placeholder }: Approved
   const { config } = useAppConfig();
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const searchAnchorRef = useRef<HTMLDivElement>(null);
 
   const filteredItems = useMemo(() => {
     return config.candidaturas
@@ -33,9 +35,9 @@ export function ApprovedCandidateZoom({ onSelect, label, placeholder }: Approved
   return (
     <div className="space-y-2">
       {label && <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{label}</label>}
-      <div className="relative">
+      <div className="relative" ref={searchAnchorRef}>
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-        <input 
+        <input
           type="text"
           placeholder={placeholder || "Buscar candidato aprovado..."}
           value={searchTerm}
@@ -44,13 +46,11 @@ export function ApprovedCandidateZoom({ onSelect, label, placeholder }: Approved
             setIsSearching(true);
           }}
           onFocus={() => setIsSearching(true)}
-          onBlur={() => setIsSearching(false)}
           onClick={() => setIsSearching(true)}
           className="w-full bg-gray-50 border border-gray-200 rounded-[12px] pl-9 pr-4 py-2 text-[12px] font-bold outline-none focus:ring-2 focus:ring-orange-500/20"
         />
 
-        {isSearching && (
-          <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-[16px] shadow-2xl z-[60] max-h-60 overflow-y-auto custom-scrollbar p-1">
+        <AnchoredDropdown anchorRef={searchAnchorRef} open={isSearching} onClose={() => setIsSearching(false)} maxHeight={240}>
             {filteredItems.length > 0 ? (
               filteredItems.map(item => (
                 <button
@@ -90,8 +90,7 @@ export function ApprovedCandidateZoom({ onSelect, label, placeholder }: Approved
                 <p className="text-[10px] font-bold text-gray-400 uppercase">Nenhum registro encontrado</p>
               </div>
             )}
-          </div>
-        )}
+        </AnchoredDropdown>
       </div>
     </div>
   );
