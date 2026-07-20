@@ -4,13 +4,29 @@ export interface User {
   role: string;
   groups: string[];
   avatar?: string;
-  profile: 'Administrador' | 'Diretoria' | 'RH/DP' | 'Gestor' | 'Colaborador';
+  profile: 'Administrador Geral' | 'Administrador' | 'Diretoria' | 'RH/DP' | 'Gestor' | 'Colaborador';
   scope: 'proprio' | 'equipe' | 'setor' | 'centro-custo' | 'filial' | 'empresa' | 'global';
   email: string;
+  password?: string;
   employeeId?: string;
+  canManageAccesses?: boolean;
   status: 'Ativo' | 'Inativo' | 'Suspenso';
   substituteId?: string;
   substitutePeriod?: { start: string; end: string };
+}
+
+export type AccessStatus = 'Ativo' | 'Expirando' | 'Expirado' | 'Bloqueado';
+
+export interface Accesso {
+  id: string;
+  client: string;
+  email: string;
+  password: string;
+  grantedProfile: User['profile'];
+  startDate: string;
+  expirationDate: string;
+  createdAt: string;
+  blocked?: boolean;
 }
 
 export type ApprovalResponsibilityType = 
@@ -622,6 +638,10 @@ export interface AppConfig {
   empresaAtual: Company;
   usuarioAtual: User;
   usuariosDemo: User[];
+  accessos: Accesso[];
+  currentAccessId?: string | null;
+  originalUserId?: string | null;
+  originalUser?: User | null;
   empresas: Company[];
   filiais: string[];
   unidades: Unit[];

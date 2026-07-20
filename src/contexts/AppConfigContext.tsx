@@ -22,6 +22,7 @@ import {
   INITIAL_INTRANET,
   INITIAL_REQUEST_COUNTER,
   INITIAL_INTEGRATIONS,
+  INITIAL_ACCESSOS,
   menuModules 
 } from '../data';
 import { PROCESS_DEFINITIONS } from '../processDefinitions';
@@ -32,6 +33,8 @@ interface AppConfigContextType {
   config: AppConfig;
   updateConfig: (updates: Partial<AppConfig>) => void;
   resetConfig: () => void;
+  login: (email: string, password: string) => { success: boolean; message?: string };
+  logout: () => void;
   createRequest: (processId: string, data: any, isDraft?: boolean) => void;
   updateRequest: (requestId: string, updates: Partial<RHRequest>) => void;
   approveRequest: (requestId: string, comment?: string) => void;
@@ -82,6 +85,10 @@ const INITIAL_STATE: AppConfig = {
   selectedEmployeeId: null,
   appName: 'RH360',
   primaryColor: '#F26522',
+  accessos: INITIAL_ACCESSOS,
+  currentAccessId: null,
+  originalUserId: null,
+  originalUser: null,
   activeView: 'login',
   aiGlobalEnabled: false,
   auditTrail: []
@@ -119,6 +126,44 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(STORAGE_KEY);
   };
 
+  const login = (email: string, password: string) => {
+    const normalized = email.trim().toLowerCase();
+    const demoUser = DEMO_USERS.find(u => u.email.toLowerCase() === normalized && u.password === password);
+    if (demoUser) {
+      setConfig(prev => ({ ...prev, usuarioAtual: demoUser, originalUserId: null, originalUser: null, activeView: 'intranet', currentAccessId: null }));
+      return { success: true };
+    }
+
+    const access = config.accessos.find(a => a.email.toLowerCase() === normalized && a.password === password);
+    if (!access) {
+      return { success: false, message: 'Usuário ou senha incorretos.' };
+    }
+
+    const today = new Date();
+    const expiration = new Date(access.expirationDate);
+    if (access.blocked || expiration < today) {
+      return { success: false, message: 'Seu acesso expirou. Fale com o administrador.' };
+    }
+
+    const accessUser: User = {
+      id: access.id,
+      name: access.client,
+      role: `Acesso ${access.client}`,
+      groups: ['Cliente'],
+      profile: access.grantedProfile,
+      scope: 'empresa',
+      email: access.email,
+      status: 'Ativo',
+    };
+
+    setConfig(prev => ({ ...prev, usuarioAtual: accessUser, activeView: 'intranet', currentAccessId: access.id }));
+    return { success: true };
+  };
+
+  const logout = () => {
+    setConfig(prev => ({ ...prev, activeView: 'login', currentAccessId: null, originalUserId: null, originalUser: null, usuarioAtual: DEMO_USERS[0] }));
+  };
+
   const resetDemo = () => {
     setConfig(INITIAL_STATE);
     localStorage.removeItem(STORAGE_KEY);
@@ -127,21 +172,62 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
   const getEffectivePermissions = (userId: string, processId: string): import('../types').ProcessPermission => {
     const user = config.usuariosDemo.find(u => u.id === userId) || config.usuarioAtual;
     const userGroups = config.grupos.filter(g => g.membros.includes(user.id) || user.groups.includes(g.nome));
-    
-    // Base Profile Permissions (simplified mapping)
-    const basePerms: import('../types').ProcessPermission = {
-      ver: user.profile !== 'Colaborador',
-      solicitar: true,
-      executar: user.profile === 'RH/DP' || user.profile === 'Administrador',
-      aprovar: user.profile !== 'Colaborador',
-      devolver: user.profile !== 'Colaborador',
+    const process = config.processos.find(p => p.id === processId);
+
+    const effective: import('../types').ProcessPermission = {
+      ver: false,
+      solicitar: false,
+      executar: false,
+      aprovar: false,
+      devolver: false,
       cancelar: true,
-      reabrir: user.profile === 'Administrador',
+      reabrir: false,
       verHistorico: true,
-      verSigiloso: user.profile === 'Administrador' || user.profile === 'Diretoria'
+      verSigiloso: false
     };
 
-    const effective: import('../types').ProcessPermission = { ...basePerms };
+    if (!process) {
+      return effective;
+    }
+
+    const allowedByProfile = (profile: User['profile']) => {
+      if (profile === 'Administrador Geral' || profile === 'Administrador') return true;
+      if (profile === 'Diretoria') return process.roles.director || process.roles.manager || process.roles.hr || process.roles.employee;
+      if (profile === 'RH/DP') return process.roles.hr || process.roles.manager || process.roles.employee;
+      if (profile === 'Gestor') return process.roles.manager || process.roles.employee;
+      if (profile === 'Colaborador') return process.roles.employee;
+      return false;
+    };
+
+    const profileAllowed = allowedByProfile(user.profile);
+
+    if (user.profile === 'Administrador Geral' || user.profile === 'Administrador') {
+      Object.assign(effective, {
+        ver: true,
+        solicitar: true,
+        executar: true,
+        aprovar: true,
+        devolver: true,
+        cancelar: true,
+        reabrir: true,
+        verHistorico: true,
+        verSigiloso: true
+      });
+    } else if (profileAllowed) {
+      const canExecute = ['Gestor', 'RH/DP', 'Diretoria'].includes(user.profile);
+      const canApprove = ['Gestor', 'RH/DP', 'Diretoria'].includes(user.profile);
+      Object.assign(effective, {
+        ver: true,
+        solicitar: true,
+        executar: canExecute,
+        aprovar: canApprove,
+        devolver: canApprove,
+        cancelar: true,
+        reabrir: false,
+        verHistorico: true,
+        verSigiloso: user.profile === 'Diretoria'
+      });
+    }
 
     userGroups.forEach(g => {
       const p = g.permissoes[processId];
@@ -181,6 +267,20 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
     });
 
     return effective;
+  };
+
+  const getNextRequestStatus = (status: string) => {
+    switch (status) {
+      case 'Pendente de Aprovação': return 'Em Análise';
+      case 'Em Análise': return 'Em Aprovação';
+      case 'Em Aprovação': return 'Concluída';
+      case 'Enviada': return 'Em Análise';
+      default: return 'Concluída';
+    }
+  };
+
+  const isFinalRequestStatus = (status: string) => {
+    return ['Concluída', 'Concluído', 'Reprovada', 'Reprovado', 'Cancelada', 'Cancelado'].includes(status);
   };
 
   const isAuthorized = (processId: string, action: keyof import('../types').ProcessPermission): boolean => {
@@ -434,24 +534,31 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    const nextStatus = getNextRequestStatus(req.status);
+    const isFinal = nextStatus === 'Concluída';
+    const actionLabel = isFinal ? 'Aprovação Final' : 'Aprovação Parcial';
+    const notificationMessage = isFinal
+      ? 'Solicitação aprovada e concluída.'
+      : `Solicitação aprovada e movida para ${nextStatus}.`;
+
     const historyEntry: HistoryEntry = {
       id: `h-${Date.now()}`,
       autor: config.usuarioAtual.name,
       userName: config.usuarioAtual.name,
       etapa: 'Aprovação',
       de: req.status,
-      para: 'Concluída',
-      comentario: comment || 'Solicitação aprovada e concluída.',
-      action: 'Aprovação Final',
+      para: nextStatus,
+      comentario: comment || notificationMessage,
+      action: actionLabel,
       timestamp: new Date().toISOString(),
       dataHora: new Date().toISOString()
     };
 
     const updatedRequest: Partial<RHRequest> = {
-      status: 'Concluída',
-      etapaAtual: 'Concluída',
+      status: nextStatus as RHRequest['status'],
+      etapaAtual: nextStatus,
       historico: [...req.historico, historyEntry],
-      responsavelAtual: '',
+      responsavelAtual: isFinal ? '' : req.responsavelAtual,
       updatedAt: new Date().toISOString()
     };
 
@@ -459,86 +566,170 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       id: `audit-${Date.now()}`,
       userId: config.usuarioAtual.id,
       userName: config.usuarioAtual.name,
-      action: 'Aprovação e Conclusão',
+      action: isFinal ? 'Aprovação e Conclusão' : 'Aprovação Parcial',
       module: 'Solicitações',
       targetId: requestId,
-      details: `Solicitação ${req.numero} aprovada e concluída por ${config.usuarioAtual.name}`,
+      details: `Solicitação ${req.numero} ${isFinal ? 'aprovada e concluída' : `avançou para ${nextStatus.toLowerCase()}`} por ${config.usuarioAtual.name}`,
       timestamp: new Date().toISOString()
     };
 
     setConfig(prev => {
       const newSolicitacoes = prev.solicitacoes.map(r => r.id === requestId ? { ...r, ...updatedRequest } : r);
-      const newTarefas = prev.tarefas.map(t => t.relatedRequestId === requestId && t.status !== 'Concluída' ? { ...t, status: 'Concluída' as const } : t);
-      
-      // SIDE EFFECTS
+      let newTarefas = prev.tarefas.map(t => t.relatedRequestId === requestId && t.status !== 'Concluída' ? { ...t, status: 'Concluída' as const } : t);
       let newColaboradores = [...prev.colaboradores];
       let newVagas = [...prev.vagas];
       let newCandidaturas = [...prev.candidaturas];
+      let newRequestCounter = prev.requestCounter;
       const processId = req.tipoProcesso || req.processId;
+      const process = prev.processos.find(p => p.id === processId);
 
-      if (processId === '2') { // Recrutamento e Seleção
-        if (req.data.decisao === 'Aprovado') {
-          const candIdx = newCandidaturas.findIndex(c => c.id === req.data.candidatoId);
-          if (candIdx !== -1) {
-            newCandidaturas[candIdx] = { ...newCandidaturas[candIdx], status: 'Aprovado' };
-          }
-          const vagaIdx = newVagas.findIndex(v => v.id === req.data.vagaId);
-          if (vagaIdx !== -1) {
-            // Optional: reduce quantity or close if quantity reached
-            // For demo, just mark as 'Em Admissão' status if we had one, or keep open
-          }
-          addNotification('Candidato Aprovado', `${req.data.candidato} foi aprovado. Iniciando Admissão.`);
-        }
-      }
-
-      if (processId === '3') { // Contratação e Admissão
-        // Create new collaborator
-        const newReg = `00${Math.floor(1000 + Math.random() * 9000)}`;
-        const newEmp: Employee = {
-          id: `emp-${Date.now()}`,
-          registration: newReg,
-          name: req.data.candidatoId, 
-          email: 'colaborador@exemplo.com',
-          phone: '(00) 00000-0000',
-          address: 'Endereço não informado',
-          city: 'Não informada',
-          state: 'XX',
-          birthDate: '2000-01-01',
-          cpf: '000.000.000-00',
-          role: req.data.cargo,
-          department: 'Geral',
-          company: req.data.empresa,
-          branch: req.data.filial,
-          admissionDate: req.data.dataAdmissao,
-          salary: req.data.salario,
-          status: 'Ativo',
-          manager: 'Ana Paula Lima',
-          costCenter: '1010 - ADM'
+      if (!isFinal) {
+        const nextTask: Task = {
+          id: `task-${Date.now()}`,
+          title: `${nextStatus === 'Em Aprovação' ? 'Aprovar' : 'Analisar'} ${req.processName}`,
+          description: `Acompanhar solicitação ${req.numero} na etapa ${nextStatus}.`,
+          assignedTo: nextStatus === 'Em Aprovação' ? 'DIR-001' : 'RH-001',
+          dueDate: new Date(Date.now() + 24 * 3600000).toISOString(),
+          status: 'Pendente',
+          priority: 'Média',
+          relatedRequestId: req.id,
+          createdAt: new Date().toISOString(),
+          requestId: req.id,
+          requestNumber: req.numero,
+          processId: req.processId,
+          process: req.processName,
+          solicitante: req.solicitante,
+          type: 'Aprovação',
+          responsible: nextStatus === 'Em Aprovação' ? 'Diretoria' : 'RH/DP',
+          responsibleUserId: nextStatus === 'Em Aprovação' ? 'DIR-001' : 'RH-001',
+          prazo: new Date(Date.now() + 24 * 3600000).toISOString()
         };
-        newColaboradores = [newEmp, ...newColaboradores];
-        addNotification('Novo Colaborador', `${newEmp.name} foi admitido com matrícula ${newReg}.`);
+        newTarefas = [nextTask, ...newTarefas];
       }
 
-      if (processId === '7' || processId === '11') {
-        const empIdx = newColaboradores.findIndex(e => e.id === req.employeeId || e.name === req.colaborador);
-        if (empIdx !== -1) {
-          const emp = newColaboradores[empIdx];
-          newColaboradores[empIdx] = {
-            ...emp,
-            role: req.data.novoCargo || emp.role,
-            salary: req.data.novoSalario || emp.salary,
-            department: req.data.setorDestino || emp.department,
-            costCenter: req.data.ccDestino || emp.costCenter,
-            manager: req.data.gestorDestino?.name || emp.manager,
-            branch: req.data.filialDestino || emp.branch
+      if (isFinal) {
+        if (processId === '1') {
+          const jobTitle = req.data.cargo || req.data.cargoRep || 'Nova Vaga';
+          const newJob: import('../types').Job = {
+            id: `job-${Date.now()}`,
+            code: `VAGA-${String(Date.now()).slice(-6)}`,
+            title: jobTitle,
+            company: req.data.empresa || 'RH360 Holding',
+            branch: req.data.filial || 'Matriz',
+            department: req.data.setor || req.data.setorRep || 'Geral',
+            sector: req.data.setor || 'Geral',
+            costCenter: req.data.centroCusto || req.data.ccRep || '1010 - ADM',
+            location: req.data.filial || 'Matriz',
+            quantity: Number(req.data.quantidadeVagas || 1),
+            status: 'Aberto',
+            type: req.data.tipoContrato || 'CLT',
+            salaryRange: req.data.salarioSugerido ? `R$ ${req.data.salarioSugerido}` : undefined,
+            description: `Requisição de vaga aprovada: ${req.data.justificativa || 'Sem justificativa'}`,
+            requirements: req.data.anexo ? [req.data.anexo] : undefined,
+            requestId: req.id,
+            createdAt: new Date().toISOString()
           };
-        }
-      }
+          newVagas = [newJob, ...newVagas];
 
-      if (processId === '15') {
-        const empIdx = newColaboradores.findIndex(e => e.id === req.employeeId || e.name === req.colaborador);
-        if (empIdx !== -1) {
-          newColaboradores[empIdx] = { ...newColaboradores[empIdx], status: 'Inativo' };
+          const triageTask: Task = {
+            id: `task-${Date.now() + 1}`,
+            title: `Triagem de Candidatos - ${jobTitle}`,
+            description: `Iniciar triagem de candidatos para a vaga ${jobTitle}.`,
+            assignedTo: 'RH-001',
+            dueDate: new Date(Date.now() + 48 * 3600000).toISOString(),
+            status: 'Pendente',
+            priority: 'Alta',
+            relatedRequestId: req.id,
+            createdAt: new Date().toISOString(),
+            requestId: req.id,
+            requestNumber: req.numero,
+            processId: '2',
+            process: 'Recrutamento e Seleção',
+            solicitante: req.solicitante,
+            type: 'Triagem',
+            responsible: 'RH/DP',
+            responsibleUserId: 'RH-001',
+            prazo: new Date(Date.now() + 48 * 3600000).toISOString()
+          };
+          newTarefas = [triageTask, ...newTarefas];
+          addNotification('Vaga Criada', `A vaga ${jobTitle} foi criada automaticamente e triagem iniciada.`);
+        }
+
+        if (processId === '2' && req.data.decisao === 'Aprovado') {
+          const admissionProcess = prev.processos.find(p => p.id === '3');
+          const targetTask: Task = {
+            id: `task-${Date.now() + 2}`,
+            title: `Iniciar Admissão - ${req.data.nomeCandidato || 'Candidato'}`,
+            description: `Gerar admissão para o candidato aprovado na vaga ${req.data.vagaId || req.alvo}.`,
+            assignedTo: 'RH-001',
+            dueDate: new Date(Date.now() + 48 * 3600000).toISOString(),
+            status: 'Pendente',
+            priority: 'Alta',
+            relatedRequestId: req.id,
+            createdAt: new Date().toISOString(),
+            requestId: req.id,
+            requestNumber: req.numero,
+            processId: admissionProcess?.ativo ? '3' : '2',
+            process: admissionProcess?.ativo ? 'Admissão' : 'Recrutamento e Seleção',
+            solicitante: req.solicitante,
+            type: 'Onboarding',
+            responsible: 'RH/DP',
+            responsibleUserId: 'RH-001',
+            prazo: new Date(Date.now() + 48 * 3600000).toISOString()
+          };
+          newTarefas = [targetTask, ...newTarefas];
+          addNotification('Handoff de Admissão', `Admissão para o candidato aprovado foi encaminhada ao RH.`);
+        }
+
+        if (processId === '3') {
+          const onboardingProcess = prev.processos.find(p => p.id === '4');
+          const onboardingTask: Task = {
+            id: `task-${Date.now() + 3}`,
+            title: `Planejar Onboarding - ${req.data.nomeCandidato || req.data.candidatoId || 'Novo Colaborador'}`,
+            description: `Preparar onboarding para o colaborador admitido.`,
+            assignedTo: 'RH-001',
+            dueDate: new Date(Date.now() + 72 * 3600000).toISOString(),
+            status: 'Pendente',
+            priority: 'Média',
+            relatedRequestId: req.id,
+            createdAt: new Date().toISOString(),
+            requestId: req.id,
+            requestNumber: req.numero,
+            processId: onboardingProcess?.ativo ? '4' : '3',
+            process: onboardingProcess?.ativo ? 'Onboarding' : 'Admissão',
+            solicitante: req.solicitante,
+            type: 'Onboarding',
+            responsible: 'RH/DP',
+            responsibleUserId: 'RH-001',
+            prazo: new Date(Date.now() + 72 * 3600000).toISOString()
+          };
+          newTarefas = [onboardingTask, ...newTarefas];
+          addNotification('Onboarding Alocado', 'O próximo passo de onboarding foi agendado para o RH.');
+        }
+
+        if (processId === '15') {
+          const replacementTask: Task = {
+            id: `task-${Date.now() + 4}`,
+            title: `Solicitação de Reposição - ${req.colaborador || req.alvo || 'Colaborador'}`,
+            description: `Criar requisição de reposição para o desligamento concluído.`,
+            assignedTo: 'RH-001',
+            dueDate: new Date(Date.now() + 72 * 3600000).toISOString(),
+            status: 'Pendente',
+            priority: 'Média',
+            relatedRequestId: req.id,
+            createdAt: new Date().toISOString(),
+            requestId: req.id,
+            requestNumber: req.numero,
+            processId: '1',
+            process: 'Requisição de Vaga',
+            solicitante: req.solicitante,
+            type: 'Reposição',
+            responsible: 'RH/DP',
+            responsibleUserId: 'RH-001',
+            prazo: new Date(Date.now() + 72 * 3600000).toISOString()
+          };
+          newTarefas = [replacementTask, ...newTarefas];
+          addNotification('Requisição de Reposição', 'Tarefa para criação de reposição foi gerada para o RH.');
         }
       }
 
@@ -550,7 +741,8 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
         vagas: newVagas,
         candidaturas: newCandidaturas,
         auditTrail: [auditEntry, ...prev.auditTrail],
-        highlightedRequestNumber: req.numero
+        highlightedRequestNumber: req.numero,
+        requestCounter: newRequestCounter
       };
     });
   };
@@ -772,6 +964,8 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       completeTask,
       createAnnouncement,
       addNotification,
+      login,
+      logout,
       resetDemo,
       isAuthorized,
       getEffectivePermissions,

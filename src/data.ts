@@ -1,4 +1,4 @@
-import { Employee, RHProcess, RHRequest, Group, Job, Application, Task, Announcement, BenefitConfig, Company, CostCenter, Sector, User, HistoryEntry, TargetMode } from './types';
+import { Employee, RHProcess, RHRequest, Group, Job, Application, Task, Announcement, BenefitConfig, Company, CostCenter, Sector, User, HistoryEntry, Accesso, TargetMode } from './types';
 
 // COMPANIES
 export const COMPANIES: Company[] = [
@@ -105,6 +105,83 @@ export const ROLES = [
 // DEMO USERS
 export const DEMO_USERS: User[] = [
   {
+    id: 'ADMIN-GERAL-001',
+    name: 'Administrador Geral',
+    role: 'Administrador Geral',
+    groups: ['Administradores', 'TI'],
+    avatar: 'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?q=80&w=200&h=200&fit=crop',
+    profile: 'Administrador Geral',
+    scope: 'global',
+    email: 'admin@jynx.com.br',
+    password: 'Jynx123!',
+    status: 'Ativo'
+  },
+  {
+    id: 'JYNX-001',
+    name: 'Ítalo Silva',
+    role: 'Administrador Geral',
+    groups: ['Administradores', 'TI', 'Jynx'],
+    avatar: 'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?q=80&w=200&h=200&fit=crop',
+    profile: 'Administrador Geral',
+    scope: 'global',
+    email: 'italo.silva@jynx.com.br',
+    password: '123',
+    canManageAccesses: true,
+    status: 'Ativo'
+  },
+  {
+    id: 'JYNX-002',
+    name: 'Jonathan Oliveira',
+    role: 'Administrador Geral',
+    groups: ['Administradores', 'TI', 'Jynx'],
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200&h=200&fit=crop',
+    profile: 'Administrador Geral',
+    scope: 'global',
+    email: 'jonathan.oliveira@jynx.com.br',
+    password: '123',
+    canManageAccesses: true,
+    status: 'Ativo'
+  },
+  {
+    id: 'JYNX-003',
+    name: 'Davi Cedro',
+    role: 'Administrador Geral',
+    groups: ['Administradores', 'TI', 'Jynx'],
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=200&h=200&fit=crop',
+    profile: 'Administrador Geral',
+    scope: 'global',
+    email: 'davi.cedro@jynx.com.br',
+    password: '123',
+    canManageAccesses: true,
+    status: 'Ativo'
+  },
+  {
+    id: 'JYNX-004',
+    name: 'Ygor Lima',
+    role: 'Administrador Geral',
+    groups: ['Administradores', 'TI', 'Jynx'],
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=200&h=200&fit=crop',
+    profile: 'Administrador Geral',
+    scope: 'global',
+    email: 'ygor.lima@jynx.com.br',
+    password: '123',
+    canManageAccesses: true,
+    status: 'Ativo'
+  },
+  {
+    id: 'JYNX-005',
+    name: 'Fernanda Honorato',
+    role: 'Administrador Geral',
+    groups: ['Administradores', 'TI', 'Jynx'],
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&h=200&fit=crop',
+    profile: 'Administrador Geral',
+    scope: 'global',
+    email: 'fernanda.honorato@jynx.com.br',
+    password: '123',
+    canManageAccesses: true,
+    status: 'Ativo'
+  },
+  {
     id: 'ADMIN-001',
     name: 'Administrador Demo',
     role: 'Administrador de Sistemas',
@@ -113,17 +190,60 @@ export const DEMO_USERS: User[] = [
     profile: 'Administrador',
     scope: 'global',
     email: 'admin@rh360.demo',
+    password: '123',
+    employeeId: 'EMP-006',
     status: 'Ativo'
   },
   {
-    id: 'DIR-001',
+    id: 'DIR-002',
     name: 'Ricardo Silva',
     role: 'Diretor Geral',
     groups: ['Diretoria'],
     avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?q=80&w=200&h=200&fit=crop',
     profile: 'Diretoria',
     scope: 'global',
-    email: 'ricardo.silva@rh360.demo',
+    email: 'diretoria@rh360.demo',
+    password: '123',
+    employeeId: 'EMP-003',
+    status: 'Ativo'
+  },
+  {
+    id: 'RH-002',
+    name: 'Ana Paula Lima',
+    role: 'Gerente de RH',
+    groups: ['RH/DP', 'Benefícios', 'Recrutamento'],
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&h=200&fit=crop',
+    profile: 'RH/DP',
+    scope: 'empresa',
+    email: 'rh@rh360.demo',
+    password: '123',
+    employeeId: 'EMP-004',
+    status: 'Ativo'
+  },
+  {
+    id: 'GEST-002',
+    name: 'Marcos Vinicius',
+    role: 'Gerente de TI',
+    groups: ['Gestores', 'TI'],
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=200&h=200&fit=crop',
+    profile: 'Gestor',
+    scope: 'equipe',
+    email: 'gestor@rh360.demo',
+    password: '123',
+    employeeId: 'EMP-005',
+    status: 'Ativo'
+  },
+  {
+    id: 'COLAB-002',
+    name: 'Juliana Costa',
+    role: 'Analista de Sistemas',
+    groups: ['Colaboradores'],
+    avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?q=80&w=200&h=200&fit=crop',
+    profile: 'Colaborador',
+    scope: 'proprio',
+    email: 'colaborador@rh360.demo',
+    password: '123',
+    employeeId: 'EMP-001',
     status: 'Ativo'
   },
   {
@@ -135,6 +255,7 @@ export const DEMO_USERS: User[] = [
     profile: 'RH/DP',
     scope: 'empresa',
     email: 'ana.paula@rh360.demo',
+    password: 'RHdp123!',
     status: 'Ativo'
   },
   {
@@ -146,6 +267,7 @@ export const DEMO_USERS: User[] = [
     profile: 'Gestor',
     scope: 'equipe',
     email: 'marcos.vinicius@rh360.demo',
+    password: 'Gestor123!',
     status: 'Ativo'
   },
   {
@@ -157,8 +279,48 @@ export const DEMO_USERS: User[] = [
     profile: 'Colaborador',
     scope: 'proprio',
     email: 'carlos.eduardo@rh360.demo',
+    password: 'Colab123!',
     employeeId: 'EMP-001',
     status: 'Ativo'
+  }
+];
+
+const today = new Date();
+const makeISO = (days: number) => new Date(today.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+
+export const INITIAL_ACCESSOS: Accesso[] = [
+  {
+    id: 'ACCESS-001',
+    client: 'Acme Corp',
+    email: 'teste.acme@jynx.com.br',
+    password: 'Acme@1234',
+    grantedProfile: 'Administrador',
+    startDate: makeISO(-2),
+    expirationDate: makeISO(20),
+    createdAt: makeISO(-2),
+    blocked: false
+  },
+  {
+    id: 'ACCESS-002',
+    client: 'Beta Serviços',
+    email: 'teste.beta@jynx.com.br',
+    password: 'Beta@1234',
+    grantedProfile: 'RH/DP',
+    startDate: makeISO(-8),
+    expirationDate: makeISO(1),
+    createdAt: makeISO(-8),
+    blocked: false
+  },
+  {
+    id: 'ACCESS-003',
+    client: 'Delta Soluções',
+    email: 'teste.delta@jynx.com.br',
+    password: 'Delta@1234',
+    grantedProfile: 'Colaborador',
+    startDate: makeISO(-35),
+    expirationDate: makeISO(-5),
+    createdAt: makeISO(-35),
+    blocked: false
   }
 ];
 

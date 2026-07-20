@@ -471,6 +471,9 @@ function PermissionsConfig({ process, update }: { process: RHProcess, update: (u
                 <p className="text-[12px] text-indigo-900 font-medium leading-relaxed">
                   O escopo define se o usuário vê apenas o seu (Próprio), da sua (Equipe/Setor) ou de toda a (Empresa).
                 </p>
+                <p className="text-[11px] text-indigo-600 font-medium leading-relaxed">
+                  Quando o processo define escopo, ele prevalece; em "Conforme Usuário", vale o escopo cadastrado no usuário.
+                </p>
                 <div className="space-y-2">
                    <select className="w-full bg-white border border-indigo-200 rounded-xl px-4 py-3 text-[13px] font-black uppercase tracking-widest text-indigo-900">
                       <option>Conforme Usuário</option>

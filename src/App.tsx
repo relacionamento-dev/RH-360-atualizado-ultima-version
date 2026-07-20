@@ -14,12 +14,13 @@ import EmployeesModule from './components/EmployeesModule';
 import Profile360Module from './components/Profile360Module';
 import GlobalQuery from './components/GlobalQuery';
 import AdminModule from './components/AdminModule';
+import AccessManagement from './components/AccessManagement';
 import RequestDetail from './components/RequestDetail';
 import RHRequestForm from './components/RHRequestForm';
 import { AppConfigProvider, useAppConfig } from './contexts/AppConfigContext';
 
 function AppContent() {
-  const { config, updateConfig } = useAppConfig();
+  const { config, updateConfig, login } = useAppConfig();
   const currentView = config.activeView;
 
   const handleNavigate = (view: string, id?: string) => {
@@ -55,7 +56,7 @@ function AppContent() {
 
   const renderView = () => {
     if (currentView === 'login') {
-      return <Login onLogin={() => handleNavigate('intranet')} />;
+      return <Login onLogin={login} />;
     }
 
     if (currentView === 'request-form') {
@@ -85,6 +86,7 @@ function AppContent() {
       case 'admin':
       case 'configuracoes': return <AdminModule view={currentView} />;
       case 'integrations': return <AdminModule view={currentView} />;
+      case 'access-management': return <AccessManagement />;
       
       // Handle process-specific navigation
       default: 

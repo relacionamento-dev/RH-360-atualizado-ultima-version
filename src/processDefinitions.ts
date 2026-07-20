@@ -248,13 +248,32 @@ export const PROCESS_DEFINITIONS: Record<string, ProcessDefinition> = {
       {
         name: 'Marcação de Férias',
         fields: [
-          { name: 'periodoAquisitivo', label: 'Período Aquisitivo Disponível', type: 'select', origin: 'C', options: ['2024/2025 (30 dias)', '2023/2024 (15 dias)'], required: true, section: 'Saldo de Férias' },
-          { name: 'dataInicio', label: 'Data de Início do Gozo', type: 'date', origin: 'C', required: true, section: 'Programação' },
-          { name: 'diasGozo', label: 'Quantidade de Dias', type: 'number', origin: 'C', defaultValue: 30, required: true, section: 'Programação' },
-          { name: 'abonoPecuniario', label: 'Vender 10 dias (Abono)?', type: 'boolean', origin: 'C', section: 'Programação' },
-          { name: 'adianta13', label: 'Adiantar 1ª Parcela 13º?', type: 'boolean', origin: 'C', section: 'Programação' },
-          { name: 'dataRetorno', label: 'Data Prevista de Retorno', type: 'date', origin: 'F', section: 'Programação' },
-          { name: 'justificativa', label: 'Justificativa (Se aplicável)', type: 'textarea', origin: 'C', gridCols: 3, section: 'Programação' }
+          { name: 'periodoAquisitivo', label: 'Período Aquisitivo', type: 'select', origin: 'C', options: ['2024/2025 (30 dias)', '2023/2024 (15 dias)'], required: true, section: 'Período Aquisitivo e Saldo' },
+          { name: 'diasDireito', label: 'Dias de Direito', type: 'calc', origin: 'K', section: 'Período Aquisitivo e Saldo', calculate: (data: any) => {
+            if (String(data.periodoAquisitivo).includes('30')) return 30;
+            if (String(data.periodoAquisitivo).includes('15')) return 15;
+            return '—';
+          } },
+          { name: 'diasGozados', label: 'Dias Já Gozados', type: 'calc', origin: 'K', section: 'Período Aquisitivo e Saldo', calculate: (data: any) => Number(data.diasGozo || 0) },
+          { name: 'saldoDisponivel', label: 'Saldo Disponível', type: 'calc', origin: 'K', section: 'Período Aquisitivo e Saldo', calculate: (data: any) => {
+            const direito = String(data.periodoAquisitivo).includes('30') ? 30 : String(data.periodoAquisitivo).includes('15') ? 15 : 0;
+            return Math.max(0, direito - Number(data.diasGozo || 0));
+          } },
+          { name: 'ultimaFerias', label: 'Último Período de Férias', type: 'text', origin: 'F', section: 'Período Aquisitivo e Saldo' },
+
+          { name: 'dataInicio', label: 'Data de Início do Período Solicitado', type: 'date', origin: 'C', required: true, section: 'Período Solicitado' },
+          { name: 'diasGozo', label: 'Dias Solicitados', type: 'number', origin: 'C', defaultValue: 30, required: true, section: 'Período Solicitado' },
+          { name: 'abonoPecuniario', label: 'Abono Pecuniário', type: 'boolean', origin: 'C', section: 'Período Solicitado' },
+          { name: 'adianta13', label: 'Adiantar 13º', type: 'boolean', origin: 'C', section: 'Período Solicitado' },
+          { name: 'dataRetorno', label: 'Data Prevista de Retorno', type: 'calc', origin: 'K', section: 'Período Solicitado', calculate: (data: any) => {
+            if (!data.dataInicio || !data.diasGozo) return '—';
+            const start = new Date(data.dataInicio.split('/').reverse().join('-'));
+            if (Number.isNaN(start.getTime())) return '—';
+            start.setDate(start.getDate() + Number(data.diasGozo || 0));
+            return start.toLocaleDateString('pt-BR');
+          } },
+
+          { name: 'justificativa', label: 'Observações', type: 'textarea', origin: 'C', required: false, gridCols: 3, section: 'Observações' }
         ]
       }
     ]
@@ -365,17 +384,21 @@ export const PROCESS_DEFINITIONS: Record<string, ProcessDefinition> = {
       {
         name: 'Solicitação de Desligamento',
         fields: [
-          { name: 'colaboradorId', label: 'Colaborador', type: 'zoom', origin: 'C', required: true, section: 'Identificação', zoomConfig: { entity: 'employee', fields: ['name', 'registration'] } },
-          { name: 'cargo', label: 'Cargo', type: 'text', origin: 'F', section: 'Situação Atual' },
-          { name: 'setor', label: 'Setor', type: 'text', origin: 'F', section: 'Situação Atual' },
-          { name: 'centroCusto', label: 'Centro de Custo', type: 'text', origin: 'F', section: 'Situação Atual' },
-          { name: 'admissao', label: 'Data de Admissão', type: 'date', origin: 'F', section: 'Situação Atual' },
-          { name: 'tipoDesligamento', label: 'Motivo Principal', type: 'select', origin: 'C', options: ['Novo Desafio', 'Salário', 'Mudança de Cidade', 'Fim de Contrato', 'Desempenho'], required: true, section: 'Rescisão' },
-          { name: 'tipoAviso', label: 'Cumprimento de Aviso', type: 'select', origin: 'C', options: ['Trabalhado', 'Indenizado', 'Dispensado'], required: true, section: 'Rescisão' },
-          { name: 'ultimoDia', label: 'Último Dia de Trabalho', type: 'date', origin: 'C', required: true, section: 'Rescisão' },
-          { name: 'reposicao', label: 'Necessário Reposição?', type: 'boolean', origin: 'C', section: 'Planejamento' },
-          { name: 'observacao', label: 'Observações / Parecer', type: 'textarea', origin: 'C', gridCols: 3, section: 'Rescisão' },
-          { name: 'anexo', label: 'Documentação de Suporte', type: 'file', origin: 'C', section: 'Rescisão' }
+          { name: 'colaboradorId', label: 'Colaborador', type: 'zoom', origin: 'C', required: true, section: 'Dados do Colaborador', zoomConfig: { entity: 'employee', fields: ['name', 'registration'] } },
+          { name: 'cargo', label: 'Cargo', type: 'text', origin: 'F', section: 'Dados do Colaborador' },
+          { name: 'setor', label: 'Setor', type: 'text', origin: 'F', section: 'Dados do Colaborador' },
+          { name: 'centroCusto', label: 'Centro de Custo', type: 'text', origin: 'F', section: 'Dados do Colaborador' },
+          { name: 'admissao', label: 'Data de Admissão', type: 'date', origin: 'F', section: 'Dados do Colaborador' },
+
+          { name: 'tipoDesligamento', label: 'Tipo de Desligamento', type: 'select', origin: 'C', options: ['Pedido de Demissão', 'Sem Justa Causa', 'Com Justa Causa', 'Término de Contrato'], required: true, section: 'Tipo e Motivo' },
+          { name: 'motivo', label: 'Motivo Complementar', type: 'textarea', origin: 'C', required: false, gridCols: 3, section: 'Tipo e Motivo' },
+
+          { name: 'avisoPrevio', label: 'Aviso Prévio', type: 'select', origin: 'C', options: ['Trabalhado', 'Indenizado', 'Dispensado'], required: true, section: 'Datas (aviso prévio e último dia)' },
+          { name: 'ultimoDia', label: 'Último Dia Trabalhado', type: 'date', origin: 'C', required: true, section: 'Datas (aviso prévio e último dia)' },
+
+          { name: 'reposicao', label: 'Necessário Substituição / Reposição?', type: 'boolean', origin: 'C', section: 'Observações' },
+          { name: 'observacao', label: 'Observações', type: 'textarea', origin: 'C', gridCols: 3, section: 'Observações' },
+          { name: 'anexo', label: 'Documentação de Suporte', type: 'file', origin: 'C', section: 'Observações' }
         ]
       }
     ]

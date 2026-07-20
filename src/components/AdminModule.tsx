@@ -24,6 +24,9 @@ import AdminAudit from './admin/AdminAudit';
 type AdminTab = 'overview' | 'org' | 'access' | 'processes' | 'intranet' | 'integrations' | 'ai' | 'audit';
 
 export default function AdminModule({ view = 'admin' }: { view?: string }) {
+  const { config } = useAppConfig();
+  const isAdmin = config.usuarioAtual.profile === 'Administrador';
+
   const [activeTab, setActiveTab] = useState<AdminTab>(() => {
     if (view.includes('integrations')) return 'integrations';
     if (view.includes('intranet')) return 'intranet';
@@ -40,6 +43,12 @@ export default function AdminModule({ view = 'admin' }: { view?: string }) {
     { id: 'ai', label: 'Inteligência Artificial', icon: <Cpu size={18} />, color: 'bg-pink-500' },
     { id: 'audit', label: 'Auditoria', icon: <Shield size={18} />, color: 'bg-gray-500' },
   ];
+
+  const visibleTabs = tabs.filter(tab => {
+    if (tab.id === 'access') return isAdmin;
+    if (tab.id === 'integrations') return isAdmin;
+    return true;
+  });
 
   const renderContent = () => {
     switch (activeTab) {
@@ -61,7 +70,7 @@ export default function AdminModule({ view = 'admin' }: { view?: string }) {
       <aside className="w-full lg:w-72 shrink-0 space-y-6">
         <div className="bg-white p-6 rounded-[24px] border border-gray-100 shadow-sm space-y-1">
           <h3 className="label-caps opacity-50 px-2 mb-4">Administração</h3>
-          {tabs.map((tab) => (
+          {visibleTabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}

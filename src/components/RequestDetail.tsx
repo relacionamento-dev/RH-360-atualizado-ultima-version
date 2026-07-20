@@ -83,14 +83,22 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
     }
   };
 
+  const parseDateString = (dateString: string) => {
+    if (!dateString) return null;
+    const str = dateString.trim();
+    const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) return new Date(`${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`);
+    const dmYMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (dmYMatch) return new Date(`${dmYMatch[3]}-${dmYMatch[2]}-${dmYMatch[1]}`);
+    const parsed = new Date(str);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
   const formatDate = (dateString: string) => {
     if (!dateString) return '—';
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('pt-BR');
-    } catch {
-      return dateString;
-    }
+    const date = parseDateString(dateString);
+    if (!date) return dateString;
+    return date.toLocaleDateString('pt-BR');
   };
 
   const formatCurrency = (value: any) => {

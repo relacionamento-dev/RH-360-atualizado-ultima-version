@@ -3,10 +3,11 @@ import {
   Users, Shield, UserPlus, Search, 
   Filter, ShieldCheck, ShieldAlert, 
   MoreHorizontal, Plus, Key, Lock,
-  Clock, Eye, Edit2, Trash2, CheckCircle2,
+  Clock, Eye, Edit2, Trash2, Power, CheckCircle2,
   AlertCircle
 } from 'lucide-react';
 import { Card, Table } from '../ui/CardAndTable';
+import { PageHeader } from '../ui/FormAndHeader';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { Modal, Avatar } from '../ui/Misc';
@@ -14,11 +15,167 @@ import { useAppConfig } from '../../contexts/AppConfigContext';
 import { User, Group } from '../../types';
 
 export default function AdminAccess() {
-  const { config, updateConfig } = useAppConfig();
+  const { config, updateConfig, getEffectivePermissions } = useAppConfig();
   const [activeSubTab, setActiveSubTab] = useState<'users' | 'groups' | 'matrix'>('users');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState<string>(config.grupos[0]?.id || '');
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [userForm, setUserForm] = useState<Partial<User>>({
+    name: '',
+    email: '',
+    profile: 'Colaborador',
+    groups: [],
+    scope: 'proprio',
+    status: 'Ativo'
+  });
+
+  const getScopeLabel = (scope: string) => {
+    switch (scope) {
+      case 'proprio': return 'Próprio';
+      case 'equipe': return 'Equipe';
+      case 'setor': return 'Setor';
+      case 'centro-custo': return 'Centro de Custo';
+      case 'filial': return 'Filial';
+      case 'empresa': return 'Empresa';
+      case 'global': return 'Global';
+      default: return scope;
+    }
+  };
+
+  const allScreens = [
+    'Intranet',
+    'Dashboard RH',
+    'Minhas Solicitações',
+    'Minhas Aprovações',
+    'Minhas Tarefas',
+    'Consulta Global',
+    'Colaboradores',
+    'Perfil 360',
+    'Central Adm',
+    'Pessoas e Acessos',
+    'Gestão de Acessos',
+    'Relatórios',
+    'Integrações'
+  ];
+
+  const getUserVision = (user: User) => {
+    const visible = new Set<string>();
+    const openable = new Set<string>();
+    const notSee = new Set<string>(allScreens);
+
+    visible.add('Intranet');
+    visible.add('Minhas Solicitações');
+
+    if (['Administrador Geral', 'Administrador', 'RH/DP'].includes(user.profile)) {
+      visible.add('Dashboard RH');
+    }
+    if (['Administrador Geral', 'Administrador', 'Gestor', 'RH/DP'].includes(user.profile)) {
+      visible.add('Minhas Aprovações');
+      visible.add('Minhas Tarefas');
+    }
+    if (['Administrador Geral', 'Administrador', 'RH/DP', 'Diretoria'].includes(user.profile)) {
+      visible.add('Consulta Global');
+    }
+    if (['Administrador Geral', 'Administrador', 'RH/DP'].includes(user.profile)) {
+      visible.add('Colaboradores');
+    }
+    if (['Administrador Geral', 'Administrador', 'RH/DP', 'Gestor'].includes(user.profile)) {
+      visible.add('Perfil 360');
+    }
+    if (user.profile === 'Administrador') {
+      visible.add('Central Adm');
+      visible.add('Pessoas e Acessos');
+    }
+    if (user.profile === 'Administrador Geral') {
+      visible.add('Gestão de Acessos');
+    }
+    if (['Administrador', 'Diretoria', 'RH/DP'].includes(user.profile)) {
+      visible.add('Relatórios');
+    }
+    if (user.profile === 'Administrador') {
+      visible.add('Integrações');
+    }
+
+    config.processos.forEach(process => {
+      const perms = getEffectivePermissions(user.id, process.id);
+      if (perms.solicitar) {
+        openable.add(process.name);
+      }
+    });
+
+    visible.forEach(item => notSee.delete(item));
+
+    return {
+      title: `${user.name} — ${user.profile}`,
+      scopeLabel: getScopeLabel(user.scope),
+      visible: Array.from(visible),
+      openable: Array.from(openable),
+      notSee: Array.from(notSee)
+    };
+  };
+
+  const openUserModal = (user?: User) => {
+    if (user) {
+      setSelectedUser(user);
+      setIsEditMode(true);
+      setUserForm({
+        ...user,
+        groups: [...user.groups]
+      });
+    } else {
+      setSelectedUser(null);
+      setIsEditMode(false);
+      setUserForm({
+        name: '',
+        email: '',
+        profile: 'Colaborador',
+        groups: [],
+        scope: 'proprio',
+        status: 'Ativo'
+      });
+    }
+    setIsUserModalOpen(true);
+  };
+
+  const handleSaveUser = () => {
+    if (!userForm.name || !userForm.email || !userForm.profile || !userForm.scope) return;
+    const updatedUsers = config.usuariosDemo.map((user) => {
+      if (selectedUser && user.id === selectedUser.id) {
+        return { ...user, ...userForm, groups: userForm.groups || [], scope: userForm.scope as any, profile: userForm.profile as any } as User;
+      }
+      return user;
+    });
+
+    if (!selectedUser) {
+      const newUser: User = {
+        id: `USER-${Date.now()}`,
+        name: userForm.name!,
+        email: userForm.email!,
+        avatar: '',
+        profile: userForm.profile as any,
+        groups: userForm.groups || [],
+        scope: userForm.scope as any,
+        status: userForm.status as any || 'Ativo',
+        role: `${userForm.profile}`,
+      } as User;
+      updateConfig({ usuariosDemo: [newUser, ...config.usuariosDemo] });
+    } else {
+      updateConfig({ usuariosDemo: updatedUsers });
+    }
+    setIsUserModalOpen(false);
+  };
+
+  const handleDeleteUser = (userId: string) => {
+    updateConfig({ usuariosDemo: config.usuariosDemo.filter((user) => user.id !== userId) });
+  };
+
+  const handleToggleStatus = (user: User) => {
+    updateConfig({
+      usuariosDemo: config.usuariosDemo.map((item) => item.id === user.id ? { ...item, status: item.status === 'Ativo' ? 'Inativo' : 'Ativo' } : item)
+    });
+  };
 
   const renderUsersTable = () => {
     const filteredUsers = config.usuariosDemo.filter(u => 
@@ -45,13 +202,15 @@ export default function AdminAccess() {
               {val.length > 2 && <span className="text-[10px] text-gray-400 font-bold">+{val.length - 2}</span>}
             </div>
           )},
-          { header: 'ESCOPO', accessor: 'scope', render: (val) => <Badge variant="outline" size="sm">{val}</Badge> },
+          { header: 'ESCOPO', accessor: 'scope', render: (val) => <Badge variant="outline" size="sm">{getScopeLabel(val)}</Badge> },
           { header: 'STATUS', accessor: 'status', render: (val) => <Badge variant={val === 'Ativo' ? 'green' : 'gray'}>{val}</Badge> },
-          { header: '', accessor: 'id', render: (id) => (
+          { header: '', accessor: 'id', render: (id, row: User) => (
             <div className="flex justify-end gap-1">
-               <Button variant="ghost" size="icon" className="hover:text-orange-500"><Key size={16} /></Button>
-               <Button variant="ghost" size="icon" className="hover:text-orange-500"><Edit2 size={16} /></Button>
-               {id !== 'ADMIN-001' && <Button variant="ghost" size="icon" className="hover:text-red-500"><Trash2 size={16} /></Button>}
+               <Button variant="ghost" size="icon" className="hover:text-orange-500" onClick={() => openUserModal(row)}><Edit2 size={16} /></Button>
+               <Button variant="ghost" size="icon" className="hover:text-orange-500" onClick={() => handleToggleStatus(row)} title={row.status === 'Ativo' ? 'Desativar' : 'Reativar'}>
+                 <Power size={16} />
+               </Button>
+               {row.id !== 'ADMIN-001' && <Button variant="ghost" size="icon" className="hover:text-red-500" onClick={() => handleDeleteUser(row.id)}><Trash2 size={16} /></Button>}
             </div>
           )}
         ]}
@@ -59,6 +218,112 @@ export default function AdminAccess() {
       />
     );
   };
+
+  const userVision = selectedUser ? getUserVision(selectedUser) : null;
+
+  const renderUserModal = () => (
+    <Modal isOpen={isUserModalOpen} onClose={() => setIsUserModalOpen(false)} title={isEditMode ? 'Editar Usuário' : 'Novo Usuário'} size="lg">
+      <div className="grid gap-6 lg:grid-cols-[minmax(280px,1fr)_minmax(240px,360px)]">
+        <div className="space-y-5">
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Nome Completo</label>
+              <input
+                value={userForm.name || ''}
+                onChange={(e) => setUserForm(prev => ({ ...prev, name: e.target.value }))}
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500"
+                placeholder="Ex: João Silva..."
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Email Corporativo</label>
+              <input
+                value={userForm.email || ''}
+                onChange={(e) => setUserForm(prev => ({ ...prev, email: e.target.value }))}
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500"
+                placeholder="joao.silva@empresa.com.br"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Perfil Base</label>
+                <select
+                  value={userForm.profile}
+                  onChange={(e) => setUserForm(prev => ({ ...prev, profile: e.target.value as User['profile'] }))}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500"
+                >
+                  <option>Colaborador</option>
+                  <option>Gestor</option>
+                  <option>RH/DP</option>
+                  <option>Diretoria</option>
+                  <option>Administrador</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Escopo de Acesso</label>
+                <select
+                  value={userForm.scope}
+                  onChange={(e) => setUserForm(prev => ({ ...prev, scope: e.target.value as User['scope'] }))}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500"
+                >
+                  <option value="proprio">Próprio</option>
+                  <option value="equipe">Equipe</option>
+                  <option value="setor">Setor</option>
+                  <option value="centro-custo">Centro de Custo</option>
+                  <option value="filial">Filial</option>
+                  <option value="empresa">Empresa</option>
+                  <option value="global">Global</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Grupos</label>
+                <input
+                  value={(userForm.groups || []).join(', ')}
+                  onChange={(e) => setUserForm(prev => ({ ...prev, groups: e.target.value.split(',').map(item => item.trim()).filter(Boolean) }))}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500"
+                  placeholder="Administradores, RH Corporativo"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Status</label>
+                <select
+                  value={userForm.status}
+                  onChange={(e) => setUserForm(prev => ({ ...prev, status: e.target.value as User['status'] }))}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500"
+                >
+                  <option>Ativo</option>
+                  <option>Inativo</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-3 pt-4">
+            <Button variant="ghost" className="flex-1" onClick={() => setIsUserModalOpen(false)}>Cancelar</Button>
+            <Button className="flex-1" onClick={handleSaveUser}>{isEditMode ? 'Salvar Alterações' : 'Criar Usuário'}</Button>
+          </div>
+        </div>
+
+        {userVision && (
+          <div className="space-y-5 rounded-[24px] border border-gray-200 bg-slate-50 p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[13px] font-bold text-gray-900">Resumo da visão deste usuário</p>
+                <p className="text-[12px] text-gray-500">{userVision.title} · Escopo: {userVision.scopeLabel}</p>
+              </div>
+              <Badge variant="outline">{userForm.status}</Badge>
+            </div>
+            <div className="space-y-3 text-sm text-gray-700">
+              <p><span className="font-bold">Vê:</span> {userVision.visible.join(', ')}</p>
+              <p><span className="font-bold">Pode abrir:</span> {userVision.openable.join(', ')}</p>
+              <p><span className="font-bold">Não vê:</span> {userVision.notSee.join(', ')}</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
 
   const renderGroupsTable = () => {
     return (
@@ -239,6 +504,10 @@ export default function AdminAccess() {
 
   return (
     <div className="space-y-8">
+      <PageHeader
+        title="Pessoas e Acessos"
+        subtitle="Usuários da sua empresa"
+      />
       <div className="flex gap-2 p-1 bg-gray-100 rounded-[16px] w-fit">
         {[
           { id: 'users', label: 'Usuários', icon: <Users size={14} /> },
@@ -274,7 +543,7 @@ export default function AdminAccess() {
                   className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-100 rounded-[14px] text-[13px] focus:ring-2 focus:ring-orange-500/20 outline-none shadow-sm transition-all"
                 />
               </div>
-              <Button leftIcon={<UserPlus size={16} />} onClick={() => setIsUserModalOpen(true)}>Novo Usuário</Button>
+              <Button leftIcon={<UserPlus size={16} />} onClick={() => openUserModal()}>Novo Usuário</Button>
             </div>
             <Card className="overflow-hidden border-none shadow-xl">
                {renderUsersTable()}
@@ -286,45 +555,7 @@ export default function AdminAccess() {
         {activeSubTab === 'matrix' && renderMatrix()}
       </div>
 
-      <Modal isOpen={isUserModalOpen} onClose={() => setIsUserModalOpen(false)} title="Convidar Novo Usuário">
-         <div className="space-y-6">
-            <div className="space-y-4">
-               <div className="space-y-1.5">
-                  <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Nome Completo</label>
-                  <input type="text" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500" placeholder="Ex: João Silva..." />
-               </div>
-               <div className="space-y-1.5">
-                  <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Email Corporativo</label>
-                  <input type="email" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500" placeholder="joao.silva@empresa.com.br" />
-               </div>
-               <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Perfil Base</label>
-                    <select className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500">
-                      <option>Colaborador</option>
-                      <option>Gestor</option>
-                      <option>RH/DP</option>
-                      <option>Diretoria</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Escopo de Acesso</label>
-                    <select className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500">
-                      <option>Próprio</option>
-                      <option>Equipe</option>
-                      <option>Filial</option>
-                      <option>Empresa</option>
-                      <option>Global</option>
-                    </select>
-                  </div>
-               </div>
-            </div>
-            <div className="flex gap-3 pt-4">
-              <Button variant="ghost" className="flex-1" onClick={() => setIsUserModalOpen(false)}>Cancelar</Button>
-              <Button className="flex-1" onClick={() => setIsUserModalOpen(false)}>Enviar Convite</Button>
-           </div>
-         </div>
-      </Modal>
+      {renderUserModal()}
     </div>
   );
 }

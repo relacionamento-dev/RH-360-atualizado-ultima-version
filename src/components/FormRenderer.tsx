@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { FormField, ProcessDefinition } from '../types';
 import { Button } from './ui/Button';
 import { 
@@ -29,6 +30,82 @@ interface FormRendererProps {
   hideActions?: boolean;
 }
 
+const MONTH_LABELS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+const WEEK_LABELS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+
+const CALENDAR_WIDTH = 320;
+const CALENDAR_FALLBACK_HEIGHT = 360; // usado só antes da 1ª medição real
+const CALENDAR_GAP = 8; // espaço entre o campo e o popover
+const VIEWPORT_MARGIN = 8; // margem mínima até a borda da viewport
+
+type CalendarPosition = { top: number; left: number; width: number };
+
+// Posiciona o popover em coordenadas de viewport (position: fixed), com flip
+// para cima quando não cabe abaixo e clamp para nunca sair da tela.
+const computeCalendarPosition = (anchor: HTMLElement, height: number): CalendarPosition => {
+  const rect = anchor.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  const width = Math.min(CALENDAR_WIDTH, viewportWidth - VIEWPORT_MARGIN * 2);
+  const spaceBelow = viewportHeight - rect.bottom - CALENDAR_GAP;
+  const spaceAbove = rect.top - CALENDAR_GAP;
+
+  // Só inverte se não couber embaixo E houver mais espaço em cima
+  const openUpward = spaceBelow < height && spaceAbove > spaceBelow;
+  const rawTop = openUpward ? rect.top - CALENDAR_GAP - height : rect.bottom + CALENDAR_GAP;
+
+  const maxTop = viewportHeight - height - VIEWPORT_MARGIN;
+  const top = maxTop < VIEWPORT_MARGIN ? VIEWPORT_MARGIN : Math.min(Math.max(rawTop, VIEWPORT_MARGIN), maxTop);
+  const left = Math.min(Math.max(rect.left, VIEWPORT_MARGIN), viewportWidth - width - VIEWPORT_MARGIN);
+
+  return { top, left, width };
+};
+
+const localDateFromString = (value: string) => {
+  if (!value) return null;
+  const str = String(value).trim();
+  const dmYMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (dmYMatch) {
+    const day = Number(dmYMatch[1]);
+    const month = Number(dmYMatch[2]) - 1;
+    const year = Number(dmYMatch[3]);
+    const date = new Date(year, month, day);
+    return date.getFullYear() === year && date.getMonth() === month && date.getDate() === day ? date : null;
+  }
+  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]) - 1;
+    const day = Number(isoMatch[3]);
+    const date = new Date(year, month, day);
+    return date.getFullYear() === year && date.getMonth() === month && date.getDate() === day ? date : null;
+  }
+  return null;
+};
+
+const localDateToDisplay = (date: Date) => {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
+const formatDateForDisplay = (value: any) => {
+  if (!value) return '';
+  const str = String(value).trim();
+  const date = localDateFromString(str);
+  if (date) return localDateToDisplay(date);
+  return str;
+};
+
+const maskDateValue = (value: string) => {
+  const digits = value.replace(/[^\d]/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`;
+};
+
 export function FormRenderer({ 
   definition, 
   initialData = {}, 
@@ -42,6 +119,11 @@ export function FormRenderer({
   const [formData, setFormData] = useState<Record<string, any>>({ ...initialData });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isFirstRender, setIsFirstRender] = useState(true);
+  const [openCalendarField, setOpenCalendarField] = useState<string | null>(null);
+  const [calendarDate, setCalendarDate] = useState<Date>(new Date());
+  const [calendarPos, setCalendarPos] = useState<CalendarPosition | null>(null);
+  const calendarRef = useRef<HTMLDivElement>(null);
+  const dateAnchorRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const firstErrorRef = useRef<HTMLDivElement>(null);
   const { config } = useAppConfig();
 
@@ -211,6 +293,84 @@ export function FormRenderer({
       });
     }
   };
+
+  const openCalendar = (fieldId: string, value: any) => {
+    const current = localDateFromString(String(value ?? ''));
+    const base = current ?? new Date();
+    const anchor = dateAnchorRefs.current[fieldId];
+    setCalendarDate(new Date(base.getFullYear(), base.getMonth(), 1));
+    // Primeira posição usa altura estimada; o useLayoutEffect corrige com a real
+    setCalendarPos(anchor ? computeCalendarPosition(anchor, CALENDAR_FALLBACK_HEIGHT) : null);
+    setOpenCalendarField(fieldId);
+  };
+
+  const closeCalendar = () => {
+    setOpenCalendarField(null);
+    setCalendarPos(null);
+  };
+
+  // Grid do mês: células vazias até o primeiro dia da semana, depois os dias
+  const generateMonthGrid = (year: number, month: number): (number | null)[] => {
+    const firstWeekday = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells: (number | null)[] = Array(firstWeekday).fill(null);
+    for (let day = 1; day <= daysInMonth; day++) {
+      cells.push(day);
+    }
+    return cells;
+  };
+
+  // Grava sempre como data LOCAL (dd/mm/aaaa) para não perder um dia por fuso
+  const setDateValue = (fieldId: string, date: Date) => {
+    handleChange(fieldId, localDateToDisplay(date));
+    closeCalendar();
+  };
+
+  // Reposiciona com a altura real do popover assim que ele monta / muda de mês
+  useLayoutEffect(() => {
+    if (!openCalendarField) return;
+    const anchor = dateAnchorRefs.current[openCalendarField];
+    const calendar = calendarRef.current;
+    if (!anchor || !calendar) return;
+    const next = computeCalendarPosition(anchor, calendar.offsetHeight);
+    setCalendarPos(prev =>
+      prev && prev.top === next.top && prev.left === next.left && prev.width === next.width ? prev : next
+    );
+  }, [openCalendarField, calendarDate]);
+
+  // Acompanha scroll/resize enquanto aberto; fecha se o campo sair da viewport
+  useEffect(() => {
+    if (!openCalendarField) return;
+
+    const reposition = () => {
+      const anchor = dateAnchorRefs.current[openCalendarField];
+      if (!anchor) return closeCalendar();
+      const rect = anchor.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > window.innerHeight) return closeCalendar();
+      setCalendarPos(computeCalendarPosition(anchor, calendarRef.current?.offsetHeight ?? CALENDAR_FALLBACK_HEIGHT));
+    };
+
+    // capture: true para pegar scroll de containers internos, não só da janela
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+    };
+  }, [openCalendarField]);
+
+  // Fecha ao clicar fora (o anchor é ignorado para o botão poder alternar)
+  useEffect(() => {
+    if (!openCalendarField) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const anchor = dateAnchorRefs.current[openCalendarField];
+      if (calendarRef.current?.contains(target) || anchor?.contains(target)) return;
+      closeCalendar();
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [openCalendarField]);
 
   const validate = () => {
     const currentStep = definition.steps[0];
@@ -556,15 +716,102 @@ export function FormRenderer({
           <div key={fieldId} id={`field-${fieldId}`} className={gridClass}>
             <Label />
             <div className="relative group">
-              <input
-                type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'datetime' ? 'datetime-local' : 'text'}
-                value={value !== null && value !== undefined ? String(value) : ''}
-                onChange={(e) => handleChange(fieldId, field.type === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value)}
-                disabled={isReadOnlyField}
-                placeholder={field.placeholder}
-                className={`${inputBaseClass} ${isReadOnlyField ? readOnlyClass : 'group-hover:border-gray-300'}`}
-              />
-              {(field.type === 'date' || field.type === 'datetime') && !isReadOnlyField && <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />}
+              {field.type === 'date' ? (
+                <>
+                  <div className="relative" ref={el => { dateAnchorRefs.current[fieldId] = el; }}>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={value !== null && value !== undefined ? formatDateForDisplay(value) : ''}
+                      onChange={(e) => handleChange(fieldId, maskDateValue(e.target.value))}
+                      onFocus={() => !isReadOnlyField && openCalendar(fieldId, value)}
+                      disabled={isReadOnlyField}
+                      placeholder={field.placeholder || 'dd/mm/aaaa'}
+                      className={`${inputBaseClass} ${isReadOnlyField ? readOnlyClass : 'group-hover:border-gray-300'}`}
+                    />
+                    {!isReadOnlyField && (
+                      <button
+                        type="button"
+                        onClick={() => openCalendarField === fieldId ? closeCalendar() : openCalendar(fieldId, value)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 rounded-full bg-white border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors"
+                      >
+                        <Calendar size={16} />
+                      </button>
+                    )}
+                  </div>
+                  {openCalendarField === fieldId && !isReadOnlyField && calendarPos && createPortal(
+                    <div
+                      ref={calendarRef}
+                      style={{
+                        position: 'fixed',
+                        top: calendarPos.top,
+                        left: calendarPos.left,
+                        width: calendarPos.width,
+                        maxHeight: `calc(100vh - ${VIEWPORT_MARGIN * 2}px)`,
+                        overflowY: 'auto',
+                      }}
+                      className="z-[1000] rounded-[20px] border border-gray-200 bg-white shadow-2xl p-4"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <button
+                          type="button"
+                          onClick={() => setCalendarDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                          className="text-gray-500 hover:text-gray-900"
+                        >
+                          {'<'}
+                        </button>
+                        <div className="text-sm font-black text-gray-900 uppercase tracking-[0.24em]">
+                          {MONTH_LABELS[calendarDate.getMonth()]} {calendarDate.getFullYear()}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setCalendarDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                          className="text-gray-500 hover:text-gray-900"
+                        >
+                          {'>'}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-black uppercase text-gray-400 mb-2">
+                        {WEEK_LABELS.map(day => (
+                          <span key={day}>{day}</span>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-7 gap-1 text-sm">
+                        {generateMonthGrid(calendarDate.getFullYear(), calendarDate.getMonth()).map((day, index) => {
+                          if (!day) {
+                            return <div key={index} className="h-9" />;
+                          }
+                          const candidateDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), day);
+                          const isSelected = localDateFromString(String(value))?.getTime() === candidateDate.getTime();
+                          return (
+                            <button
+                              key={index}
+                              type="button"
+                              onClick={() => setDateValue(fieldId, candidateDate)}
+                              className={`h-9 rounded-full ${isSelected ? 'bg-orange-600 text-white' : 'hover:bg-gray-100 text-gray-700'}`}
+                            >
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>,
+                    document.body
+                  )}
+                </>
+              ) : (
+                <>
+                  <input
+                    type={field.type === 'number' ? 'number' : field.type === 'datetime' ? 'datetime-local' : 'text'}
+                    value={value !== null && value !== undefined ? String(value) : ''}
+                    onChange={(e) => handleChange(fieldId, field.type === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value)}
+                    disabled={isReadOnlyField}
+                    placeholder={field.placeholder}
+                    className={`${inputBaseClass} ${isReadOnlyField ? readOnlyClass : 'group-hover:border-gray-300'}`}
+                  />
+                  {field.type === 'datetime' && !isReadOnlyField && <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />}
+                </>
+              )}
             </div>
             <ErrorMsg />
           </div>

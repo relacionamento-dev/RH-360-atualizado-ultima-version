@@ -4,7 +4,8 @@ import {
   Sparkles, Zap, Settings, Search, Plus, ChevronDown, ChevronRight, 
   Bell, Building2, Menu, X, ChevronLeft, MonitorSmartphone,
   CheckCircle2, Globe, Folder, LogOut, User as UserIcon, ListTodo, ClipboardList, RefreshCw, UserCircle,
-  TrendingUp, UserMinus, Move, Activity, UserPlus, Palmtree, GraduationCap, Target, DollarSign, CreditCard, Clock
+  TrendingUp, UserMinus, Move, Activity, UserPlus, Palmtree, GraduationCap, Target, DollarSign, CreditCard, Clock,
+  ShieldCheck, AlertCircle
 } from 'lucide-react';
 import { useAppConfig } from '../contexts/AppConfigContext';
 import { Avatar, Modal, Badge } from './ui/Misc';
@@ -42,7 +43,7 @@ export default function AppShell({
   currentView, 
   onNavigate
 }: AppShellProps) {
-  const { config, updateConfig, resetDemo, createRequest, isAuthorized } = useAppConfig();
+  const { config, updateConfig, resetDemo, createRequest, isAuthorized, logout } = useAppConfig();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
@@ -98,6 +99,36 @@ export default function AppShell({
   };
 
   const userProfile = config.usuarioAtual.profile;
+  const realUser = config.originalUser || config.usuarioAtual;
+  const realUserProfile = realUser.profile;
+  const isImpersonating = !!config.originalUser;
+  const originalUser = config.originalUser;
+
+  const profileRepresentatives: Record<string, string> = {
+    'Administrador Geral': 'ADMIN-GERAL-001',
+    'Administrador': 'ADMIN-001',
+    'Diretoria': 'DIR-002',
+    'RH/DP': 'RH-001',
+    'Gestor': 'GEST-001',
+    'Colaborador': 'COLAB-001'
+  };
+
+  const impersonationOptions = (realUserProfile === 'Administrador Geral' || realUserProfile === 'Administrador')
+    ? ['Administrador Geral', 'Administrador', 'Diretoria', 'RH/DP', 'Gestor', 'Colaborador']
+        .filter(profile => {
+          if (realUserProfile === 'Administrador') {
+            return profile !== 'Administrador Geral';
+          }
+          return true;
+        })
+        .map(profile => {
+          const representative = config.usuariosDemo.find(user => user.id === profileRepresentatives[profile]) || config.usuariosDemo.find(user => user.profile === profile);
+          return {
+            profile: profile as User['profile'],
+            representative: representative || { id: `rep-${profile}`, name: profile, role: profile, groups: [], profile: profile as User['profile'], scope: 'empresa', email: '', status: 'Ativo' }
+          };
+        })
+    : [];
 
   const menuGroups: MenuGroup[] = [
     {
@@ -162,7 +193,7 @@ export default function AppShell({
           view: 'profile-360'
         }
       ].filter(item => {
-        if (['Administrador', 'RH/DP'].includes(userProfile)) return true;
+        if (['Administrador', 'Administrador Geral', 'RH/DP'].includes(userProfile)) return true;
         if (userProfile === 'Gestor' && item.id === 'profile-360') return true;
         return false;
       })
@@ -211,11 +242,26 @@ export default function AppShell({
           label: 'Central Adm', 
           icon: <Settings className="w-5 h-5" />, 
           view: 'admin'
+        },
+        {
+          id: 'access-management',
+          label: 'Gestão de Acessos',
+          icon: <ShieldCheck className="w-5 h-5" />,
+          view: 'access-management'
         }
       ].filter(item => {
-        if (userProfile === 'Administrador') return true;
-        if (userProfile === 'Diretoria' && item.id === 'reports') return true;
-        if (userProfile === 'RH/DP' && item.id === 'reports') return true;
+        if (item.id === 'access-management') {
+          return config.usuarioAtual.canManageAccesses === true;
+        }
+        if (item.id === 'admin') {
+          return userProfile === 'Administrador';
+        }
+        if (item.id === 'integrations') {
+          return userProfile === 'Administrador';
+        }
+        if (item.id === 'reports') {
+          return ['Administrador', 'Diretoria', 'RH/DP'].includes(userProfile);
+        }
         return false;
       })
     }
@@ -232,7 +278,20 @@ export default function AppShell({
   };
 
   const switchUser = (user: User) => {
-    updateConfig({ usuarioAtual: user, activeView: 'intranet' });
+    if (isImpersonating && originalUser) {
+      updateConfig({ originalUser, originalUserId: originalUser.id, usuarioAtual: user, activeView: 'intranet' });
+    } else if (!isImpersonating && (realUserProfile === 'Administrador Geral' || realUserProfile === 'Administrador')) {
+      updateConfig({ originalUser: realUser, originalUserId: realUser.id, usuarioAtual: user, activeView: 'intranet' });
+    } else {
+      updateConfig({ usuarioAtual: user, originalUser: null, originalUserId: null, activeView: 'intranet' });
+    }
+    setShowUserMenu(false);
+  };
+
+  const revertImpersonation = () => {
+    if (originalUser) {
+      updateConfig({ usuarioAtual: originalUser, originalUser: null, originalUserId: null, activeView: 'intranet' });
+    }
     setShowUserMenu(false);
   };
 
@@ -242,6 +301,12 @@ export default function AppShell({
       setExpandedMenu('hr-processes');
     }
   }, [config.activeView]);
+
+  const currentAccess = config.currentAccessId ? config.accessos.find(a => a.id === config.currentAccessId) : undefined;
+  const currentAccessExpiration = currentAccess ? new Date(currentAccess.expirationDate) : null;
+  const daysRemaining = currentAccess && currentAccessExpiration ? Math.ceil((currentAccessExpiration.getTime() - Date.now()) / 86400000) : null;
+  const showAccessWarning = currentAccess && !currentAccess.blocked && currentAccessExpiration && currentAccessExpiration > new Date() && daysRemaining !== null && daysRemaining <= 2;
+  const accessWarningMessage = showAccessWarning ? `Seu acesso expira em ${daysRemaining} dia${daysRemaining === 1 ? '' : 's'}.` : null;
 
   const isFullScreen = currentView === 'request-form' || currentView === 'request-detail';
 
@@ -509,30 +574,45 @@ export default function AppShell({
                         <div className="text-[11px] font-medium text-[var(--color-brand-primary)] uppercase">{config.usuarioAtual.role}</div>
                       </div>
 
-                      <div className="h-px bg-[var(--color-brand-border)] my-1 mx-1" />
-                      <div className="px-3 py-2 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Visualizar como</div>
-                      <div className="max-h-60 overflow-y-auto custom-scrollbar px-1">
-                        {config.usuariosDemo.map(user => (
+                      {impersonationOptions.length > 0 && (
+                        <>
+                          <div className="h-px bg-[var(--color-brand-border)] my-1 mx-1" />
+                          <div className="px-3 py-2 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Visualizar como</div>
+                        </>
+                      )}
+                      <div className="max-h-72 overflow-y-auto custom-scrollbar px-1 space-y-1">
+                        {impersonationOptions.map(option => (
                           <button 
-                            key={user.id} 
-                            onClick={() => switchUser(user)}
-                            className={`w-full flex items-center gap-3 p-2.5 hover:bg-gray-50 rounded-[4px] transition-colors text-left ${config.usuarioAtual.id === user.id ? 'bg-gray-50 ring-1 ring-inset ring-orange-500/20' : ''}`}
+                            key={option.profile}
+                            onClick={() => switchUser(option.representative)}
+                            className={`w-full text-left p-3 rounded-[8px] transition-colors border ${config.usuarioAtual.profile === option.profile ? 'border-orange-200 bg-orange-50' : 'border-transparent hover:border-gray-200 hover:bg-gray-50'}`}
                           >
-                            <Avatar src={user.avatar} name={user.name} size="xs" />
-                            <div className="min-w-0">
-                              <p className="text-[12px] font-bold text-gray-700 truncate">{user.name}</p>
-                              <p className="text-[10px] font-medium text-gray-500 uppercase">{user.role}</p>
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-[13px] font-black text-gray-900">{option.profile}</p>
+                                <p className="text-[11px] text-gray-500">{option.representative.name}</p>
+                              </div>
+                              <Avatar src={option.representative.avatar} name={option.representative.name} size="xs" />
                             </div>
                           </button>
                         ))}
                       </div>
 
+                      {isImpersonating && originalUser && (
+                        <>
+                          <div className="h-px bg-[var(--color-brand-border)] my-1 mx-1" />
+                          <button onClick={() => { revertImpersonation(); setShowUserMenu(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-[4px] transition-colors text-left">
+                            <UserIcon className="w-4 h-4 text-gray-400" />
+                            <span className="text-[14px] font-medium text-gray-700">Voltar ao meu perfil</span>
+                          </button>
+                        </>
+                      )}
                       <div className="h-px bg-[var(--color-brand-border)] my-1 mx-1" />
                       <button onClick={() => { onNavigate('profile-360'); setShowUserMenu(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-[4px] transition-colors text-left">
                         <UserIcon className="w-4 h-4 text-gray-400" />
                         <span className="text-[14px] font-medium text-gray-700">Meu perfil</span>
                       </button>
-                      <button onClick={() => { onNavigate('login'); setShowUserMenu(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-red-50 text-red-600 rounded-[4px] transition-colors text-left">
+                      <button onClick={() => { logout(); setShowUserMenu(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-red-50 text-red-600 rounded-[4px] transition-colors text-left">
                         <LogOut className="w-4 h-4" />
                         <span className="text-[14px] font-medium">Sair</span>
                       </button>
@@ -595,6 +675,18 @@ export default function AppShell({
         {/* Content Area */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto scroll-smooth bg-[var(--color-brand-bg)]">
           <div className="p-8 max-w-[1600px] mx-auto min-h-full pb-20">
+            {accessWarningMessage && (
+              <div className="mb-6 rounded-[18px] border border-orange-200 bg-orange-50 p-4 text-orange-900 text-sm font-bold flex items-center gap-3">
+                <AlertCircle size={18} />
+                {accessWarningMessage}
+              </div>
+            )}
+            {isImpersonating && originalUser && (
+              <div className="sticky top-16 z-50 mb-6 rounded-[18px] border border-slate-200 bg-slate-50 p-4 text-slate-900 text-sm font-bold flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
+                <span>Visualizando como <strong>{config.usuarioAtual.name} — {config.usuarioAtual.profile}</strong></span>
+                <Button variant="secondary" size="sm" onClick={revertImpersonation}>Voltar ao meu perfil</Button>
+              </div>
+            )}
             {children}
           </div>
         </main>
