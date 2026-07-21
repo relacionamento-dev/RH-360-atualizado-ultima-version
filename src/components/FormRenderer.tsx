@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { computeAnchoredPosition, AnchoredPosition } from '../utils/anchoredPosition';
+import { computeDerivedFields } from '../utils/computedFields';
 import { FormField, ProcessDefinition } from '../types';
 import { Button } from './ui/Button';
 import { 
@@ -125,7 +126,10 @@ export function FormRenderer({
           empresa: emp.company,
           admissao: emp.admissionDate,
           periodoaquisitivo: '2024/2025',
-          saldo: 30
+          saldo: 30,
+          // Histórico de dias já usufruídos no período aquisitivo (NÃO a
+          // solicitação atual). Alimenta o campo CALC "Dias Já Gozados".
+          diasGozadosHist: emp.vacationRecords?.[0]?.daysTaken ?? 0
         };
         // Only update if current form data is empty for these keys to avoid overriding user changes
         setFormData(prev => {
@@ -223,43 +227,38 @@ export function FormRenderer({
     
     fields.forEach(field => {
       if (field.condition && !field.condition(formData)) return;
-      
+
       const fieldId = field.id || (field as any).name;
       const value = formData[fieldId];
-      
+
       if (field.required && (value === undefined || value === null || value === '')) {
         isValid = false;
+      }
+      // Validações de negócio também bloqueiam o envio ao vivo (ex.: dias
+      // solicitados acima do saldo disponível).
+      if (field.validation && value !== undefined && value !== '') {
+        if ((field.validation as any)(value, formData)) {
+          isValid = false;
+        }
       }
     });
 
     if (onValidityChange) {
       onValidityChange(isValid);
     }
-    
+
   }, [formData, definition.processId, onValidityChange]);
 
-  // Handle calculations
-  useEffect(() => {
-    const currentStep = definition.steps[0];
-    const fields = currentStep.fields;
-    let hasChanged = false;
-    const newData = { ...formData };
-
-    fields.forEach(field => {
-      const fieldId = field.id || (field as any).name;
-      if ((field as any).origin === 'K' && field.calculate) {
-        const newValue = field.calculate(newData);
-        if (JSON.stringify(newData[fieldId]) !== JSON.stringify(newValue)) {
-          newData[fieldId] = newValue;
-          hasChanged = true;
-        }
-      }
-    });
-
-    if (hasChanged) {
-      setFormData(newData);
-    }
-  }, [formData, definition.steps]);
+  // Campos CALC (origin 'K') são DERIVADOS durante o render — nunca gravados no
+  // estado. Isso elimina o loop de re-render que existia quando um efeito
+  // recalculava e chamava setFormData observando o próprio formData. `formData`
+  // só muda por interação do usuário (handleChange), então o memo é estável e
+  // não dispara a si mesmo. No envio, os mesmos valores são recalculados para o
+  // payload (ver computeDerivedFields no RHRequestForm).
+  const computedData = useMemo(
+    () => computeDerivedFields(definition, formData),
+    [formData, definition]
+  );
 
   const handleChange = (name: string, value: any) => {
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -389,7 +388,8 @@ export function FormRenderer({
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (validate()) {
-      onSubmit(formData);
+      // Recalcula os campos CALC no momento do envio para incluí-los no payload.
+      onSubmit(computeDerivedFields(definition, formData));
     }
   };
 
@@ -405,7 +405,9 @@ export function FormRenderer({
     // tipo). Só 'signature' fica reservado para telas de assinatura.
     if (hideActions && field.type === 'signature') return null;
 
-    const rawValue = formData[fieldId];
+    // Lê de computedData: idêntico a formData para campos do usuário e já traz o
+    // valor derivado para os campos CALC (origin 'K'), sem depender de estado.
+    const rawValue = computedData[fieldId];
     let value = rawValue;
     if (value === undefined || value === null) {
       if (field.type === 'checklist' || (field as any).type === 'dependent-list') {

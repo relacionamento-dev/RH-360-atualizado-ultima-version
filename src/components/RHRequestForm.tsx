@@ -12,6 +12,7 @@ import {
 import { useAppConfig } from '../contexts/AppConfigContext';
 import { useToast } from './ToastContext';
 import { FormRenderer } from './FormRenderer';
+import { computeDerivedFields } from '../utils/computedFields';
 import { Button } from './ui/Button';
 import RequesterCard from './RequesterCard';
 
@@ -179,12 +180,16 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
     }
     
     setIsSaving(true);
-    
+
+    // Campos CALC não vivem no estado do formulário — são recalculados aqui, no
+    // envio, para compor o payload persistido.
+    const payloadData = computeDerivedFields(definition, currentFormData);
+
     try {
       if (isEditing) {
         console.log('[RHRequestForm] Updating existing request', requestId);
         updateRequest(requestId!, {
-          data: currentFormData,
+          data: payloadData,
           status: isDraft ? 'Rascunho' : 'Pendente de Aprovação',
           updatedAt: new Date().toISOString(),
           alvo: currentFormData.colaborador || currentFormData.nomeCandidato || currentFormData.alvo || 'N/A',
@@ -196,7 +201,7 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
         }
       } else {
         console.log('[RHRequestForm] Creating new request', processId);
-        createRequest(processId, currentFormData, isDraft);
+        createRequest(processId, payloadData, isDraft);
         addToast(isDraft ? 'Rascunho salvo!' : 'Solicitação enviada com sucesso!', 'success');
       }
       

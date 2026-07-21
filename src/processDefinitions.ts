@@ -272,23 +272,46 @@ export const PROCESS_DEFINITIONS: Record<string, ProcessDefinition> = {
             if (String(data.periodoAquisitivo).includes('15')) return 15;
             return '—';
           } },
-          { name: 'diasGozados', label: 'Dias Já Gozados', type: 'calc', origin: 'K', section: 'Período Aquisitivo e Saldo', calculate: (data: any) => Number(data.diasGozo || 0) },
+          // Reflete SOMENTE o histórico já usufruído no período aquisitivo
+          // (prefill `diasGozadosHist`), nunca a solicitação em digitação.
+          { name: 'diasGozados', label: 'Dias Já Gozados', type: 'calc', origin: 'K', section: 'Período Aquisitivo e Saldo', calculate: (data: any) => Number(data.diasGozadosHist || 0) },
+          // Saldo = Dias de Direito − histórico já gozado. Os dias solicitados
+          // NÃO entram aqui — são apenas validados contra este saldo.
           { name: 'saldoDisponivel', label: 'Saldo Disponível', type: 'calc', origin: 'K', section: 'Período Aquisitivo e Saldo', calculate: (data: any) => {
             const direito = String(data.periodoAquisitivo).includes('30') ? 30 : String(data.periodoAquisitivo).includes('15') ? 15 : 0;
-            return Math.max(0, direito - Number(data.diasGozo || 0));
+            return Math.max(0, direito - Number(data.diasGozadosHist || 0));
           } },
           { name: 'ultimaFerias', label: 'Último Período de Férias', type: 'text', origin: 'F', section: 'Período Aquisitivo e Saldo' },
 
           { name: 'dataInicio', label: 'Data de Início do Período Solicitado', type: 'date', origin: 'C', required: true, section: 'Período Solicitado' },
-          { name: 'diasGozo', label: 'Dias Solicitados', type: 'number', origin: 'C', defaultValue: 30, required: true, section: 'Período Solicitado' },
+          { name: 'diasGozo', label: 'Dias Solicitados', type: 'number', origin: 'C', defaultValue: 30, required: true, section: 'Período Solicitado',
+            validation: (value: any, data: any) => {
+              const dias = Number(value || 0);
+              if (dias <= 0) return undefined; // vazio/zero tratado por `required`
+              const direito = String(data.periodoAquisitivo).includes('30') ? 30 : String(data.periodoAquisitivo).includes('15') ? 15 : 0;
+              const saldo = Math.max(0, direito - Number(data.diasGozadosHist || 0));
+              if (dias > saldo) return `Excede o saldo disponível (${saldo} dias).`;
+              return undefined;
+            } },
           { name: 'abonoPecuniario', label: 'Abono Pecuniário', type: 'boolean', origin: 'C', section: 'Período Solicitado' },
           { name: 'adianta13', label: 'Adiantar 13º', type: 'boolean', origin: 'C', section: 'Período Solicitado' },
+          // Retorno = data de início + dias solicitados. A data de início é
+          // interpretada como data LOCAL (sem parse ISO como UTC, que subtraía
+          // um dia em fusos negativos).
           { name: 'dataRetorno', label: 'Data Prevista de Retorno', type: 'calc', origin: 'K', section: 'Período Solicitado', calculate: (data: any) => {
-            if (!data.dataInicio || !data.diasGozo) return '—';
-            const start = new Date(data.dataInicio.split('/').reverse().join('-'));
-            if (Number.isNaN(start.getTime())) return '—';
-            start.setDate(start.getDate() + Number(data.diasGozo || 0));
-            return start.toLocaleDateString('pt-BR');
+            const dias = Number(data.diasGozo || 0);
+            if (!data.dataInicio || !dias) return '—';
+            const str = String(data.dataInicio).trim();
+            const br = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            let year: number, month: number, day: number;
+            if (br) { day = Number(br[1]); month = Number(br[2]); year = Number(br[3]); }
+            else if (iso) { year = Number(iso[1]); month = Number(iso[2]); day = Number(iso[3]); }
+            else return '—';
+            const retorno = new Date(year, month - 1, day);
+            if (Number.isNaN(retorno.getTime())) return '—';
+            retorno.setDate(retorno.getDate() + dias);
+            return retorno.toLocaleDateString('pt-BR');
           } },
 
           { name: 'justificativa', label: 'Observações', type: 'textarea', origin: 'C', required: false, gridCols: 3, section: 'Observações' }
