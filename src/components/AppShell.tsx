@@ -11,6 +11,7 @@ import { useAppConfig } from '../contexts/AppConfigContext';
 import { Avatar, Modal, Badge } from './ui/Misc';
 import { Button } from './ui/Button';
 import { RHProcess, ProcessPermission, RHRequest, User } from '../types';
+import { isSuperAdmin } from '../utils/permissions';
 import RHRequestForm from './RHRequestForm';
 import RequestDetail from './RequestDetail';
 
@@ -99,6 +100,10 @@ export default function AppShell({
   };
 
   const userProfile = config.usuarioAtual.profile;
+  // Administrador Geral vê todos os menus. Vale para o usuário efetivo: ao
+  // "Visualizar como", `usuarioAtual` é o perfil simulado e o menu encolhe
+  // conforme as regras dele.
+  const hasFullAccess = isSuperAdmin(config.usuarioAtual);
   const realUser = config.originalUser || config.usuarioAtual;
   const realUserProfile = realUser.profile;
   const isImpersonating = !!config.originalUser;
@@ -147,6 +152,7 @@ export default function AppShell({
           view: 'dashboard'
         }
       ].filter(item => {
+        if (hasFullAccess) return true;
         if (userProfile === 'Colaborador') return item.id === 'intranet';
         return true;
       })
@@ -173,6 +179,7 @@ export default function AppShell({
           view: 'approvals'
         }
       ].filter(item => {
+        if (hasFullAccess) return true;
         if (userProfile === 'Colaborador') return item.id === 'requests';
         return true;
       })
@@ -193,7 +200,8 @@ export default function AppShell({
           view: 'profile-360'
         }
       ].filter(item => {
-        if (['Administrador', 'Administrador Geral', 'RH/DP'].includes(userProfile)) return true;
+        if (hasFullAccess) return true;
+        if (['Administrador', 'RH/DP'].includes(userProfile)) return true;
         if (userProfile === 'Gestor' && item.id === 'profile-360') return true;
         return false;
       })
@@ -217,6 +225,7 @@ export default function AppShell({
           view: 'global-query'
         }
       ].filter(item => {
+        if (hasFullAccess) return true;
         if (userProfile === 'Colaborador') return false;
         if (userProfile === 'Gestor') return item.id === 'hr-processes';
         return true;
@@ -250,6 +259,7 @@ export default function AppShell({
           view: 'access-management'
         }
       ].filter(item => {
+        if (hasFullAccess) return true;
         if (item.id === 'access-management') {
           return config.usuarioAtual.canManageAccesses === true;
         }

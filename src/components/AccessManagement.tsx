@@ -7,6 +7,7 @@ import { Modal } from './ui/Misc';
 import { PageHeader } from './ui/FormAndHeader';
 import { useAppConfig } from '../contexts/AppConfigContext';
 import { Accesso } from '../types';
+import { isSuperAdmin } from '../utils/permissions';
 
 const PROFILE_OPTIONS = ['Administrador', 'Diretoria', 'RH/DP', 'Gestor', 'Colaborador'];
 const DURATION_OPTIONS = [5, 15, 30, 0];
@@ -57,7 +58,7 @@ export default function AccessManagement() {
   const { config, updateConfig, addNotification } = useAppConfig();
   const [search, setSearch] = useState('');
 
-  if (!config.usuarioAtual.canManageAccesses) {
+  if (!isSuperAdmin(config.usuarioAtual) && !config.usuarioAtual.canManageAccesses) {
     return (
       <div className="rounded-[24px] bg-white p-10 shadow-sm border border-gray-200">
         <h2 className="text-2xl font-bold text-gray-900">Acesso não autorizado</h2>

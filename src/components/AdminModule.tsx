@@ -2,15 +2,15 @@ import React, { useState } from 'react';
 import { 
   Building2, Users, Target, Share2, Cpu, 
   Search, Shield, BarChart3, Clock, 
-  ChevronRight, Globe, AlertCircle, 
-  MoreHorizontal, Plus, Download, Edit2, 
+  ChevronRight, Globe,
+  MoreHorizontal, Plus, Download, Edit2,
   Power, CheckCircle2, XCircle
 } from 'lucide-react';
-import { Button } from './ui/Button';
 import { Card, Table } from './ui/CardAndTable';
 import { Badge } from './ui/Badge';
 import { PageHeader } from './ui/FormAndHeader';
 import { useAppConfig } from '../contexts/AppConfigContext';
+import { isSuperAdmin } from '../utils/permissions';
 
 import AdminOverview from './admin/AdminOverview';
 import AdminOrganization from './admin/AdminOrganization';
@@ -25,7 +25,8 @@ type AdminTab = 'overview' | 'org' | 'access' | 'processes' | 'intranet' | 'inte
 
 export default function AdminModule({ view = 'admin' }: { view?: string }) {
   const { config } = useAppConfig();
-  const isAdmin = config.usuarioAtual.profile === 'Administrador';
+  // Administrador Geral enxerga todas as abas, sem exceção.
+  const isAdmin = isSuperAdmin(config.usuarioAtual) || config.usuarioAtual.profile === 'Administrador';
 
   const [activeTab, setActiveTab] = useState<AdminTab>(() => {
     if (view.includes('integrations')) return 'integrations';
@@ -67,39 +68,24 @@ export default function AdminModule({ view = 'admin' }: { view?: string }) {
   return (
     <div className="flex flex-col lg:flex-row gap-8 animate-in fade-in duration-700">
       {/* Sidebar Navigation */}
-      <aside className="w-full lg:w-72 shrink-0 space-y-6">
-        <div className="bg-white p-6 rounded-[24px] border border-gray-100 shadow-sm space-y-1">
-          <h3 className="label-caps opacity-50 px-2 mb-4">Administração</h3>
+      <aside className="w-full lg:w-64 shrink-0">
+        <div className="bg-white p-3 rounded-[12px] border border-gray-100 space-y-0.5">
+          <h3 className="label-caps px-3 py-2">Administração</h3>
           {visibleTabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-[14px] font-bold text-[13px] transition-all group ${
-                activeTab === tab.id 
-                  ? 'bg-gray-900 text-white shadow-lg shadow-gray-200' 
-                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-[8px] text-[13px] transition-colors ${
+                activeTab === tab.id
+                  ? 'bg-gray-900 text-white font-bold'
+                  : 'text-gray-600 font-medium hover:bg-gray-50 hover:text-gray-900'
               }`}
             >
-              <div className={`p-1.5 rounded-lg transition-colors ${activeTab === tab.id ? 'bg-white/10' : 'bg-gray-100 group-hover:bg-white'}`}>
-                {tab.icon}
-              </div>
+              <span className={activeTab === tab.id ? 'text-white' : 'text-gray-400'}>{tab.icon}</span>
               {tab.label}
               {activeTab === tab.id && <ChevronRight size={14} className="ml-auto opacity-50" />}
             </button>
           ))}
-        </div>
-
-        <div className="bg-orange-50 p-6 rounded-[24px] border border-orange-100 space-y-3">
-          <div className="flex items-center gap-2 text-orange-600 font-black text-sm uppercase tracking-wider">
-            <AlertCircle size={16} />
-            <span>Suporte</span>
-          </div>
-          <p className="text-[12px] text-orange-800 font-medium leading-relaxed">
-            Precisa de ajuda com uma regra complexa? Nossa equipe de arquitetos está online.
-          </p>
-          <Button variant="ghost" size="sm" className="w-full text-orange-600 hover:bg-orange-100 font-black text-[11px] uppercase tracking-widest">
-            Abrir Chamado
-          </Button>
         </div>
       </aside>
 

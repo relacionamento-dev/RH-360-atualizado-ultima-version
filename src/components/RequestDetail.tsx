@@ -13,6 +13,7 @@ import { Button } from './ui/Button';
 import { motion, AnimatePresence } from 'motion/react';
 import { PROCESS_DEFINITIONS } from '../processDefinitions';
 import { getStatusVariant } from '../utils/requestStatus';
+import { ensureApprovalChain, getCurrentLevelIndex } from '../utils/approvalFlow';
 
 interface RequestDetailProps {
   requestId: string;
@@ -60,9 +61,15 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
   const processId = request.processId || '';
   const processDef = PROCESS_DEFINITIONS[processId];
 
-  const finalStatuses = ['Concluída', 'Concluído', 'Reprovada', 'Cancelada', 'Cancelado'] as const;
+  // 'Recebimento Confirmado' encerra o protocolo de VR/VA: não há o que aprovar.
+  const finalStatuses = ['Concluída', 'Concluído', 'Recebimento Confirmado', 'Reprovada', 'Cancelada', 'Cancelado'] as const;
   const isFinalStatus = finalStatuses.includes(request.status as typeof finalStatuses[number]);
   const canTakeAction = !isFinalStatus;
+
+  // Cascata de aprovação desta solicitação (reconstruída para pedidos antigos).
+  const approvalProcess = config.processos.find(p => p.id === (request.tipoProcesso || request.processId));
+  const approvalChain = ensureApprovalChain(request, approvalProcess);
+  const currentLevelIndex = getCurrentLevelIndex(approvalChain);
 
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -146,7 +153,18 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
       return <span className="font-bold text-gray-900">{formatDate(value)}</span>;
     }
 
-    if (fieldDef?.type === 'boolean' || typeof value === 'boolean') {
+    // Assinatura eletrônica: mostra quem assinou e quando, não o objeto cru.
+    if (fieldDef?.type === 'signature' || (value && typeof value === 'object' && value.signed)) {
+      return (
+        <span className="font-bold text-green-700">
+          {value.name}
+          {value.registration ? ` (${value.registration})` : ''}
+          {value.date ? ` — ${new Date(value.date).toLocaleString('pt-BR')}` : ''}
+        </span>
+      );
+    }
+
+    if (fieldDef?.type === 'boolean' || fieldDef?.type === 'checkbox' || typeof value === 'boolean') {
       return (
         <Badge className={value ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'}>
           {value ? 'Sim' : 'Não'}
@@ -400,15 +418,43 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
                   </div>
                 </div>
 
-                {/* Automation Step */}
-                <div className="relative flex items-start gap-4">
-                  <div className="absolute left-0 mt-1.5 w-5 h-5 rounded-full border-4 border-white bg-blue-500 shadow-sm ring-4 ring-white z-10"></div>
-                  <div className="pl-8">
-                    <p className="text-[13px] font-black text-gray-900">Encaminhado para Alçada</p>
-                    <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5">{formatDate(request.createdAt)} • Fluxo Automático</p>
-                    <p className="text-[10px] text-blue-500 mt-2 font-bold uppercase tracking-widest">Aguardando Diretoria</p>
-                  </div>
-                </div>
+                {/* Cascata de alçadas: um item por nível configurado que se aplica
+                    a esta solicitação, na ordem em que precisam aprovar. */}
+                {approvalChain.map((level, idx) => {
+                  const isCurrent = idx === currentLevelIndex && !isFinalStatus;
+                  const dotColor = level.status === 'aprovado' ? 'bg-green-500'
+                    : level.status === 'reprovado' ? 'bg-red-500'
+                    : isCurrent ? 'bg-blue-500' : 'bg-gray-200';
+                  return (
+                    <div key={`${level.id}-${idx}`} className="relative flex items-start gap-4">
+                      <div className={`absolute left-0 mt-1.5 w-5 h-5 rounded-full border-4 border-white shadow-sm ring-4 ring-white z-10 ${dotColor}`}></div>
+                      <div className="pl-8">
+                        <p className="text-[13px] font-black text-gray-900">
+                          Nível {idx + 1} de {approvalChain.length} — {level.name}
+                        </p>
+                        <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5">
+                          {level.responsibleLabel}
+                          {level.decidedAt ? ` • ${formatDate(level.decidedAt)} • ${level.decidedBy}` : ` • SLA ${level.sla}${level.slaUnit}`}
+                        </p>
+                        {level.conditionLabel && (
+                          <p className="text-[10px] text-amber-600 mt-1 font-bold">Acionado por condição: {level.conditionLabel}</p>
+                        )}
+                        <p className={`text-[10px] mt-2 font-bold uppercase tracking-widest ${
+                          level.status === 'aprovado' ? 'text-green-600'
+                          : level.status === 'reprovado' ? 'text-red-500'
+                          : isCurrent ? 'text-blue-500' : 'text-gray-300'
+                        }`}>
+                          {level.status === 'aprovado' ? 'Aprovado'
+                            : level.status === 'reprovado' ? 'Reprovado'
+                            : isCurrent ? 'Aguardando aprovação' : 'Não iniciado'}
+                        </p>
+                        {level.comment && (
+                          <p className="text-[10px] text-gray-400 mt-1 italic leading-relaxed">"{level.comment}"</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
 
                 {/* History entries if any */}
                 {request.historico?.map((h, i) => (

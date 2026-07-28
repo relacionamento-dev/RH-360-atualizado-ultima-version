@@ -13,6 +13,8 @@ import { useAppConfig } from '../contexts/AppConfigContext';
 import { useToast } from './ToastContext';
 import { FormRenderer } from './FormRenderer';
 import { computeDerivedFields } from '../utils/computedFields';
+import { isEmptyFieldValue } from '../utils/formValues';
+import { buildApprovalChain } from '../utils/approvalFlow';
 import { Button } from './ui/Button';
 import RequesterCard from './RequesterCard';
 
@@ -74,8 +76,9 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
       if (isVisible && field.required) {
         visibleTotal++;
         const fieldId = (field as any).id || (field as any).name;
-        const value = currentFormData[fieldId];
-        if (value !== undefined && value !== null && value !== '') {
+        // Mesma regra da validação: checkbox desmarcado e assinatura ausente
+        // contam como não preenchidos.
+        if (!isEmptyFieldValue(field, currentFormData[fieldId])) {
           filledTotal++;
         }
       }
@@ -170,6 +173,14 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
     }
   }, [process, config.usuarioAtual, config.colaboradores, isEditing]);
 
+  // Processos de protocolo (ex.: Recebimento de VR/VA) não têm aprovação: ao
+  // confirmar e assinar, a solicitação já é registrada no status final.
+  const acknowledgement = definition?.acknowledgement;
+  const submittedStatus = acknowledgement?.status || 'Pendente de Aprovação';
+  const submitSuccessMessage = acknowledgement
+    ? 'Recebimento confirmado e assinado com sucesso!'
+    : 'Solicitação enviada com sucesso!';
+
   const handleSave = async (isDraft: boolean, e?: React.FormEvent | React.MouseEvent) => {
     if (e) e.preventDefault();
     console.log('[RHRequestForm] handleSave called', { isDraft, processId, requestId, isEditing });
@@ -190,11 +201,12 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
         console.log('[RHRequestForm] Updating existing request', requestId);
         updateRequest(requestId!, {
           data: payloadData,
-          status: isDraft ? 'Rascunho' : 'Pendente de Aprovação',
+          status: isDraft ? 'Rascunho' : submittedStatus,
+          etapaAtual: isDraft ? 'Solicitação' : acknowledgement?.etapa || 'Aprovação',
           updatedAt: new Date().toISOString(),
           alvo: currentFormData.colaborador || currentFormData.nomeCandidato || currentFormData.alvo || 'N/A',
         });
-        addToast(isDraft ? 'Rascunho atualizado!' : 'Solicitação enviada com sucesso!', 'success');
+        addToast(isDraft ? 'Rascunho atualizado!' : submitSuccessMessage, 'success');
         
         if (!isDraft) {
           updateConfig({ activeView: 'request-detail', currentRequestId: requestId });
@@ -202,7 +214,7 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
       } else {
         console.log('[RHRequestForm] Creating new request', processId);
         createRequest(processId, payloadData, isDraft);
-        addToast(isDraft ? 'Rascunho salvo!' : 'Solicitação enviada com sucesso!', 'success');
+        addToast(isDraft ? 'Rascunho salvo!' : submitSuccessMessage, 'success');
       }
       
       if (isDraft) {
@@ -232,27 +244,56 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
   // Etapas do painel lateral. Para o desligamento (processId '15') o fluxo reflete
   // o tipo escolhido: Justa Causa insere "Análise Jurídica" antes da aprovação.
   const flowSteps: { label: string; desc: string; group?: string }[] = (() => {
+    // Protocolo de recebimento: sem aprovação — o RH credita, o colaborador
+    // confere e assina, e o registro é concluído na hora.
+    if (processId === '5') {
+      return [
+        { label: 'Crédito Lançado', desc: 'Valores informados pelo RH' },
+        { label: 'Confirmação e Assinatura', desc: 'Aceite do colaborador' },
+        { label: 'Recebimento Registrado', desc: 'Protocolo arquivado' },
+      ];
+    }
+    // Demais processos: as etapas são as alçadas configuradas no processo que se
+    // aplicam a ESTES dados. Como a cascata é recalculada a cada digitação, um
+    // nível condicional ("Se maior que 10000") aparece assim que o valor entra.
+    const chain = buildApprovalChain(process, currentFormData);
+    const approvalSteps = chain.map(level => ({
+      label: level.name,
+      desc: level.conditionLabel
+        ? `${level.responsibleLabel} • ${level.conditionLabel}`
+        : level.responsibleLabel,
+    }));
+
     if (processId === '15') {
       const isJustaCausa = currentFormData.tipoDesligamento === 'justa_causa';
       return [
         { label: 'Solicitação', desc: 'Preenchimento do formulário' },
         ...(isJustaCausa ? [{ label: 'Análise Jurídica', desc: 'Validação da justa causa' }] : []),
-        { label: 'Aprovação', desc: 'Avaliação e aprovação' },
+        ...approvalSteps,
         { label: 'Cálculo de Benefícios', desc: 'Rescisão e verbas', group: 'Benefícios' },
         { label: 'Conclusão', desc: 'Finalização do processo' },
       ];
     }
     return [
       { label: 'Solicitação', desc: 'Preenchimento do formulário' },
-      { label: 'Aprovação', desc: 'Validação pelo responsável' },
+      ...approvalSteps,
       { label: 'Conclusão', desc: 'Efetivação e auditoria' },
     ];
   })();
 
-  // Aprovador e SLA derivados das etapas de aprovação do processo (não hardcoded).
-  const approvals = process.approvals || [];
-  const aprovadorLabel = approvals.length ? approvals.map(a => a.name).join(' → ') : 'RH / Gestor';
-  const totalSlaHoras = approvals.reduce((acc, a) => acc + (a.slaUnit === 'd' ? a.sla * 24 : a.sla), 0);
+  // Aprovadores e SLA derivados das alçadas que realmente vão rodar para estes
+  // dados (condições avaliadas sobre o formulário atual), não hardcoded.
+  const applicableChain = acknowledgement ? [] : buildApprovalChain(process, currentFormData);
+  const aprovadorLabel = acknowledgement
+    ? 'Não se aplica'
+    : applicableChain.map(l => l.name).join(' → ') || 'RH / Gestor';
+  // Em processos de protocolo a primeira etapa já foi cumprida pelo RH.
+  const currentStepIndex = acknowledgement ? 1 : 0;
+  const fluxoDescricao = acknowledgement
+    ? 'Protocolo de recebimento: o RH efetua o crédito e o colaborador apenas confirma e assina. Não há etapa de aprovação.'
+    : `Esta solicitação passa por ${applicableChain.length} nível(is) de aprovação, na ordem: ${applicableChain.map(l => l.name).join(' → ')}. A conclusão só ocorre após o último.`;
+  // SLA total = soma das alçadas aplicáveis (não de todas as configuradas).
+  const totalSlaHoras = applicableChain.reduce((acc, l) => acc + (l.slaUnit === 'd' ? l.sla * 24 : l.sla), 0);
   const slaLabel = totalSlaHoras > 0 ? `${totalSlaHoras}h` : '48h';
   const slaEstimadoLabel = totalSlaHoras > 0 ? `${totalSlaHoras} Horas Úteis` : '48 Horas Úteis';
 
@@ -345,7 +386,7 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
               <div className="space-y-4">
                 <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
                   <p className="text-[11px] font-bold text-gray-500 leading-relaxed">
-                    Este processo segue o fluxo padrão de aprovação e conclusão após a abertura.
+                    {fluxoDescricao}
                   </p>
                 </div>
                 <div className="space-y-3">
@@ -362,7 +403,7 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
               <h4 className="text-[11px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50 pb-2">Etapas</h4>
               <div className="space-y-4">
                 {flowSteps.map((step, idx) => {
-                  const isCurrent = idx === 0; // "Solicitação" é a etapa atual na abertura
+                  const isCurrent = idx === currentStepIndex;
                   return (
                     <div key={`${step.label}-${idx}`} className="flex gap-4 group">
                       <div className="flex flex-col items-center">
@@ -436,7 +477,9 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
             className="bg-orange-500 hover:bg-orange-600 shadow-lg shadow-orange-500/20 px-6 sm:px-10 h-12 font-black rounded-xl"
             rightIcon={<ChevronRight size={20} />}
           >
-            {isSaving ? 'Enviando...' : 'Confirmar e Enviar'}
+            {isSaving
+              ? (acknowledgement ? 'Registrando...' : 'Enviando...')
+              : (acknowledgement ? 'Confirmar e Assinar' : 'Confirmar e Enviar')}
           </Button>
         </div>
       </footer>

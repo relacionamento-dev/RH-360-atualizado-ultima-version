@@ -2,6 +2,8 @@ import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 're
 import { createPortal } from 'react-dom';
 import { computeAnchoredPosition, AnchoredPosition } from '../utils/anchoredPosition';
 import { computeDerivedFields } from '../utils/computedFields';
+import { isEmptyFieldValue } from '../utils/formValues';
+import { getBenefitCredit } from '../utils/benefitCredit';
 import { FormField, ProcessDefinition } from '../types';
 import { Button } from './ui/Button';
 import { 
@@ -147,6 +149,25 @@ export function FormRenderer({
     }
   }, [definition.targetMode, config.usuarioAtual, config.colaboradores]);
 
+  // Recebimento de VR/VA: o crédito é lançado pelo RH. Os campos do benefício
+  // (origin 'F') chegam preenchidos e o colaborador apenas confere e assina —
+  // independe do vínculo com um cadastro de colaborador.
+  useEffect(() => {
+    if (definition.processId !== '5') return;
+    const credit = getBenefitCredit(config.beneficios);
+    setFormData(prev => {
+      const next = { ...prev };
+      let changed = false;
+      Object.entries(credit).forEach(([key, val]) => {
+        if (next[key] === undefined || next[key] === null || next[key] === '') {
+          next[key] = val;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [definition.processId, config.beneficios]);
+
   // Sync with initialData if it changes
   useEffect(() => {
     setFormData(prev => {
@@ -231,7 +252,7 @@ export function FormRenderer({
       const fieldId = field.id || (field as any).name;
       const value = formData[fieldId];
 
-      if (field.required && (value === undefined || value === null || value === '')) {
+      if (field.required && isEmptyFieldValue(field, value)) {
         isValid = false;
       }
       // Validações de negócio também bloqueiam o envio ao vivo (ex.: dias
@@ -361,7 +382,7 @@ export function FormRenderer({
       
       const fieldId = (field as any).id || field.name;
       const value = formData[fieldId];
-      if (field.required && (value === undefined || value === null || value === '')) {
+      if (field.required && isEmptyFieldValue(field, value)) {
         newErrors[fieldId] = 'Campo obrigatório';
         if (!firstErrorField) firstErrorField = fieldId;
       }
@@ -401,10 +422,6 @@ export function FormRenderer({
 
     const isReadOnlyField = readOnly || (field as any).origin === 'F' || (field as any).origin === 'K';
     
-    // 'file' precisa aparecer no formulário de abertura (anexos obrigatórios por
-    // tipo). Só 'signature' fica reservado para telas de assinatura.
-    if (hideActions && field.type === 'signature') return null;
-
     // Lê de computedData: idêntico a formData para campos do usuário e já traz o
     // valor derivado para os campos CALC (origin 'K'), sem depender de estado.
     const rawValue = computedData[fieldId];
@@ -808,6 +825,21 @@ export function FormRenderer({
         );
 
       case 'currency':
+        // Valor vindo do sistema (origin 'F'/'K') não é editável: exibe o
+        // montante já formatado em BRL em vez de um input numérico cru.
+        if (isReadOnlyField) {
+          return (
+            <div key={fieldId} id={`field-${fieldId}`} className={gridClass}>
+              <Label />
+              <div className={`${inputBaseClass} ${readOnlyClass}`}>
+                {value === '' || value === null || value === undefined
+                  ? '—'
+                  : Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </div>
+              <ErrorMsg />
+            </div>
+          );
+        }
         return (
           <div key={fieldId} id={`field-${fieldId}`} className={gridClass}>
             <Label />
@@ -951,16 +983,27 @@ export function FormRenderer({
         );
 
       case 'checkbox':
+        // Aceite: a frase inteira é clicável e o rótulo mantém a caixa original
+        // (são declarações, não títulos de campo).
         return (
-          <div key={fieldId} id={`field-${fieldId}`} className="flex items-center gap-3 pt-4">
+          <div key={fieldId} id={`field-${fieldId}`} className="col-span-1 md:col-span-3">
             <button
               type="button"
+              disabled={isReadOnlyField}
+              aria-pressed={!!value}
               onClick={() => !isReadOnlyField && handleChange(fieldId, !value)}
-              className={`w-5 h-5 rounded-[6px] border flex items-center justify-center transition-all ${value ? 'bg-orange-500 border-orange-500' : 'bg-white border-gray-200'} ${isReadOnlyField ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`w-full flex items-start gap-3 p-4 rounded-[16px] border text-left transition-all ${
+                value ? 'bg-orange-50 border-orange-200 ring-2 ring-orange-500/10' : error ? 'bg-white border-red-500' : 'bg-white border-gray-100 hover:border-gray-200'
+              } ${isReadOnlyField ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
-              {value && <Check size={14} className="text-white" />}
+              <span className={`w-5 h-5 shrink-0 rounded-[6px] border flex items-center justify-center transition-all ${value ? 'bg-orange-500 border-orange-500' : 'bg-white border-gray-200'}`}>
+                {value && <Check size={14} className="text-white" />}
+              </span>
+              <span className={`text-[13px] font-bold leading-snug ${value ? 'text-orange-800' : 'text-gray-700'}`}>
+                {field.label} {field.required && <span className="text-red-500">*</span>}
+              </span>
             </button>
-            <span className="text-[11px] font-black text-gray-700 uppercase tracking-widest">{field.label}</span>
+            <ErrorMsg />
           </div>
         );
 
@@ -972,13 +1015,21 @@ export function FormRenderer({
               <button
                 type="button"
                 disabled={isReadOnlyField}
-                onClick={() => handleChange(fieldId, { signed: true, date: new Date().toISOString(), name: formData.solicitante || 'Usuário' })}
-                className="w-full h-32 border-2 border-dashed border-gray-100 rounded-[20px] flex flex-col items-center justify-center gap-3 hover:bg-gray-50 hover:border-orange-200 transition-all group"
+                onClick={() => handleChange(fieldId, {
+                  signed: true,
+                  date: new Date().toISOString(),
+                  name: config.usuarioAtual?.name || formData.colaborador || formData.solicitante || 'Usuário',
+                  registration: formData.matricula || ''
+                })}
+                className={`w-full h-32 border-2 border-dashed rounded-[20px] flex flex-col items-center justify-center gap-3 hover:bg-gray-50 hover:border-orange-200 transition-all group ${error ? 'border-red-300' : 'border-gray-100'}`}
               >
                 <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-300 group-hover:text-orange-500 group-hover:scale-110 transition-all shadow-sm">
                   <Edit2 size={20} />
                 </div>
                 <p className="text-[12px] font-black text-gray-400 uppercase tracking-widest">Clique para assinar digitalmente</p>
+                <p className="text-[10px] font-bold text-gray-400">
+                  Registra nome, matrícula e data/hora do aceite
+                </p>
               </button>
             ) : (
               <div className="p-6 bg-green-50 border border-green-100 rounded-[20px] flex items-center justify-between">
@@ -989,7 +1040,7 @@ export function FormRenderer({
                   <div>
                     <p className="text-[13px] font-black text-green-900">Assinado Digitalmente</p>
                     <p className="text-[10px] text-green-600 font-bold uppercase tracking-wider">
-                      Por: {value.name} em {new Date(value.date).toLocaleString('pt-BR')}
+                      Por: {value.name}{value.registration ? ` • Matrícula ${value.registration}` : ''} em {new Date(value.date).toLocaleString('pt-BR')}
                     </p>
                   </div>
                 </div>
@@ -1226,19 +1277,23 @@ export function FormRenderer({
           </div>
         );
 
-      case 'info':
+      case 'info': {
+        // Por padrão é nota de apoio (discreta). Com `highlight`, o texto é uma
+        // declaração dirigida ao usuário (ex.: aceite) e ganha destaque.
+        const isNote = !(field as any).highlight;
         return (
           <div key={fieldId} id={`field-${fieldId}`} className="col-span-1 md:col-span-3">
-             <div className="p-4 bg-gray-50 border border-gray-100 rounded-[12px] flex items-start gap-3">
-                <div className="w-5 h-5 bg-white rounded-full flex items-center justify-center text-gray-400 shrink-0 shadow-sm border border-gray-50">
+             <div className={`p-4 border rounded-[12px] flex items-start gap-3 ${isNote ? 'bg-gray-50 border-gray-100' : 'bg-orange-50/40 border-orange-100'}`}>
+                <div className={`w-5 h-5 bg-white rounded-full flex items-center justify-center shrink-0 shadow-sm border border-gray-50 ${isNote ? 'text-gray-400' : 'text-orange-500'}`}>
                    <Info size={12} />
                 </div>
-                <p className="text-[12px] font-bold text-gray-500 leading-relaxed italic">
+                <p className={`leading-relaxed ${isNote ? 'text-[12px] font-bold text-gray-500 italic' : 'text-[13px] font-black text-gray-800'}`}>
                    {field.label}
                 </p>
              </div>
           </div>
         );
+      }
 
       default:
         return null;

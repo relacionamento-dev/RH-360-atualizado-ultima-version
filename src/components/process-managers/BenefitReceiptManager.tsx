@@ -10,6 +10,10 @@ import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { Select } from '../ui/Select';
 
+// O protocolo é encerrado pela assinatura do colaborador ('Recebimento
+// Confirmado'); registros antigos ainda usam o status genérico de conclusão.
+const isSigned = (status?: string) => status === 'Recebimento Confirmado' || status === 'Concluída';
+
 export default function BenefitReceiptManager({ process, onNewRequest }: { process: RHProcess, onNewRequest: () => void }) {
   const { config, updateConfig } = useAppConfig();
   const [searchTerm, setSearchTerm] = useState('');
@@ -109,14 +113,14 @@ export default function BenefitReceiptManager({ process, onNewRequest }: { proce
             { header: 'VALOR VR', accessor: 'id', render: () => <span className="text-[13px] font-bold text-gray-700">R$ 840,00</span> },
             { header: 'VALOR VA', accessor: 'id', render: () => <span className="text-[13px] font-bold text-gray-700">R$ 450,00</span> },
             { header: 'CONFIRMAÇÃO', accessor: 'status', render: (val) => {
-              if (val === 'Concluída') return <Badge variant="green">CONFIRMADO</Badge>;
+              if (isSigned(val)) return <Badge variant="green">CONFIRMADO</Badge>;
               if (val === 'Devolvida') return <Badge variant="red">DIVERGENTE</Badge>;
               return <Badge variant="amber">PENDENTE</Badge>;
             }},
             { header: 'DOCUMENTO', accessor: 'id', render: (id, row) => (
               <div className="flex items-center gap-2">
-                {row.status === 'Concluída' ? <FileSignature size={16} className="text-green-500" /> : <Clock size={16} className="text-gray-300" />}
-                <span className="text-[11px] font-bold text-gray-400 uppercase">{row.status === 'Concluída' ? 'Assinado' : 'Aguardando'}</span>
+                {isSigned(row.status) ? <FileSignature size={16} className="text-green-500" /> : <Clock size={16} className="text-gray-300" />}
+                <span className="text-[11px] font-bold text-gray-400 uppercase">{isSigned(row.status) ? 'Assinado' : 'Aguardando'}</span>
               </div>
             )},
             { header: '', accessor: 'id', render: (id) => (

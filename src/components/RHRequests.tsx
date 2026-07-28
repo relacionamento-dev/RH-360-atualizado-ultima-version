@@ -19,6 +19,7 @@ import RHRequestForm from './RHRequestForm';
 import { Modal } from './ui/Misc';
 import { Select } from './ui/Select';
 import { getStatusVariant, isPendingStatus } from '../utils/requestStatus';
+import { isSuperAdmin } from '../utils/permissions';
 import { useAppConfig } from '../contexts/AppConfigContext';
 import { useToast } from './ToastContext';
 import { FormRenderer } from './FormRenderer';
@@ -258,9 +259,13 @@ function ConsultationPanel({ type, onOpenDetail, initialProcessId }: { type: 'mi
       return req.requesterId === config.usuarioAtual.id || req.solicitante === config.usuarioAtual.name;
     }
     if (type === 'approvals') {
+      // Administrador Geral tem escopo global: aprova qualquer solicitação,
+      // independente de a tarefa estar atribuída a ele.
+      if (isSuperAdmin(config.usuarioAtual)) return true;
+
       // Find pending tasks linked to this request
       const pendingTasksForRequest = config.tarefas.filter(t => t.relatedRequestId === req.id && t.status === 'Pendente');
-      
+
       // If no tasks found, fallback to old logic for compatibility with any un-tasked legacy items
       if (pendingTasksForRequest.length === 0) {
         const isUserAdminDemo = config.usuarioAtual.name === 'Administrador Demo' || config.usuarioAtual.id === 'ADMIN-001';

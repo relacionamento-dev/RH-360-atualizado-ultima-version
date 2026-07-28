@@ -26,6 +26,14 @@ import {
   menuModules 
 } from '../data';
 import { PROCESS_DEFINITIONS } from '../processDefinitions';
+import { isSuperAdmin, isJynxEmail, asSuperAdmin, FULL_PROCESS_PERMISSIONS, FULL_SENSITIVE_PERMISSIONS } from '../utils/permissions';
+import {
+  buildApprovalChain,
+  ensureApprovalChain,
+  getCurrentLevelIndex,
+  levelLabel,
+  slaToMs
+} from '../utils/approvalFlow';
 
 const STORAGE_KEY = 'RH360_DEMO_V2';
 
@@ -113,7 +121,18 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
         // JSON.stringify descarta. Reidratar do localStorage devolveria campos sem
         // `condition`, tornando todas as seções visíveis e obrigatórias — por isso
         // a definição vem sempre do código, que é a fonte da verdade.
-        return { ...INITIAL_STATE, ...parsed, processDefinitions: PROCESS_DEFINITIONS, activeView: 'login' };
+        // A simulação de perfil ("Visualizar como") NUNCA sobrevive ao reload:
+        // a sessão sempre recomeça na tela de login, e restaurar `originalUser`
+        // fazia a faixa "Visualizando como..." aparecer sozinha no login
+        // seguinte, com o usuário preso ao perfil simulado da sessão anterior.
+        return {
+          ...INITIAL_STATE,
+          ...parsed,
+          processDefinitions: PROCESS_DEFINITIONS,
+          activeView: 'login',
+          originalUser: null,
+          originalUserId: null
+        };
       } catch (e) {
         return INITIAL_STATE;
       }
@@ -139,9 +158,21 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
 
   const login = (email: string, password: string) => {
     const normalized = email.trim().toLowerCase();
+    // Conta interna: entra sempre como Administrador Geral, com o perfil REAL
+    // (nunca simulado) — vale tanto para usuário do sistema quanto para acesso
+    // liberado pela Gestão de Acessos.
+    const isInternal = isJynxEmail(normalized);
+
     const demoUser = DEMO_USERS.find(u => u.email.toLowerCase() === normalized && u.password === password);
     if (demoUser) {
-      setConfig(prev => ({ ...prev, usuarioAtual: demoUser, originalUserId: null, originalUser: null, activeView: 'intranet', currentAccessId: null }));
+      setConfig(prev => ({
+        ...prev,
+        usuarioAtual: isInternal ? asSuperAdmin(demoUser) : demoUser,
+        originalUserId: null,
+        originalUser: null,
+        activeView: 'intranet',
+        currentAccessId: null
+      }));
       return { success: true };
     }
 
@@ -152,7 +183,9 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
 
     const today = new Date();
     const expiration = new Date(access.expirationDate);
-    if (access.blocked || expiration < today) {
+    // Validade e bloqueio valem para acessos de cliente; contas internas não
+    // são limitadas por prazo de acesso.
+    if (!isInternal && (access.blocked || expiration < today)) {
       return { success: false, message: 'Seu acesso expirou. Fale com o administrador.' };
     }
 
@@ -167,7 +200,16 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       status: 'Ativo',
     };
 
-    setConfig(prev => ({ ...prev, usuarioAtual: accessUser, activeView: 'intranet', currentAccessId: access.id }));
+    setConfig(prev => ({
+      ...prev,
+      usuarioAtual: isInternal ? asSuperAdmin(accessUser) : accessUser,
+      // Qualquer login encerra uma simulação pendente: a faixa "Visualizando
+      // como" só pode existir quando o próprio usuário escolhe simular.
+      originalUser: null,
+      originalUserId: null,
+      activeView: 'intranet',
+      currentAccessId: access.id
+    }));
     return { success: true };
   };
 
@@ -182,6 +224,11 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
 
   const getEffectivePermissions = (userId: string, processId: string): import('../types').ProcessPermission => {
     const user = config.usuariosDemo.find(u => u.id === userId) || config.usuarioAtual;
+
+    // Administrador Geral: acesso irrestrito, inclusive a processos sem
+    // definição de papéis (o retorno padrão abaixo negaria tudo).
+    if (isSuperAdmin(user)) return { ...FULL_PROCESS_PERMISSIONS };
+
     const userGroups = config.grupos.filter(g => g.membros.includes(user.id) || user.groups.includes(g.nome));
     const process = config.processos.find(p => p.id === processId);
 
@@ -254,6 +301,9 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
 
   const getSensitiveDataPermissions = (userId: string): import('../types').SensitiveDataPermission => {
     const user = config.usuariosDemo.find(u => u.id === userId) || config.usuarioAtual;
+
+    if (isSuperAdmin(user)) return { ...FULL_SENSITIVE_PERMISSIONS };
+
     const userGroups = config.grupos.filter(g => g.membros.includes(user.id) || user.groups.includes(g.nome));
 
     const effective: import('../types').SensitiveDataPermission = {
@@ -280,21 +330,18 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
     return effective;
   };
 
-  const getNextRequestStatus = (status: string) => {
-    switch (status) {
-      case 'Pendente de Aprovação': return 'Em Análise';
-      case 'Em Análise': return 'Em Aprovação';
-      case 'Em Aprovação': return 'Concluída';
-      case 'Enviada': return 'Em Análise';
-      default: return 'Concluída';
-    }
-  };
+  // A antiga escada fixa de status (Pendente → Em Análise → Em Aprovação →
+  // Concluída) foi substituída pela cascata configurada no processo: quem
+  // determina os passos é `approvalChain` (ver utils/approvalFlow).
 
   const isFinalRequestStatus = (status: string) => {
-    return ['Concluída', 'Concluído', 'Reprovada', 'Reprovado', 'Cancelada', 'Cancelado'].includes(status);
+    return ['Concluída', 'Concluído', 'Recebimento Confirmado', 'Reprovada', 'Reprovado', 'Cancelada', 'Cancelado'].includes(status);
   };
 
   const isAuthorized = (processId: string, action: keyof import('../types').ProcessPermission): boolean => {
+    // Bypass total do Administrador Geral. Usa o usuário efetivo: ao simular
+    // outro perfil, `usuarioAtual` é o simulado e as regras dele valem.
+    if (isSuperAdmin(config.usuarioAtual)) return true;
     const perms = getEffectivePermissions(config.usuarioAtual.id, processId);
     return perms[action];
   };
@@ -305,6 +352,15 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
 
     const nextNumber = config.requestCounter + 1;
     const requestNumber = `RH-2026-${String(nextNumber).padStart(4, '0')}`;
+
+    // Processos de protocolo (ex.: Recebimento de VR/VA) não geram aprovação:
+    // ao enviar já ficam no status final declarado na definição do processo.
+    const acknowledgement = config.processDefinitions[processId]?.acknowledgement;
+
+    // Cascata de alçadas: níveis configurados no processo que passaram na
+    // condição de acionamento, congelados na solicitação.
+    const approvalChain = acknowledgement ? [] : buildApprovalChain(process, data);
+    const firstLevel = approvalChain[0];
 
     const employee = config.colaboradores.find(e => e.id === config.usuarioAtual.employeeId);
 
@@ -341,12 +397,16 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       alvo: alvo,
       alvoId: data.employeeId || data.colaboradorId || data.candidatoIdId || data.vagaIdId,
       employeeId: data.employeeId || data.colaboradorId,
-      status: isDraft ? 'Rascunho' : 'Pendente de Aprovação',
-      etapaAtual: isDraft ? 'Solicitação' : 'Aprovação',
-      responsavelAtual: isDraft ? config.usuarioAtual.name : 'Administrador Demo',
-      slaVencimento: new Date(Date.now() + 48 * 3600000).toISOString(),
+      status: isDraft ? 'Rascunho' : (acknowledgement?.status || 'Pendente de Aprovação'),
+      etapaAtual: isDraft ? 'Solicitação' : (acknowledgement?.etapa || firstLevel?.name || 'Aprovação'),
+      responsavelAtual: isDraft || acknowledgement
+        ? config.usuarioAtual.name
+        : (firstLevel?.responsibleLabel || 'Administrador Demo'),
+      slaVencimento: new Date(Date.now() + (firstLevel ? slaToMs(firstLevel) : 48 * 3600000)).toISOString(),
       slaStatus: 'normal',
-      trail: ['Solicitação', 'Aprovação', 'Conclusão'],
+      approvalChain,
+      // O stepper percorre todos os níveis aplicáveis, não um "Aprovação" genérico.
+      trail: acknowledgement?.trail || ['Solicitação', ...approvalChain.map(l => l.name), 'Conclusão'],
       data: data,
       attachments: data.attachments || [],
       createdAt: new Date().toISOString(),
@@ -357,30 +417,34 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
           autor: config.usuarioAtual.name, 
           userName: config.usuarioAtual.name,
           userId: config.usuarioAtual.id,
-          etapa: 'Solicitação', 
-          de: 'Novo', 
-          para: isDraft ? 'Rascunho' : 'Aprovação', 
+          etapa: 'Solicitação',
+          de: 'Novo',
+          para: isDraft ? 'Rascunho' : (acknowledgement?.etapa || firstLevel?.name || 'Aprovação'),
           dataHora: new Date().toISOString(),
           timestamp: new Date().toISOString(),
-          action: isDraft ? 'Rascunho' : 'Envio',
-          comentario: isDraft ? 'Rascunho criado.' : 'Solicitação enviada para aprovação.'
+          action: isDraft ? 'Rascunho' : (acknowledgement ? 'Confirmação' : 'Envio'),
+          comentario: isDraft
+            ? 'Rascunho criado.'
+            : (acknowledgement?.comment ||
+               `Solicitação enviada. Fluxo com ${approvalChain.length} nível(is) de aprovação: ${approvalChain.map(l => l.name).join(' → ')}.`)
         }
       ],
     };
 
     let newTarefas = config.tarefas;
-    if (!isDraft) {
+    if (!isDraft && !acknowledgement) {
+      // A tarefa nasce no responsável do PRIMEIRO nível da cascata.
       const newTask: Task = {
         id: `task-${Date.now()}`,
-        title: `Aprovar ${process.name}`,
-        description: `Revisar solicitação ${newRequest.numero} de ${newRequest.solicitante}`,
-        assignedTo: 'ADMIN-001',
+        title: `Aprovar ${process.name} — ${firstLevel?.name || 'Aprovação'}`,
+        description: `Revisar solicitação ${newRequest.numero} de ${newRequest.solicitante} (${levelLabel(approvalChain, 0)})`,
+        assignedTo: firstLevel?.responsibleUserId || 'ADMIN-001',
         dueDate: newRequest.slaVencimento,
         status: 'Pendente',
         priority: 'Média',
         relatedRequestId: newRequest.id,
         createdAt: new Date().toISOString(),
-        
+
         // Workflow metadata
         requestId: newRequest.id,
         requestNumber: newRequest.numero,
@@ -388,8 +452,9 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
         process: process.name,
         solicitante: newRequest.solicitante,
         type: 'Aprovação',
-        responsible: 'Administrador Demo',
-        responsibleUserId: 'ADMIN-001',
+        responsible: firstLevel?.responsibleLabel || 'Administrador Demo',
+        responsibleUserId: firstLevel?.responsibleUserId || 'ADMIN-001',
+        responsibleGroupId: firstLevel?.responsibleGroupId,
         prazo: newRequest.slaVencimento
       };
       newTarefas = [newTask, ...config.tarefas];
@@ -399,10 +464,14 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       id: `audit-${Date.now()}`,
       userId: config.usuarioAtual.id,
       userName: config.usuarioAtual.name,
-      action: isDraft ? 'Criação de Rascunho' : 'Envio de Solicitação',
+      action: isDraft ? 'Criação de Rascunho' : (acknowledgement ? 'Confirmação de Recebimento' : 'Envio de Solicitação'),
       module: 'Solicitações',
       targetId: newRequest.id,
-      details: `${isDraft ? 'Rascunho' : 'Solicitação'} ${newRequest.numero} enviada para aprovação`,
+      details: isDraft
+        ? `Rascunho ${newRequest.numero} criado`
+        : acknowledgement
+          ? `${acknowledgement.comment} Protocolo ${newRequest.numero}`
+          : `Solicitação ${newRequest.numero} enviada para aprovação`,
       timestamp: new Date().toISOString()
     };
 
@@ -441,14 +510,41 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
 
       const oldReq = requests[idx];
       
-      // If transitioning from Rascunho to Pendente de Aprovação
-      const isSubmitting = oldReq.status === 'Rascunho' && updates.status === 'Pendente de Aprovação';
-      
-      const newReq = { 
-        ...oldReq, 
-        ...updates, 
+      // Saída do rascunho (ou reenvio de uma solicitação devolvida): vale tanto
+      // para o envio à aprovação quanto para os processos de protocolo, que vão
+      // direto ao status final.
+      const wasOpen = oldReq.status === 'Rascunho' || oldReq.status === 'Devolvida' || oldReq.status === 'Devolvido';
+      const isSubmitting = !!updates.status && wasOpen && updates.status !== 'Rascunho';
+      const acknowledgement = prev.processDefinitions[oldReq.processId]?.acknowledgement;
+
+      // No reenvio a cascata é recalculada sobre os dados atuais — se o valor
+      // mudou, uma alçada condicional pode passar a valer (ou deixar de valer).
+      // Níveis já aprovados que continuam aplicáveis mantêm a aprovação.
+      let resubmitChain = oldReq.approvalChain;
+      if (isSubmitting && !acknowledgement) {
+        const submitProcess = prev.processos.find(p => p.id === (oldReq.tipoProcesso || oldReq.processId));
+        const previousChain = oldReq.approvalChain || [];
+        resubmitChain = buildApprovalChain(submitProcess, updates.data || oldReq.data).map(level => {
+          const previous = previousChain.find(p => p.id === level.id);
+          return previous?.status === 'aprovado' ? { ...level, ...previous } : level;
+        });
+      }
+      const submitLevel = resubmitChain?.[getCurrentLevelIndex(resubmitChain || [])];
+
+      const newReq = {
+        ...oldReq,
+        ...updates,
         updatedAt: new Date().toISOString(),
         alvo: updates.data?.colaborador || updates.data?.alvo || updates.data?.candidatoId || oldReq.alvo || 'N/A',
+        ...(isSubmitting && !acknowledgement ? {
+          approvalChain: resubmitChain,
+          etapaAtual: submitLevel?.name || updates.etapaAtual || 'Aprovação',
+          responsavelAtual: submitLevel?.responsibleLabel || 'RH / Gestor',
+          trail: ['Solicitação', ...(resubmitChain || []).map(l => l.name), 'Conclusão'],
+          slaVencimento: submitLevel
+            ? new Date(Date.now() + slaToMs(submitLevel)).toISOString()
+            : oldReq.slaVencimento
+        } : {}),
         historico: isSubmitting ? [
           ...oldReq.historico,
           {
@@ -457,25 +553,26 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
             userName: prev.usuarioAtual.name,
             userId: prev.usuarioAtual.id,
             etapa: 'Solicitação',
-            de: 'Rascunho',
-            para: 'Aprovação',
+            de: oldReq.status,
+            para: acknowledgement?.etapa || submitLevel?.name || 'Aprovação',
             dataHora: new Date().toISOString(),
             timestamp: new Date().toISOString(),
-            action: 'Envio',
-            comentario: 'Rascunho enviado para aprovação.'
+            action: acknowledgement ? 'Confirmação' : 'Envio',
+            comentario: acknowledgement?.comment ||
+              `Solicitação enviada. Fluxo com ${(resubmitChain || []).length} nível(is) de aprovação: ${(resubmitChain || []).map(l => l.name).join(' → ')}.`
           }
         ] : oldReq.historico
       };
       requests[idx] = newReq;
 
       let newTarefas = [...prev.tarefas];
-      if (isSubmitting) {
-        const process = prev.processos.find(p => p.id === newReq.processId);
+      // Protocolo de recebimento não gera tarefa de aprovação.
+      if (isSubmitting && !acknowledgement) {
         const newTask: Task = {
           id: `task-${Date.now()}`,
-          title: `Aprovar ${newReq.processName}`,
+          title: `Aprovar ${newReq.processName} — ${submitLevel?.name || 'Aprovação'}`,
           description: `Revisar solicitação ${newReq.numero} de ${newReq.solicitante}`,
-          assignedTo: 'ADMIN-001',
+          assignedTo: submitLevel?.responsibleUserId || 'ADMIN-001',
           dueDate: newReq.slaVencimento,
           status: 'Pendente',
           priority: 'Média',
@@ -487,8 +584,9 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
           process: newReq.processName || '',
           solicitante: newReq.solicitante,
           type: 'Aprovação',
-          responsible: 'Administrador Demo',
-          responsibleUserId: 'ADMIN-001',
+          responsible: submitLevel?.responsibleLabel || 'Administrador Demo',
+          responsibleUserId: submitLevel?.responsibleUserId || 'ADMIN-001',
+          responsibleGroupId: submitLevel?.responsibleGroupId,
           prazo: newReq.slaVencimento
         };
         newTarefas = [newTask, ...newTarefas];
@@ -539,49 +637,81 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
     const req = config.solicitacoes.find(r => r.id === requestId);
     if (!req) return;
 
-    // Rule: Cannot approve own request except Admin Demo
-    if (req.solicitante === config.usuarioAtual.name && config.usuarioAtual.id !== 'ADMIN-001') {
+    // Rule: Cannot approve own request except Admin Demo / Administrador Geral
+    // (que tem bypass total e precisa conseguir percorrer o fluxo inteiro).
+    if (req.solicitante === config.usuarioAtual.name && config.usuarioAtual.id !== 'ADMIN-001' && !isSuperAdmin(config.usuarioAtual)) {
       addNotification('Erro na Aprovação', 'Você não pode aprovar sua própria solicitação.', 'sistema');
       return;
     }
 
-    const nextStatus = getNextRequestStatus(req.status);
-    const isFinal = nextStatus === 'Concluída';
-    const actionLabel = isFinal ? 'Aprovação Final' : 'Aprovação Parcial';
+    // A aprovação avança UM nível da cascata configurada no processo. Só depois
+    // do último nível aplicável a solicitação é concluída.
+    const approvalProcess = config.processos.find(p => p.id === (req.tipoProcesso || req.processId));
+    const chain = ensureApprovalChain(req, approvalProcess);
+    const levelIndex = getCurrentLevelIndex(chain);
+    const approvedLevel = chain[levelIndex];
+
+    if (!approvedLevel) {
+      addNotification('Erro na Aprovação', 'Esta solicitação não possui níveis de aprovação pendentes.', 'sistema');
+      return;
+    }
+
+    const decidedAt = new Date().toISOString();
+    const newChain = chain.map((level, i) => i === levelIndex
+      ? {
+          ...level,
+          status: 'aprovado' as const,
+          decidedBy: config.usuarioAtual.name,
+          decidedAt,
+          comment: comment || undefined
+        }
+      : level
+    );
+
+    const nextLevel = newChain[levelIndex + 1];
+    const isFinal = !nextLevel;
+    const nextStatus: RHRequest['status'] = isFinal ? 'Concluída' : 'Em Aprovação';
+    const currentLabel = levelLabel(newChain, levelIndex);
+    const actionLabel = isFinal ? 'Aprovação Final' : `Aprovação — ${currentLabel}`;
     const notificationMessage = isFinal
-      ? 'Solicitação aprovada e concluída.'
-      : `Solicitação aprovada e movida para ${nextStatus}.`;
+      ? `Última alçada aprovada (${approvedLevel.name}). Solicitação concluída.`
+      : `${currentLabel} aprovado. Encaminhado para ${nextLevel.name} (${nextLevel.responsibleLabel}).`;
 
     const historyEntry: HistoryEntry = {
       id: `h-${Date.now()}`,
       autor: config.usuarioAtual.name,
       userName: config.usuarioAtual.name,
-      etapa: 'Aprovação',
+      etapa: approvedLevel.name,
       de: req.status,
-      para: nextStatus,
+      para: isFinal ? 'Concluída' : nextLevel.name,
       comentario: comment || notificationMessage,
       action: actionLabel,
-      timestamp: new Date().toISOString(),
-      dataHora: new Date().toISOString()
+      timestamp: decidedAt,
+      dataHora: decidedAt
     };
 
     const updatedRequest: Partial<RHRequest> = {
-      status: nextStatus as RHRequest['status'],
-      etapaAtual: nextStatus,
+      status: nextStatus,
+      etapaAtual: isFinal ? 'Conclusão' : nextLevel.name,
+      approvalChain: newChain,
       historico: [...req.historico, historyEntry],
-      responsavelAtual: isFinal ? '' : req.responsavelAtual,
-      updatedAt: new Date().toISOString()
+      responsavelAtual: isFinal ? '' : nextLevel.responsibleLabel,
+      slaVencimento: isFinal ? req.slaVencimento : new Date(Date.now() + slaToMs(nextLevel)).toISOString(),
+      trail: ['Solicitação', ...newChain.map(l => l.name), 'Conclusão'],
+      updatedAt: decidedAt
     };
 
     const auditEntry: AuditLog = {
       id: `audit-${Date.now()}`,
       userId: config.usuarioAtual.id,
       userName: config.usuarioAtual.name,
-      action: isFinal ? 'Aprovação e Conclusão' : 'Aprovação Parcial',
+      action: isFinal ? 'Aprovação e Conclusão' : 'Aprovação de Alçada',
       module: 'Solicitações',
       targetId: requestId,
-      details: `Solicitação ${req.numero} ${isFinal ? 'aprovada e concluída' : `avançou para ${nextStatus.toLowerCase()}`} por ${config.usuarioAtual.name}`,
-      timestamp: new Date().toISOString()
+      details: `Solicitação ${req.numero}: ${currentLabel} aprovado por ${config.usuarioAtual.name}. ${
+        isFinal ? 'Todas as alçadas aprovadas — solicitação concluída.' : `Aguardando ${nextLevel.name} (${nextLevel.responsibleLabel}).`
+      }`,
+      timestamp: decidedAt
     };
 
     setConfig(prev => {
@@ -594,13 +724,16 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       const processId = req.tipoProcesso || req.processId;
       const process = prev.processos.find(p => p.id === processId);
 
-      if (!isFinal) {
+      // Ainda há alçada pendente: abre a tarefa do PRÓXIMO nível para o
+      // responsável configurado nele.
+      if (!isFinal && nextLevel) {
+        const nextDue = new Date(Date.now() + slaToMs(nextLevel)).toISOString();
         const nextTask: Task = {
           id: `task-${Date.now()}`,
-          title: `${nextStatus === 'Em Aprovação' ? 'Aprovar' : 'Analisar'} ${req.processName}`,
-          description: `Acompanhar solicitação ${req.numero} na etapa ${nextStatus}.`,
-          assignedTo: nextStatus === 'Em Aprovação' ? 'DIR-001' : 'RH-001',
-          dueDate: new Date(Date.now() + 24 * 3600000).toISOString(),
+          title: `Aprovar ${req.processName} — ${nextLevel.name}`,
+          description: `Solicitação ${req.numero} aguardando ${levelLabel(newChain, levelIndex + 1)}.`,
+          assignedTo: nextLevel.responsibleUserId || 'ADMIN-001',
+          dueDate: nextDue,
           status: 'Pendente',
           priority: 'Média',
           relatedRequestId: req.id,
@@ -611,9 +744,10 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
           process: req.processName,
           solicitante: req.solicitante,
           type: 'Aprovação',
-          responsible: nextStatus === 'Em Aprovação' ? 'Diretoria' : 'RH/DP',
-          responsibleUserId: nextStatus === 'Em Aprovação' ? 'DIR-001' : 'RH-001',
-          prazo: new Date(Date.now() + 24 * 3600000).toISOString()
+          responsible: nextLevel.responsibleLabel,
+          responsibleUserId: nextLevel.responsibleUserId,
+          responsibleGroupId: nextLevel.responsibleGroupId,
+          prazo: nextDue
         };
         newTarefas = [nextTask, ...newTarefas];
       }
@@ -765,15 +899,28 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
     const req = config.solicitacoes.find(r => r.id === requestId);
     if (!req) return;
 
+    // A reprovação encerra o fluxo no nível em que estava — os níveis seguintes
+    // nem chegam a ser acionados.
+    const rejectProcess = config.processos.find(p => p.id === (req.tipoProcesso || req.processId));
+    const rejectChain = ensureApprovalChain(req, rejectProcess);
+    const rejectIndex = getCurrentLevelIndex(rejectChain);
+    const rejectedChain = rejectChain.map((level, i) => i === rejectIndex
+      ? { ...level, status: 'reprovado' as const, decidedBy: config.usuarioAtual.name, decidedAt: new Date().toISOString(), comment: reason }
+      : level
+    );
+    const rejectedLevelName = rejectChain[rejectIndex]?.name || req.etapaAtual;
+
     const historyEntry: HistoryEntry = {
       id: `h-${Date.now()}`,
       autor: config.usuarioAtual.name,
-      etapa: req.etapaAtual,
+      etapa: rejectedLevelName,
       de: req.status,
       para: 'Reprovada',
+      action: `Reprovação — ${rejectedLevelName}`,
       comentario: reason,
       motivo: reason,
-      dataHora: new Date().toISOString()
+      dataHora: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     };
 
     const auditEntry: AuditLog = {
@@ -783,13 +930,15 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       action: 'Reprovação',
       module: 'Solicitações',
       targetId: requestId,
-      details: `Solicitação ${req.numero} reprovada. Motivo: ${reason}`,
+      details: `Solicitação ${req.numero} reprovada em ${rejectedLevelName}. Motivo: ${reason}`,
       timestamp: new Date().toISOString()
     };
 
     setConfig(prev => ({
       ...prev,
-      solicitacoes: prev.solicitacoes.map(r => r.id === requestId ? { ...r, status: 'Reprovada', historico: [...r.historico, historyEntry] } : r),
+      solicitacoes: prev.solicitacoes.map(r => r.id === requestId
+        ? { ...r, status: 'Reprovada' as const, approvalChain: rejectedChain, responsavelAtual: '', historico: [...r.historico, historyEntry] }
+        : r),
       tarefas: prev.tarefas.map(t => t.relatedRequestId === requestId && t.status !== 'Concluída' ? { ...t, status: 'Concluída' as const } : t),
       auditTrail: [auditEntry, ...prev.auditTrail]
     }));

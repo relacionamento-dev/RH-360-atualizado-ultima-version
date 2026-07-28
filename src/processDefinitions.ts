@@ -162,20 +162,34 @@ export const PROCESS_DEFINITIONS: Record<string, ProcessDefinition> = {
       }
     ]
   },
+  // Protocolo de recebimento: quem credita é o RH. O colaborador não informa
+  // valor nem status — apenas confere os dados do crédito (origin 'F', somente
+  // leitura) e assina o aceite. Por isso o processo não tem aprovação: ao
+  // assinar, já nasce como "Recebimento Confirmado".
   '5': {
     processId: '5',
     targetMode: TargetMode.CURRENT_USER,
+    acknowledgement: {
+      status: 'Recebimento Confirmado',
+      etapa: 'Recebimento Confirmado',
+      trail: ['Crédito Lançado', 'Confirmação do Colaborador', 'Recebimento Registrado'],
+      comment: 'Recebimento confirmado e assinado pelo colaborador.'
+    },
     steps: [
       {
-        name: 'Conferência de VR/VA',
+        name: 'Confirmação de Recebimento de VR/VA',
         fields: [
-          { name: 'competencia', label: 'Mês de Referência', type: 'select', origin: 'C', options: ['Janeiro/2026', 'Fevereiro/2026', 'Março/2026'], required: true, section: 'Dados do Benefício' },
-          { name: 'beneficio', label: 'Tipo de Cartão/Benefício', type: 'select', origin: 'C', options: ['Vale Refeição', 'Vale Alimentação'], required: true, section: 'Dados do Benefício' },
-          { name: 'valorQuantidade', label: 'Valor Creditado (R$)', type: 'currency', origin: 'C', required: true, section: 'Dados do Benefício' },
-          { name: 'dataRecebimento', label: 'Data do Crédito', type: 'date', origin: 'C', required: true, section: 'Dados do Benefício' },
-          { name: 'situacao', label: 'Status do Recebimento', type: 'select', origin: 'C', options: ['Confirmado', 'Divergente - Valor Menor', 'Divergente - Não Recebi'], required: true, section: 'Validação' },
-          { name: 'observacao', label: 'Justificativa / Comentário', type: 'textarea', origin: 'C', gridCols: 3, section: 'Validação' },
-          { name: 'anexo', label: 'Comprovante de Saldo (Opcional)', type: 'file', origin: 'C', section: 'Validação' }
+          { name: 'competencia', label: 'Mês de Referência', type: 'text', origin: 'F', section: 'Dados do Benefício' },
+          { name: 'beneficio', label: 'Tipo de Benefício', type: 'text', origin: 'F', section: 'Dados do Benefício' },
+          { name: 'valorCreditado', label: 'Valor Creditado (R$)', type: 'currency', origin: 'F', section: 'Dados do Benefício' },
+          { name: 'dataCredito', label: 'Data do Crédito', type: 'date', origin: 'F', section: 'Dados do Benefício' },
+          { name: 'nota_credito', label: 'Informação: valores lançados pelo RH. Em caso de divergência, confirme apenas se realmente recebeu e descreva o ocorrido no campo de observação.', type: 'info', section: 'Dados do Benefício' },
+
+          { name: 'declaracao', label: 'Confirmo que recebi o benefício acima referente ao mês indicado.', type: 'info', highlight: true, section: 'Confirmação de Recebimento' },
+          { name: 'confirmacaoRecebimento', label: 'Confirmo o recebimento do benefício nas condições acima.', type: 'checkbox', origin: 'C', required: true, section: 'Confirmação de Recebimento' },
+          { name: 'assinatura', label: 'Assinatura do Colaborador', type: 'signature', origin: 'C', required: true, section: 'Confirmação de Recebimento' },
+          { name: 'observacao', label: 'Observação (opcional)', type: 'textarea', origin: 'C', gridCols: 3, placeholder: 'Use este campo caso queira relatar alguma divergência no crédito.', section: 'Confirmação de Recebimento' },
+          { name: 'anexo', label: 'Comprovante de Saldo (Opcional)', type: 'file', origin: 'C', section: 'Confirmação de Recebimento' }
         ]
       }
     ]

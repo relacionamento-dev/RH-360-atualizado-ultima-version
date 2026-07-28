@@ -17,7 +17,9 @@ export const isPendingStatus = (status?: string): boolean =>
   !!status && (PENDING_STATUSES as readonly string[]).includes(status);
 
 export const isConcludedStatus = (status?: string): boolean =>
-  status === 'Concluída' || status === 'Concluído' || status === 'Aprovada';
+  status === 'Concluída' || status === 'Concluído' || status === 'Aprovada' ||
+  // Protocolo de recebimento: assinou, encerrou.
+  status === 'Recebimento Confirmado';
 
 export const isReturnedStatus = (status?: string): boolean =>
   status === 'Devolvida' || status === 'Devolvido';
@@ -42,6 +44,7 @@ export function getStatusVariant(status?: string): BadgeVariant {
     case 'Aprovada':
     case 'Concluído':
     case 'Concluída':
+    case 'Recebimento Confirmado':
     case 'Ativo':
       return 'green';
     case 'Reprovada':

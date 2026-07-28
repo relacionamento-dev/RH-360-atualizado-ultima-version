@@ -10,6 +10,7 @@ import { PageHeader } from './ui/FormAndHeader';
 import { Avatar, Modal } from './ui/Misc';
 import { Select } from './ui/Select';
 import { useAppConfig } from '../contexts/AppConfigContext';
+import { isSuperAdmin } from '../utils/permissions';
 
 interface EmployeesModuleProps {
   onNavigate: (view: string, employeeId?: string) => void;
@@ -63,7 +64,8 @@ export default function EmployeesModule({ onNavigate }: EmployeesModuleProps) {
     });
   }, [employees, searchTerm, filters]);
 
-  const canCreate = config.usuarioAtual.role === 'Admin' || config.usuarioAtual.role === 'RH';
+  const canCreate = isSuperAdmin(config.usuarioAtual) ||
+    config.usuarioAtual.role === 'Admin' || config.usuarioAtual.role === 'RH';
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">

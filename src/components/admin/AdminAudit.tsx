@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
-import { 
-  Shield, Search, Filter, Download, 
-  Calendar, User, Globe, Target, 
-  Settings, Database, Info, MoreHorizontal,
-  ChevronRight, ArrowRight
+import {
+  Shield, Filter, Download,
+  Calendar, User, Globe, Target,
+  Settings, Database, Info, MoreHorizontal
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card, Table } from '../ui/CardAndTable';
-import { Badge } from '../ui/Badge';
 import { useAppConfig } from '../../contexts/AppConfigContext';
+import { SectionHeader, AdminSearch } from './AdminUI';
 
 export default function AdminAudit() {
   const { config } = useAppConfig();
@@ -27,39 +26,29 @@ export default function AdminAudit() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input 
-            type="text" 
-            placeholder="Buscar por usuário, ação ou módulo..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-100 rounded-[14px] text-[13px] focus:ring-2 focus:ring-orange-500/20 outline-none shadow-sm transition-all"
-          />
-        </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" leftIcon={<Calendar size={14} />}>Últimos 30 dias</Button>
-          <Button variant="outline" size="sm" leftIcon={<Filter size={14} />}>Filtros</Button>
-          <Button size="sm" leftIcon={<Download size={14} />}>Exportar Logs</Button>
-        </div>
-      </div>
+      <SectionHeader
+        title="Registro de atividades"
+        description="Tudo o que foi alterado na plataforma, por quem e quando. O registro não pode ser editado."
+        actions={
+          <>
+            <Button variant="outline" size="sm" leftIcon={<Calendar size={14} />}>Últimos 30 dias</Button>
+            <Button variant="outline" size="sm" leftIcon={<Filter size={14} />}>Filtros</Button>
+            <Button size="sm" leftIcon={<Download size={14} />}>Exportar</Button>
+          </>
+        }
+      />
 
-      <Card className="overflow-hidden border-none shadow-xl">
-        <div className="bg-gray-50/50 p-4 border-b border-gray-100 flex items-center justify-between">
-           <div className="flex items-center gap-2">
-             <div className="p-2 bg-white rounded-lg border border-gray-100 shadow-sm text-emerald-600">
-                <Shield size={16} />
-             </div>
-             <h3 className="font-black text-gray-900 tracking-tight uppercase text-[11px] tracking-widest ml-1">Trilha de Auditoria Global</h3>
-           </div>
-           <Badge variant="blue" size="sm">Imutável</Badge>
-        </div>
-        
-        <Table 
+      <AdminSearch
+        value={searchTerm}
+        onChange={setSearchTerm}
+        placeholder="Buscar por pessoa, ação ou área..."
+      />
+
+      <Card padding="none">
+        <Table
           columns={[
-            { header: 'DATA/HORA', accessor: 'timestamp', render: (val) => <span className="text-[12px] font-medium text-gray-500 whitespace-nowrap">{new Date(val).toLocaleString()}</span> },
-            { header: 'USUÁRIO', accessor: 'userName', render: (val) => (
+            { header: 'Quando', accessor: 'timestamp', render: (val) => <span className="text-[12px] font-medium text-gray-500 whitespace-nowrap">{new Date(val).toLocaleString('pt-BR')}</span> },
+            { header: 'Quem fez', accessor: 'userName', render: (val) => (
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center">
                   <User size={12} className="text-gray-400" />
@@ -67,17 +56,17 @@ export default function AdminAudit() {
                 <span className="font-bold text-[13px] text-gray-900">{val}</span>
               </div>
             )},
-            { header: 'MÓDULO', accessor: 'module', render: (val) => (
-              <div className="flex items-center gap-1.5 text-[11px] font-black text-gray-400 uppercase tracking-widest">
+            { header: 'Área', accessor: 'module', render: (val) => (
+              <div className="flex items-center gap-1.5 text-[12px] font-medium text-gray-500">
                 {getModuleIcon(val)}
                 <span>{val}</span>
               </div>
             )},
-            { header: 'AÇÃO', accessor: 'action', render: (val) => <span className="text-[13px] font-bold text-gray-700">{val}</span> },
-            { header: 'ORIGEM', accessor: 'ip', render: (val) => <Badge variant="gray" size="sm">{val || '192.168.1.1'}</Badge> },
+            { header: 'O que aconteceu', accessor: 'action', render: (val) => <span className="text-[13px] font-bold text-gray-700">{val}</span> },
+            { header: 'Origem', accessor: 'ip', render: (val) => <span className="text-[12px] font-medium text-gray-400 tabular-nums">{val || '192.168.1.1'}</span> },
             { header: '', accessor: 'id', render: () => (
               <div className="flex justify-end">
-                <Button variant="ghost" size="icon"><MoreHorizontal size={16} /></Button>
+                <Button variant="ghost" size="icon" aria-label="Mais opções"><MoreHorizontal size={16} /></Button>
               </div>
             )}
           ]}
@@ -89,46 +78,37 @@ export default function AdminAudit() {
         />
 
         {config.auditTrail.length === 0 && (
-          <div className="py-20 text-center bg-white">
-            <Shield size={48} className="mx-auto text-gray-100 mb-4" />
-            <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Nenhum log de auditoria encontrado</p>
+          <div className="py-16 text-center bg-white">
+            <p className="text-[13px] font-bold text-gray-500">Nenhuma atividade registrada ainda</p>
+            <p className="text-[12px] text-gray-400 font-medium mt-1">
+              As alterações feitas na plataforma aparecem aqui automaticamente.
+            </p>
           </div>
         )}
       </Card>
-      
-      <div className="bg-gray-900 p-8 rounded-[32px] text-white relative overflow-hidden group shadow-2xl">
-         <div className="absolute top-0 right-0 p-12 opacity-5">
-            <Shield size={160} />
+
+      {/* Fatos de conformidade em uma faixa discreta — antes era um bloco preto
+          de 32px de raio que dominava a tela sem acrescentar função. */}
+      <div className="rounded-[12px] border border-gray-100 px-5 py-4 space-y-4">
+         <div className="flex items-start gap-3">
+            <Shield size={15} className="text-gray-400 shrink-0 mt-0.5" />
+            <p className="text-[13px] text-gray-600 font-medium leading-relaxed">
+              Alterações em configurações, permissões e processos ficam registradas de forma permanente, para conformidade com a LGPD e auditorias internas.
+            </p>
          </div>
-         <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-12">
-            <div className="space-y-4">
-               <h3 className="text-3xl font-black tracking-tight">Compliance & Segurança</h3>
-               <p className="text-gray-400 text-sm leading-relaxed max-w-md">
-                 Todas as alterações em configurações críticas, permissões e processos são registradas em log imutável para conformidade com LGPD e auditorias internas.
-               </p>
-            </div>
-            <div className="grid grid-cols-2 gap-6">
-               <div className="space-y-2">
-                  <p className="text-gray-500 font-black text-[10px] uppercase tracking-widest">Retenção de Logs</p>
-                  <p className="text-2xl font-black">5 Anos</p>
-               </div>
-               <div className="space-y-2">
-                  <p className="text-gray-500 font-black text-[10px] uppercase tracking-widest">Nível de Log</p>
-                  <p className="text-2xl font-black">Verbose</p>
-               </div>
-               <div className="space-y-2">
-                  <p className="text-gray-500 font-black text-[10px] uppercase tracking-widest">Assinatura Digital</p>
-                  <p className="text-2xl font-black text-emerald-400 flex items-center gap-2">
-                     Ativa <CheckCircle2 size={20} />
-                  </p>
-               </div>
-            </div>
+         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pl-6">
+            {[
+              { label: 'Registros mantidos por', value: '5 anos' },
+              { label: 'Detalhamento', value: 'Completo' },
+              { label: 'Assinatura digital', value: 'Ativa' },
+            ].map(item => (
+              <div key={item.label}>
+                 <p className="label-caps">{item.label}</p>
+                 <p className="text-[14px] font-bold text-gray-900 mt-0.5">{item.value}</p>
+              </div>
+            ))}
          </div>
       </div>
     </div>
   );
-}
-
-function CheckCircle2({ size, className }: { size?: number, className?: string }) {
-  return <Shield size={size} className={className} />; // Fallback since CheckCircle2 import from lucide-react might be used elsewhere
 }

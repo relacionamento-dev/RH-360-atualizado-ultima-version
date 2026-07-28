@@ -316,8 +316,9 @@ export type RequestStatus =
   | 'Devolvida'
   | 'Aprovada' 
   | 'Reprovada' 
-  | 'Concluído' 
-  | 'Concluída' 
+  | 'Concluído'
+  | 'Concluída'
+  | 'Recebimento Confirmado'
   | 'Cancelado'
   | 'Cancelada';
 
@@ -374,6 +375,7 @@ export interface FormField {
   section?: string;
   gridCols?: number;
   maxLength?: number; // textareas: limite + contador "x/max"
+  highlight?: boolean; // campos 'info': declaração em destaque, não nota discreta
   calculate?: (data: any) => any;
   condition?: (data: any) => boolean;
 }
@@ -385,10 +387,21 @@ export interface FormSection {
   fields: FormField[];
 }
 
+// Processos de protocolo (o colaborador apenas confirma/assina algo que o RH já
+// executou) não passam por aprovação: ao enviar, a solicitação já nasce no
+// status final descrito aqui.
+export interface AcknowledgementConfig {
+  status: RequestStatus;
+  etapa: string;
+  trail: string[];
+  comment: string;
+}
+
 export interface ProcessDefinition {
   processId: string;
   targetMode?: TargetMode;
   steps: FormSection[];
+  acknowledgement?: AcknowledgementConfig;
 }
 
 export interface HistoryEntry {
@@ -455,6 +468,32 @@ export interface RHRequest {
   centroCusto?: string;
   slaVencimento?: string;
   trail?: string[];
+  // Cascata de aprovação materializada na abertura: só os níveis configurados no
+  // processo que passaram na condição de acionamento. Cada um precisa aprovar,
+  // na ordem, antes de a solicitação concluir.
+  approvalChain?: RequestApprovalLevel[];
+}
+
+export type ApprovalLevelStatus = 'pendente' | 'aprovado' | 'reprovado';
+
+export interface RequestApprovalLevel {
+  id: string;
+  name: string;
+  order: number;
+  responsibilityType: ApprovalResponsibilityType;
+  responsibleLabel: string;
+  responsibleUserId?: string;
+  responsibleGroupId?: string;
+  sla: number;
+  slaUnit: 'h' | 'd';
+  isMandatory: boolean;
+  status: ApprovalLevelStatus;
+  // Descrição legível da condição que acionou o nível (ex.: "salarioSugerido > 10000"),
+  // exibida na trilha para justificar por que a alçada entrou no fluxo.
+  conditionLabel?: string;
+  decidedBy?: string;
+  decidedAt?: string;
+  comment?: string;
 }
 
 export interface ProcessPermission {

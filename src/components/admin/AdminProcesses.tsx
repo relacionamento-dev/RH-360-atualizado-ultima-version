@@ -10,8 +10,11 @@ import { Button } from '../ui/Button';
 import { Card, Table } from '../ui/CardAndTable';
 import { Badge } from '../ui/Badge';
 import { Modal, Tabs } from '../ui/Misc';
+import { Select } from '../ui/Select';
 import { useAppConfig } from '../../contexts/AppConfigContext';
 import { RHProcess, ApprovalStep, ApprovalResponsibilityType } from '../../types';
+import { PROCESS_DEFINITIONS } from '../../processDefinitions';
+import { RESPONSIBILITY_LABELS, VALUE_FIELD_PATTERN } from '../../utils/approvalFlow';
 
 export default function AdminProcesses() {
   const { config, updateConfig } = useAppConfig();
@@ -65,9 +68,9 @@ export default function AdminProcesses() {
       </div>
 
       {/* Main Panel: Configuration */}
-      <div className="lg:col-span-3 space-y-6">
+      <div className="lg:col-span-3 space-y-8">
         {/* Header */}
-        <div className="bg-white p-6 rounded-[28px] border border-gray-100 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="bg-white p-6 rounded-[16px] border border-gray-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 bg-gray-900 rounded-2xl flex items-center justify-center text-white">
               <Settings2 size={28} />
@@ -88,7 +91,7 @@ export default function AdminProcesses() {
         </div>
 
         {/* Configuration Tabs */}
-        <div className="bg-white p-2 rounded-[18px] border border-gray-100 shadow-sm flex flex-wrap gap-1 overflow-x-auto">
+        <div className="bg-white p-2 rounded-[14px] border border-gray-100 flex flex-wrap gap-1 overflow-x-auto">
           {[
             { id: 'general', label: 'Geral', icon: <Info size={14} /> },
             { id: 'permissions', label: 'Permissões', icon: <Shield size={14} /> },
@@ -205,7 +208,97 @@ function GeneralConfig({ process, update }: { process: RHProcess, update: (u: an
   );
 }
 
+// Input com a mesma altura, raio e tipografia do <Select> padronizado, para os
+// campos livres ficarem alinhados aos dropdowns na mesma grade.
+// Sem largura: quem usa define (w-full na grade, w-20 no SLA) — misturar duas
+// classes de width no mesmo elemento deixa o resultado à mercê da ordem do CSS.
+const FIELD_CLASS = 'bg-white border border-gray-200 rounded-[8px] px-3 py-2 text-[12px] font-bold text-gray-700 outline-none focus:ring-2 focus:ring-orange-500/20 placeholder:text-gray-400 placeholder:font-medium';
+
+// Os rótulos das alçadas vêm do motor de aprovação: a tela de configuração e a
+// trilha da solicitação precisam chamar a mesma coisa pelo mesmo nome.
+const RESPONSIBILITY_ORDER: ApprovalResponsibilityType[] = [
+  'pessoa', 'grupo', 'gestor-direto', 'gestor-setor', 'responsavel-cc', 'rh-filial', 'diretoria', 'presidencia'
+];
+
+const RESPONSIBILITY_OPTIONS = RESPONSIBILITY_ORDER.map(value => ({
+  value,
+  label: RESPONSIBILITY_LABELS[value]
+}));
+
+const SLA_UNIT_OPTIONS = [
+  { value: 'h', label: 'horas' },
+  { value: 'd', label: 'dias' },
+];
+
+const RETURN_OPTIONS = [
+  { value: 'anterior', label: 'Etapa anterior' },
+  { value: 'inicio', label: 'Início do fluxo' },
+];
+
+// Modos de acionamento — em linguagem de negócio, não de banco de dados.
+const TRIGGER_OPTIONS = [
+  { value: 'sempre', label: 'Sempre' },
+  { value: 'condicao', label: 'Quando uma condição for atendida' },
+];
+
+const OPERATOR_OPTIONS = [
+  { value: '>', label: 'for maior que' },
+  { value: '<', label: 'for menor que' },
+  { value: '==', label: 'for igual a' },
+  { value: 'contains', label: 'contiver' },
+];
+
+const OPERATOR_SHORT: Record<string, string> = {
+  '>': 'maior que', '<': 'menor que', '>=': 'maior ou igual a',
+  '<=': 'menor ou igual a', '==': 'igual a', '!=': 'diferente de', 'contains': 'contém'
+};
+
 function ApprovalsConfig({ process, update }: { process: RHProcess, update: (u: any) => void }) {
+  // Só um nível fica aberto por vez: a tela mostra a cascata inteira e o detalhe
+  // aparece quando o usuário quer editar.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Campos do formulário do processo que podem ser comparados numa condição.
+  const conditionFields = (PROCESS_DEFINITIONS[process.id]?.steps?.[0]?.fields || [])
+    .filter(f => ['currency', 'number', 'percent', 'select', 'radio', 'text', 'calc'].includes(f.type))
+    .map(f => ({ name: (f as any).id || (f as any).name, label: f.label, type: f.type }))
+    .filter(f => !!f.name);
+
+  // Campo usado quando o nível não escolhe um: mesma regra do motor (primeiro
+  // campo monetário do formulário), aqui só para descrever a condição.
+  const autoField = conditionFields.find(f => VALUE_FIELD_PATTERN.test(f.name) && (f.type === 'currency' || f.type === 'number'));
+
+  const fieldOf = (step: ApprovalStep) =>
+    conditionFields.find(f => f.name === step.conditionField) || (step.conditionField ? undefined : autoField);
+
+  const formatValue = (step: ApprovalStep) => {
+    const raw = step.conditionValue;
+    if (raw === undefined || raw === '') return '—';
+    const field = fieldOf(step);
+    const num = Number(String(raw).replace(',', '.'));
+    if (field?.type === 'currency' && !Number.isNaN(num)) {
+      return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+    }
+    return String(raw);
+  };
+
+  // "Sempre" ou "Se Salário Sugerido for maior que R$ 10.000"
+  const describeTrigger = (step: ApprovalStep) => {
+    if (!step.conditionOperator) return 'Sempre';
+    const fieldLabel = fieldOf(step)?.label || 'valor da solicitação';
+    return `Se ${fieldLabel} for ${OPERATOR_SHORT[step.conditionOperator] || step.conditionOperator} ${formatValue(step)}`;
+  };
+
+  const describeSla = (step: ApprovalStep) => `${step.sla || 0}${step.slaUnit === 'd' ? 'd' : 'h'}`;
+
+  // Frase de resumo do fluxo inteiro, no topo.
+  const flowSummary = process.approvals.length === 0
+    ? 'Nenhuma alçada configurada: uma única aprovação do RH conclui a solicitação.'
+    : `Esta solicitação passa por ${process.approvals.length} ${process.approvals.length === 1 ? 'aprovação' : 'aprovações'}: ` +
+      process.approvals
+        .map(s => `${RESPONSIBILITY_LABELS[s.responsibilityType]}${s.conditionOperator ? ` (${describeTrigger(s).replace(/^Se /, 'se ')})` : ''}`)
+        .join(' → ') + '.';
+
   const addStep = () => {
     if (process.approvals.length >= 5) return;
     const newStep: ApprovalStep = {
@@ -216,9 +309,15 @@ function ApprovalsConfig({ process, update }: { process: RHProcess, update: (u: 
       responsibilityType: 'gestor-direto',
       sla: 24,
       slaUnit: 'h',
-      isMandatory: true
+      isMandatory: true,
+      // "Sempre" é o padrão: o nível entra em todo pedido até que alguém
+      // configure uma condição.
+      conditionOperator: undefined,
+      conditionField: undefined,
+      conditionValue: undefined
     };
     update({ approvals: [...process.approvals, newStep] });
+    setExpandedId(newStep.id); // já abre o nível recém-criado para configuração
   };
 
   const updateStep = (id: string, updates: Partial<ApprovalStep>) => {
@@ -227,139 +326,240 @@ function ApprovalsConfig({ process, update }: { process: RHProcess, update: (u: 
     });
   };
 
+  // Voltar para "Sempre" limpa campo e valor: sem operador eles não são
+  // avaliados, e deixá-los preenchidos só confunde quem reabre a configuração.
+  const setTrigger = (step: ApprovalStep, mode: string) => {
+    updateStep(step.id, mode === 'condicao'
+      ? { conditionOperator: step.conditionOperator || '>' }
+      : { conditionOperator: undefined, conditionField: undefined, conditionValue: undefined }
+    );
+  };
+
   const removeStep = (id: string) => {
-    update({
-      approvals: process.approvals.filter(s => s.id !== id)
-    });
+    update({ approvals: process.approvals.filter(s => s.id !== id) });
+    if (expandedId === id) setExpandedId(null);
   };
 
   return (
     <div className="space-y-6">
-       <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-             <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
-                <CheckCircle2 size={18} />
-             </div>
+       {/* Cabeçalho + resumo do fluxo em uma frase */}
+       <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
              <div>
-                <h3 className="text-lg font-black text-gray-900">Níveis de Aprovação</h3>
-                <p className="text-[13px] text-gray-500">Configure até 5 alçadas de decisão adicionais.</p>
+                <h3 className="text-[17px] font-black text-gray-900 tracking-tight">Níveis de Aprovação</h3>
+                <p className="text-[13px] text-gray-500 font-medium">
+                  Quem precisa aprovar esta solicitação, e em que ordem. Até 5 níveis.
+                </p>
              </div>
+             <Button
+               variant="outline"
+               size="sm"
+               leftIcon={<Plus size={14} />}
+               onClick={addStep}
+               disabled={process.approvals.length >= 5}
+               className="shrink-0"
+             >
+               Adicionar Nível
+             </Button>
           </div>
-          <Button 
-            size="sm" 
-            leftIcon={<Plus size={16} />} 
-            onClick={addStep}
-            disabled={process.approvals.length >= 5}
-          >
-            Adicionar Nível
-          </Button>
+
+          <div className="flex items-start gap-3 rounded-[12px] bg-gray-50 px-4 py-3">
+             <Info size={15} className="text-gray-400 shrink-0 mt-0.5" />
+             <p className="text-[13px] text-gray-600 font-medium leading-relaxed">{flowSummary}</p>
+          </div>
        </div>
 
-       <div className="space-y-4">
+       <div className="space-y-3">
           {process.approvals.length === 0 ? (
-            <div className="py-12 text-center bg-white border border-dashed border-gray-200 rounded-[24px]">
-               <p className="text-gray-400 font-medium italic">Nenhuma aprovação adicional configurada.</p>
+            <div className="rounded-[12px] border border-dashed border-gray-200 px-6 py-10 text-center space-y-1">
+               <p className="text-[13px] font-bold text-gray-500">Nenhum nível configurado</p>
+               <p className="text-[12px] text-gray-400 font-medium">
+                 Use "Adicionar Nível" para criar a primeira alçada de aprovação.
+               </p>
             </div>
           ) : (
-            process.approvals.map((step, i) => (
-              <div key={step.id} className="bg-white border border-gray-100 rounded-[24px] p-6 shadow-sm group hover:border-orange-200 transition-all">
-                 <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                       <div className="w-8 h-8 bg-gray-900 text-white rounded-full flex items-center justify-center font-black text-sm">
+            process.approvals.map((step, i) => {
+              const isOpen = expandedId === step.id;
+              const hasCondition = !!step.conditionOperator;
+              return (
+              <div
+                key={step.id}
+                className={`bg-white rounded-[12px] border transition-colors ${isOpen ? 'border-gray-200 subtle-shadow' : 'border-gray-100 hover:border-gray-200'}`}
+              >
+                 {/* LINHA RESUMO — o essencial do nível, sem edição */}
+                 <div className="flex items-center gap-3 px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(isOpen ? null : step.id)}
+                      aria-expanded={isOpen}
+                      className="flex-1 min-w-0 flex items-center gap-3 text-left"
+                    >
+                       <span className="w-7 h-7 shrink-0 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-[12px] font-black">
                           {i + 1}
-                       </div>
-                       <input 
-                         type="text" 
-                         value={step.name}
-                         onChange={(e) => updateStep(step.id, { name: e.target.value })}
-                         className="text-lg font-black text-gray-900 bg-transparent border-none outline-none focus:ring-0 p-0 w-64" 
+                       </span>
+                       <span className="flex-1 min-w-0 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                          <span className="text-[14px] font-bold text-gray-900 truncate">{step.name}</span>
+                          {/* O responsável só repete quando o nível foi renomeado. */}
+                          {step.name !== RESPONSIBILITY_LABELS[step.responsibilityType] && (
+                            <span className="text-[12px] text-gray-500 font-medium truncate">
+                              {RESPONSIBILITY_LABELS[step.responsibilityType]}
+                            </span>
+                          )}
+                          <span className="text-[12px] text-gray-400 font-medium truncate">
+                            · {describeTrigger(step)}
+                          </span>
+                       </span>
+                       <span className="hidden sm:inline text-[12px] font-bold text-gray-400 tabular-nums shrink-0">
+                          {describeSla(step)}
+                       </span>
+                       {!step.isMandatory && (
+                         <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider text-gray-400 bg-gray-50 border border-gray-100 rounded-full px-2 py-0.5 shrink-0">
+                           Opcional
+                         </span>
+                       )}
+                       <ChevronRight
+                         size={16}
+                         className={`text-gray-300 shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`}
                        />
-                    </div>
-                    <div className="flex items-center gap-4">
-                       <label className="flex items-center gap-2 cursor-pointer">
-                          <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">Obrigatória</span>
-                          <input 
-                            type="checkbox" 
-                            checked={step.isMandatory}
-                            onChange={(e) => updateStep(step.id, { isMandatory: e.target.checked })}
-                            className="w-4 h-4 text-orange-500 rounded" 
-                          />
-                       </label>
-                       <button onClick={() => removeStep(step.id)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
-                          <Trash2 size={18} />
-                       </button>
-                    </div>
+                    </button>
+                    <button
+                      type="button"
+                      title="Remover nível"
+                      aria-label={`Remover nível ${i + 1}`}
+                      onClick={() => removeStep(step.id)}
+                      className="p-1.5 rounded-[8px] text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                    >
+                       <Trash2 size={15} />
+                    </button>
                  </div>
 
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="space-y-1.5">
-                       <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Tipo de Responsável</label>
-                       <select 
-                         value={step.responsibilityType}
-                         onChange={(e) => updateStep(step.id, { responsibilityType: e.target.value as ApprovalResponsibilityType })}
-                         className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] font-bold"
-                       >
-                          <option value="pessoa">Pessoa Específica</option>
-                          <option value="grupo">Grupo</option>
-                          <option value="gestor-direto">Gestor Direto</option>
-                          <option value="gestor-setor">Gestor do Setor</option>
-                          <option value="responsavel-cc">Responsável Centro Custo</option>
-                          <option value="rh-filial">RH da Filial</option>
-                          <option value="diretoria">Diretoria</option>
-                          <option value="presidencia">Presidência</option>
-                       </select>
-                    </div>
-                    <div className="space-y-1.5">
-                       <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Condição de Acionamento</label>
-                       <div className="flex items-center gap-2">
-                          <select 
-                            value={step.conditionOperator || ''}
-                            onChange={(e) => updateStep(step.id, { conditionOperator: e.target.value as any })}
-                            className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-[13px] font-bold"
-                          >
-                             <option value="">Sempre</option>
-                             <option value=">">Se Maior que</option>
-                             <option value="<">Se Menor que</option>
-                             <option value="==">Se Igual a</option>
-                             <option value="contains">Se Contém</option>
-                          </select>
-                          {step.conditionOperator && (
-                            <input 
-                              type="text" 
-                              value={step.conditionValue || ''}
-                              onChange={(e) => updateStep(step.id, { conditionValue: e.target.value })}
-                              placeholder="Valor..."
-                              className="w-24 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-[13px] font-bold outline-none focus:border-orange-500" 
+                 {/* DETALHE — só quando o usuário abre para editar */}
+                 {isOpen && (
+                   <div className="border-t border-gray-100 px-5 py-5 space-y-5">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                         <div className="space-y-1.5 min-w-0">
+                            <label className="label-caps ml-1">Nome do nível</label>
+                            <input
+                              type="text"
+                              value={step.name}
+                              aria-label={`Nome do nível ${i + 1}`}
+                              onChange={(e) => updateStep(step.id, { name: e.target.value })}
+                              className={`${FIELD_CLASS} w-full`}
                             />
-                          )}
-                       </div>
-                    </div>
-                    <div className="space-y-1.5">
-                       <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">SLA e Devolução</label>
-                       <div className="flex gap-2">
-                          <input 
-                            type="number" 
-                            value={step.sla}
-                            onChange={(e) => updateStep(step.id, { sla: parseInt(e.target.value) })}
-                            className="w-16 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-[13px] font-bold outline-none" 
-                          />
-                          <select 
-                            value={step.slaUnit}
-                            onChange={(e) => updateStep(step.id, { slaUnit: e.target.value as any })}
-                            className="w-20 bg-gray-50 border border-gray-200 rounded-xl px-2 py-2.5 text-[13px] font-bold"
-                          >
-                             <option value="h">h</option>
-                             <option value="d">d</option>
-                          </select>
-                          <select className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-2 py-2.5 text-[13px] font-bold text-gray-400">
-                             <option>Devolve p/ etapa anterior</option>
-                             <option>Devolve p/ início</option>
-                          </select>
-                       </div>
-                    </div>
-                 </div>
+                         </div>
+                         <div className="space-y-1.5 min-w-0">
+                            <label className="label-caps ml-1">Quem aprova</label>
+                            <Select
+                              className="w-full"
+                              ariaLabel="Quem aprova este nível"
+                              value={step.responsibilityType}
+                              onChange={(value) => updateStep(step.id, { responsibilityType: value as ApprovalResponsibilityType })}
+                              options={RESPONSIBILITY_OPTIONS}
+                            />
+                         </div>
+                      </div>
+
+                      {/* Frase de acionamento: "Este nível é acionado [Sempre]" ou
+                          "... [Quando uma condição] · Quando [campo] [for maior que] [valor]" */}
+                      <div className="space-y-2">
+                         <label className="label-caps ml-1">Quando este nível é acionado</label>
+                         <div className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-gray-600">
+                            <span>Este nível é acionado</span>
+                            <Select
+                              className="min-w-[240px]"
+                              ariaLabel="Quando este nível é acionado"
+                              value={hasCondition ? 'condicao' : 'sempre'}
+                              onChange={(value) => setTrigger(step, value)}
+                              options={TRIGGER_OPTIONS}
+                            />
+                         </div>
+                         {hasCondition && (
+                           <div className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-gray-600 pl-1">
+                              <span>Quando</span>
+                              <Select
+                                className="min-w-[200px]"
+                                ariaLabel="Campo avaliado na condição"
+                                value={step.conditionField || ''}
+                                onChange={(value) => updateStep(step.id, { conditionField: value || undefined })}
+                                options={[
+                                  { value: '', label: autoField ? `${autoField.label} (padrão)` : 'Valor da solicitação' },
+                                  ...conditionFields.map(f => ({ value: f.name, label: f.label }))
+                                ]}
+                              />
+                              <Select
+                                className="min-w-[150px]"
+                                ariaLabel="Comparação"
+                                value={step.conditionOperator || '>'}
+                                onChange={(value) => updateStep(step.id, { conditionOperator: value as ApprovalStep['conditionOperator'] })}
+                                options={OPERATOR_OPTIONS}
+                              />
+                              <input
+                                type="text"
+                                value={step.conditionValue || ''}
+                                aria-label="Valor da condição"
+                                onChange={(e) => updateStep(step.id, { conditionValue: e.target.value })}
+                                placeholder="10000"
+                                className={`${FIELD_CLASS} w-28`}
+                              />
+                           </div>
+                         )}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                         <div className="space-y-1.5 min-w-0">
+                            <label className="label-caps ml-1">Prazo para aprovar</label>
+                            <div className="flex gap-2">
+                               <input
+                                 type="number"
+                                 min={1}
+                                 value={step.sla}
+                                 aria-label="Prazo para aprovar"
+                                 onChange={(e) => updateStep(step.id, { sla: parseInt(e.target.value) || 1 })}
+                                 className={`${FIELD_CLASS} w-20 shrink-0`}
+                               />
+                               <Select
+                                 className="flex-1 min-w-0"
+                                 ariaLabel="Unidade do prazo"
+                                 value={step.slaUnit}
+                                 onChange={(value) => updateStep(step.id, { slaUnit: value as ApprovalStep['slaUnit'] })}
+                                 options={SLA_UNIT_OPTIONS}
+                               />
+                            </div>
+                         </div>
+                         <div className="space-y-1.5 min-w-0">
+                            <label className="label-caps ml-1">Se for devolvido, volta para</label>
+                            <Select
+                              className="w-full"
+                              ariaLabel="Destino da devolução"
+                              value={step.returnStep || 'anterior'}
+                              onChange={(value) => updateStep(step.id, { returnStep: value })}
+                              options={RETURN_OPTIONS}
+                            />
+                         </div>
+                      </div>
+
+                      <label className="flex items-center justify-between gap-4 pt-1 cursor-pointer">
+                         <span className="text-[13px] font-medium text-gray-600">
+                           Aprovação obrigatória
+                           <span className="block text-[12px] text-gray-400">
+                             Níveis opcionais podem ser dispensados sem bloquear o fluxo.
+                           </span>
+                         </span>
+                         <button
+                           type="button"
+                           role="switch"
+                           aria-checked={step.isMandatory}
+                           onClick={() => updateStep(step.id, { isMandatory: !step.isMandatory })}
+                           className={`w-10 h-5 rounded-full relative transition-colors shrink-0 ${step.isMandatory ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                         >
+                           <span className={`w-3.5 h-3.5 bg-white rounded-full absolute top-[3px] transition-all ${step.isMandatory ? 'left-[22px]' : 'left-[3px]'}`} />
+                         </button>
+                      </label>
+                   </div>
+                 )}
               </div>
-            ))
+              );
+            })
           )}
        </div>
     </div>

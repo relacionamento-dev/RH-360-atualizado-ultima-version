@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
-import { 
-  Users, Shield, UserPlus, Search, 
-  Filter, ShieldCheck, ShieldAlert, 
-  MoreHorizontal, Plus, Key, Lock,
-  Clock, Eye, Edit2, Trash2, Power, CheckCircle2,
-  AlertCircle
+import {
+  Users, Shield, UserPlus, ShieldCheck,
+  Plus, Lock, Edit2, Trash2, Power,
+  CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { Card, Table } from '../ui/CardAndTable';
-import { PageHeader } from '../ui/FormAndHeader';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { Modal, Avatar } from '../ui/Misc';
 import { useAppConfig } from '../../contexts/AppConfigContext';
+import { Select } from '../ui/Select';
 import { User, Group } from '../../types';
+import { isSuperAdmin } from '../../utils/permissions';
+import { SectionHeader, SubTabs, AdminSearch, Field, ExpandableRow, ADMIN_FIELD_CLASS } from './AdminUI';
 
 export default function AdminAccess() {
   const { config, updateConfig, getEffectivePermissions } = useAppConfig();
@@ -64,6 +64,18 @@ export default function AdminAccess() {
     const visible = new Set<string>();
     const openable = new Set<string>();
     const notSee = new Set<string>(allScreens);
+
+    // Administrador Geral: acesso irrestrito — todas as telas e todos os
+    // processos, sem nada na lista de "não vê".
+    if (isSuperAdmin(user)) {
+      return {
+        title: `${user.name} — ${user.profile}`,
+        scopeLabel: getScopeLabel('global'),
+        visible: [...allScreens],
+        openable: config.processos.map(p => p.name),
+        notSee: []
+      };
+    }
 
     visible.add('Intranet');
     visible.add('Minhas Solicitações');
@@ -184,33 +196,38 @@ export default function AdminAccess() {
     );
 
     return (
-      <Table 
+      <Table
         columns={[
-          { header: 'USUÁRIO', accessor: 'name', render: (val, row: User) => (
+          { header: 'Pessoa', accessor: 'name', render: (val, row: User) => (
             <div className="flex items-center gap-3">
               <Avatar name={val} src={row.avatar} size="xs" />
-              <div>
-                <p className="font-bold text-[13px] text-gray-900">{val}</p>
-                <p className="text-[11px] text-gray-500 font-medium">{row.email}</p>
+              <div className="min-w-0">
+                <p className="font-bold text-[13px] text-gray-900 truncate">{val}</p>
+                <p className="text-[12px] text-gray-500 font-medium truncate">{row.email}</p>
               </div>
             </div>
           )},
-          { header: 'PERFIL BASE', accessor: 'profile', render: (val) => <Badge variant="blue">{val}</Badge> },
-          { header: 'GRUPOS', accessor: 'groups', render: (val: string[]) => (
-            <div className="flex flex-wrap gap-1 max-w-[200px]">
-              {val.slice(0, 2).map((g, i) => <Badge key={i} variant="gray" size="sm">{g}</Badge>)}
-              {val.length > 2 && <span className="text-[10px] text-gray-400 font-bold">+{val.length - 2}</span>}
-            </div>
+          { header: 'Perfil de acesso', accessor: 'profile', render: (val) => <Badge variant="gray">{val}</Badge> },
+          { header: 'Grupos', accessor: 'groups', render: (val: string[]) => (
+            val.length === 0
+              ? <span className="text-[12px] text-gray-300 font-medium">—</span>
+              : <span className="text-[12px] text-gray-600 font-medium">
+                  {val.slice(0, 2).join(', ')}{val.length > 2 ? ` +${val.length - 2}` : ''}
+                </span>
           )},
-          { header: 'ESCOPO', accessor: 'scope', render: (val) => <Badge variant="outline" size="sm">{getScopeLabel(val)}</Badge> },
-          { header: 'STATUS', accessor: 'status', render: (val) => <Badge variant={val === 'Ativo' ? 'green' : 'gray'}>{val}</Badge> },
+          { header: 'Dados que enxerga', accessor: 'scope', render: (val) => (
+            <span className="text-[12px] text-gray-600 font-medium">{getScopeLabel(val)}</span>
+          )},
+          { header: 'Situação', accessor: 'status', render: (val) => <Badge variant={val === 'Ativo' ? 'green' : 'gray'}>{val}</Badge> },
           { header: '', accessor: 'id', render: (id, row: User) => (
             <div className="flex justify-end gap-1">
-               <Button variant="ghost" size="icon" className="hover:text-orange-500" onClick={() => openUserModal(row)}><Edit2 size={16} /></Button>
-               <Button variant="ghost" size="icon" className="hover:text-orange-500" onClick={() => handleToggleStatus(row)} title={row.status === 'Ativo' ? 'Desativar' : 'Reativar'}>
+               <Button variant="ghost" size="icon" title="Editar" aria-label={`Editar ${row.name}`} className="hover:text-orange-500" onClick={() => openUserModal(row)}><Edit2 size={16} /></Button>
+               <Button variant="ghost" size="icon" className="hover:text-orange-500" onClick={() => handleToggleStatus(row)} title={row.status === 'Ativo' ? 'Desativar acesso' : 'Reativar acesso'} aria-label={row.status === 'Ativo' ? `Desativar ${row.name}` : `Reativar ${row.name}`}>
                  <Power size={16} />
                </Button>
-               {row.id !== 'ADMIN-001' && <Button variant="ghost" size="icon" className="hover:text-red-500" onClick={() => handleDeleteUser(row.id)}><Trash2 size={16} /></Button>}
+               {row.id !== 'ADMIN-001' && (
+                 <Button variant="ghost" size="icon" title="Remover" aria-label={`Remover ${row.name}`} className="hover:text-red-500" onClick={() => handleDeleteUser(row.id)}><Trash2 size={16} /></Button>
+               )}
             </div>
           )}
         ]}
@@ -223,101 +240,113 @@ export default function AdminAccess() {
 
   const renderUserModal = () => (
     <Modal isOpen={isUserModalOpen} onClose={() => setIsUserModalOpen(false)} title={isEditMode ? 'Editar Usuário' : 'Novo Usuário'} size="lg">
-      <div className="grid gap-6 lg:grid-cols-[minmax(280px,1fr)_minmax(240px,360px)]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(280px,1fr)_minmax(240px,340px)]">
         <div className="space-y-5">
           <div className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Nome Completo</label>
+            <Field label="Nome completo">
               <input
                 value={userForm.name || ''}
                 onChange={(e) => setUserForm(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500"
-                placeholder="Ex: João Silva..."
+                className={`${ADMIN_FIELD_CLASS} w-full`}
+                placeholder="Ex.: João Silva"
               />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Email Corporativo</label>
+            </Field>
+            <Field label="E-mail de acesso">
               <input
                 value={userForm.email || ''}
                 onChange={(e) => setUserForm(prev => ({ ...prev, email: e.target.value }))}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500"
+                className={`${ADMIN_FIELD_CLASS} w-full`}
                 placeholder="joao.silva@empresa.com.br"
               />
+            </Field>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Perfil de acesso" hint="Define o que a pessoa pode fazer.">
+                <Select
+                  className="w-full"
+                  ariaLabel="Perfil de acesso"
+                  value={userForm.profile || 'Colaborador'}
+                  onChange={(value) => setUserForm(prev => ({ ...prev, profile: value as User['profile'] }))}
+                  options={[
+                    { value: 'Colaborador', label: 'Colaborador' },
+                    { value: 'Gestor', label: 'Gestor' },
+                    { value: 'RH/DP', label: 'RH / DP' },
+                    { value: 'Diretoria', label: 'Diretoria' },
+                    { value: 'Administrador', label: 'Administrador' },
+                    // Só um Administrador Geral concede o próprio perfil. A opção
+                    // também aparece ao editar quem já o tem, para o campo não
+                    // ficar vazio e rebaixar o usuário sem querer.
+                    ...((isSuperAdmin(config.usuarioAtual) || userForm.profile === 'Administrador Geral')
+                      ? [{ value: 'Administrador Geral', label: 'Administrador Geral' }]
+                      : [])
+                  ]}
+                />
+              </Field>
+              <Field label="Dados que ela enxerga" hint="Até onde vai a visão dela na empresa.">
+                <Select
+                  className="w-full"
+                  ariaLabel="Dados que ela enxerga"
+                  value={userForm.scope || 'proprio'}
+                  onChange={(value) => setUserForm(prev => ({ ...prev, scope: value as User['scope'] }))}
+                  options={[
+                    { value: 'proprio', label: 'Apenas os próprios' },
+                    { value: 'equipe', label: 'Da equipe' },
+                    { value: 'setor', label: 'Do setor' },
+                    { value: 'centro-custo', label: 'Do centro de custo' },
+                    { value: 'filial', label: 'Da filial' },
+                    { value: 'empresa', label: 'Da empresa' },
+                    { value: 'global', label: 'De todas as empresas' },
+                  ]}
+                />
+              </Field>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Perfil Base</label>
-                <select
-                  value={userForm.profile}
-                  onChange={(e) => setUserForm(prev => ({ ...prev, profile: e.target.value as User['profile'] }))}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500"
-                >
-                  <option>Colaborador</option>
-                  <option>Gestor</option>
-                  <option>RH/DP</option>
-                  <option>Diretoria</option>
-                  <option>Administrador</option>
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Escopo de Acesso</label>
-                <select
-                  value={userForm.scope}
-                  onChange={(e) => setUserForm(prev => ({ ...prev, scope: e.target.value as User['scope'] }))}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500"
-                >
-                  <option value="proprio">Próprio</option>
-                  <option value="equipe">Equipe</option>
-                  <option value="setor">Setor</option>
-                  <option value="centro-custo">Centro de Custo</option>
-                  <option value="filial">Filial</option>
-                  <option value="empresa">Empresa</option>
-                  <option value="global">Global</option>
-                </select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Grupos</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Grupos" hint="Separe por vírgula.">
                 <input
                   value={(userForm.groups || []).join(', ')}
                   onChange={(e) => setUserForm(prev => ({ ...prev, groups: e.target.value.split(',').map(item => item.trim()).filter(Boolean) }))}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500"
+                  className={`${ADMIN_FIELD_CLASS} w-full`}
                   placeholder="Administradores, RH Corporativo"
                 />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Status</label>
-                <select
-                  value={userForm.status}
-                  onChange={(e) => setUserForm(prev => ({ ...prev, status: e.target.value as User['status'] }))}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] font-bold outline-none focus:border-orange-500"
-                >
-                  <option>Ativo</option>
-                  <option>Inativo</option>
-                </select>
-              </div>
+              </Field>
+              <Field label="Situação">
+                <Select
+                  className="w-full"
+                  ariaLabel="Situação"
+                  value={userForm.status || 'Ativo'}
+                  onChange={(value) => setUserForm(prev => ({ ...prev, status: value as User['status'] }))}
+                  options={[
+                    { value: 'Ativo', label: 'Ativo' },
+                    { value: 'Inativo', label: 'Inativo' },
+                  ]}
+                />
+              </Field>
             </div>
           </div>
-          <div className="flex gap-3 pt-4">
+          <div className="flex gap-3 pt-2">
             <Button variant="ghost" className="flex-1" onClick={() => setIsUserModalOpen(false)}>Cancelar</Button>
-            <Button className="flex-1" onClick={handleSaveUser}>{isEditMode ? 'Salvar Alterações' : 'Criar Usuário'}</Button>
+            <Button className="flex-1" onClick={handleSaveUser}>{isEditMode ? 'Salvar alterações' : 'Criar acesso'}</Button>
           </div>
         </div>
 
         {userVision && (
-          <div className="space-y-5 rounded-[24px] border border-gray-200 bg-slate-50 p-6">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[13px] font-bold text-gray-900">Resumo da visão deste usuário</p>
-                <p className="text-[12px] text-gray-500">{userVision.title} · Escopo: {userVision.scopeLabel}</p>
-              </div>
-              <Badge variant="outline">{userForm.status}</Badge>
+          <div className="space-y-4 rounded-[12px] border border-gray-100 bg-gray-50 p-5">
+            <div>
+              <p className="text-[13px] font-bold text-gray-900">O que esta pessoa vai ver</p>
+              <p className="text-[12px] text-gray-500 font-medium">{userVision.title} · {userVision.scopeLabel}</p>
             </div>
-            <div className="space-y-3 text-sm text-gray-700">
-              <p><span className="font-bold">Vê:</span> {userVision.visible.join(', ')}</p>
-              <p><span className="font-bold">Pode abrir:</span> {userVision.openable.join(', ')}</p>
-              <p><span className="font-bold">Não vê:</span> {userVision.notSee.join(', ')}</p>
+            <div className="space-y-3">
+              <div>
+                <p className="label-caps">Telas disponíveis</p>
+                <p className="text-[13px] text-gray-700 font-medium leading-relaxed">{userVision.visible.join(', ') || '—'}</p>
+              </div>
+              <div>
+                <p className="label-caps">Processos que pode abrir</p>
+                <p className="text-[13px] text-gray-700 font-medium leading-relaxed">{userVision.openable.join(', ') || '—'}</p>
+              </div>
+              <div>
+                <p className="label-caps">Não terá acesso a</p>
+                <p className="text-[13px] text-gray-400 font-medium leading-relaxed">{userVision.notSee.join(', ') || 'Nada — acesso total'}</p>
+              </div>
             </div>
           </div>
         )}
@@ -327,36 +356,41 @@ export default function AdminAccess() {
 
   const renderGroupsTable = () => {
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        <div className="lg:col-span-1 space-y-4">
-          <div className="flex items-center justify-between px-2">
-            <h3 className="label-caps opacity-60">Grupos</h3>
-            <Button variant="ghost" size="icon" className="text-orange-500"><Plus size={16} /></Button>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="lg:col-span-1 space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="label-caps">Grupos</h3>
+            <Button variant="ghost" size="sm" className="text-gray-400 hover:text-orange-500 px-2" title="Novo grupo" aria-label="Novo grupo">
+              <Plus size={16} />
+            </Button>
           </div>
           <div className="space-y-1">
             {config.grupos.map(g => (
               <button
                 key={g.id}
                 onClick={() => setSelectedGroupId(g.id)}
-                className={`w-full text-left px-4 py-3 rounded-[14px] font-bold text-[13px] transition-all border ${
-                  selectedGroupId === g.id 
-                    ? 'bg-gray-900 border-gray-900 text-white shadow-lg shadow-gray-200' 
-                    : 'bg-white border-transparent text-gray-600 hover:bg-gray-50'
+                className={`w-full text-left px-4 py-3 rounded-[12px] text-[13px] transition-colors border ${
+                  selectedGroupId === g.id
+                    ? 'bg-white border-gray-200 text-gray-900 font-bold'
+                    : 'bg-transparent border-transparent text-gray-600 font-medium hover:bg-white hover:border-gray-100'
                 }`}
               >
-                {g.nome}
+                <span className="block truncate">{g.nome}</span>
+                <span className="block text-[12px] text-gray-400 font-medium">{g.membros.length} pessoa(s)</span>
               </button>
             ))}
           </div>
         </div>
 
-        <div className="lg:col-span-3 space-y-6">
+        <div className="lg:col-span-3">
            {selectedGroupId ? (
              <GroupDetail group={config.grupos.find(g => g.id === selectedGroupId)!} />
            ) : (
-             <div className="bg-white p-20 text-center border rounded-[32px] border-dashed">
-               <Shield size={48} className="mx-auto text-gray-200 mb-4" />
-               <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Selecione um grupo para configurar</p>
+             <div className="rounded-[12px] border border-dashed border-gray-200 px-6 py-16 text-center">
+               <p className="text-[13px] font-bold text-gray-500">Escolha um grupo</p>
+               <p className="text-[12px] text-gray-400 font-medium mt-1">
+                 Os grupos dão permissões extras além do perfil de cada pessoa.
+               </p>
              </div>
            )}
         </div>
@@ -365,11 +399,12 @@ export default function AdminAccess() {
   };
 
   const renderMatrix = () => {
-    const roles = ['Administrador', 'Diretoria', 'RH/DP', 'Gestor', 'Colaborador'];
+    const roles = ['Administrador Geral', 'Administrador', 'Diretoria', 'RH/DP', 'Gestor', 'Colaborador'];
     const { getEffectivePermissions, getSensitiveDataPermissions } = useAppConfig();
 
     // Mapping profiles to representative user IDs for matrix calculation
     const profileRepresentativeMap: Record<string, string> = {
+      'Administrador Geral': 'ADMIN-GERAL-001',
       'Administrador': 'ADMIN-001',
       'Diretoria': 'DIR-001',
       'RH/DP': 'RH-001',
@@ -379,24 +414,18 @@ export default function AdminAccess() {
     
     return (
       <div className="space-y-6">
-        <div className="bg-amber-50 p-6 rounded-[24px] border border-amber-100 flex items-start gap-4">
-          <ShieldAlert size={24} className="text-amber-600 shrink-0" />
-          <div>
-            <h4 className="font-black text-amber-900">Visão Consolidada de Permissões</h4>
-            <p className="text-[13px] text-amber-800 font-medium leading-relaxed">
-              Esta matriz é somente leitura e calculada automaticamente com base nas permissões atribuídas aos grupos e perfis.
-              A permissão exibida é a permissão efetiva (Perfil + Grupos) para um usuário típico de cada perfil.
-            </p>
-          </div>
-        </div>
-        
-        <Card className="overflow-x-auto">
+        <SectionHeader
+          title="Quem pode o quê"
+          description="Resumo automático do acesso de cada perfil aos processos. Esta tela é apenas de leitura — as permissões vêm dos grupos e dos perfis."
+        />
+
+        <Card padding="none" className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="px-6 py-4 label-caps opacity-60">PROCESSO RH360</th>
+              <tr className="border-b border-[var(--color-brand-border)]">
+                <th className="px-6 py-4 label-caps bg-gray-50/50">Processo</th>
                 {roles.map(r => (
-                  <th key={r} className="px-6 py-4 text-center label-caps opacity-60">{r}</th>
+                  <th key={r} className="px-6 py-4 text-center label-caps bg-gray-50/50">{r}</th>
                 ))}
               </tr>
             </thead>
@@ -435,25 +464,26 @@ export default function AdminAccess() {
               ))}
             </tbody>
           </table>
-          <div className="p-4 bg-gray-50 border-t border-gray-100 flex gap-6 justify-center">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-blue-400" />
-              <span className="text-[10px] font-bold text-gray-500 uppercase">Solicitar</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-orange-400" />
-              <span className="text-[10px] font-bold text-gray-500 uppercase">Aprovar</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-purple-400" />
-              <span className="text-[10px] font-bold text-gray-500 uppercase">Executar</span>
-            </div>
+          <div className="p-4 bg-gray-50/50 border-t border-[var(--color-brand-border)] flex flex-wrap gap-5 justify-center">
+            {[
+              { color: 'bg-blue-400', label: 'Pode solicitar' },
+              { color: 'bg-orange-400', label: 'Pode aprovar' },
+              { color: 'bg-purple-400', label: 'Pode executar' },
+            ].map(item => (
+              <div key={item.label} className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${item.color}`} />
+                <span className="text-[12px] font-medium text-gray-500">{item.label}</span>
+              </div>
+            ))}
           </div>
         </Card>
 
-        <Card className="p-8">
-           <h4 className="label-caps opacity-60 mb-6">Acesso a Dados Sensíveis por Perfil (Visão Global)</h4>
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <Card className="space-y-4">
+           <div>
+             <h4 className="text-[14px] font-bold text-gray-900">Quem enxerga dados sensíveis</h4>
+             <p className="text-[12px] text-gray-500 font-medium">As iniciais mostram os perfis com acesso liberado a cada informação.</p>
+           </div>
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {[
                 { id: 'visualizarSalario', label: 'Visualizar Salário' },
                 { id: 'editarSalario', label: 'Editar Salário' },
@@ -467,8 +497,8 @@ export default function AdminAccess() {
                 { id: 'visualizarAuditoria', label: 'Auditoria' }
               ].map(item => {
                 return (
-                  <div key={item.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
-                    <span className="text-[12px] font-bold text-gray-700">{item.label}</span>
+                  <div key={item.id} className="flex items-center justify-between gap-3 px-4 py-3 rounded-[12px] border border-gray-100">
+                    <span className="text-[13px] font-medium text-gray-600">{item.label}</span>
                     <div className="flex -space-x-2">
                       {roles.map((r, i) => {
                         const userId = profileRepresentativeMap[r];
@@ -504,48 +534,35 @@ export default function AdminAccess() {
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        title="Pessoas e Acessos"
-        subtitle="Usuários da sua empresa"
+      <SectionHeader
+        title="Pessoas e acessos"
+        description="Quem entra na plataforma, o que cada um pode fazer e quais dados enxerga."
+        actions={
+          activeSubTab === 'users'
+            ? <Button size="sm" leftIcon={<UserPlus size={14} />} onClick={() => openUserModal()}>Dar acesso a alguém</Button>
+            : undefined
+        }
       />
-      <div className="flex gap-2 p-1 bg-gray-100 rounded-[16px] w-fit">
-        {[
-          { id: 'users', label: 'Usuários', icon: <Users size={14} /> },
-          { id: 'groups', label: 'Grupos e Membros', icon: <Shield size={14} /> },
-          { id: 'matrix', label: 'Matriz Global', icon: <Lock size={14} /> },
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveSubTab(tab.id as any)}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-[12px] font-bold text-[13px] transition-all ${
-              activeSubTab === tab.id 
-                ? 'bg-white text-gray-900 shadow-sm border border-gray-200' 
-                : 'text-gray-500 hover:bg-white/50 hover:text-gray-700'
-            }`}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
-      </div>
+
+      <SubTabs
+        value={activeSubTab}
+        onChange={(id) => setActiveSubTab(id as any)}
+        tabs={[
+          { id: 'users', label: 'Pessoas', icon: <Users size={14} /> },
+          { id: 'groups', label: 'Grupos', icon: <Shield size={14} /> },
+          { id: 'matrix', label: 'Quem pode o quê', icon: <Lock size={14} /> },
+        ]}
+      />
 
       <div className="animate-in fade-in duration-500">
         {activeSubTab === 'users' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between gap-4">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input 
-                  type="text" 
-                  placeholder="Buscar usuário por nome ou email..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-100 rounded-[14px] text-[13px] focus:ring-2 focus:ring-orange-500/20 outline-none shadow-sm transition-all"
-                />
-              </div>
-              <Button leftIcon={<UserPlus size={16} />} onClick={() => openUserModal()}>Novo Usuário</Button>
-            </div>
-            <Card className="overflow-hidden border-none shadow-xl">
+          <div className="space-y-4">
+            <AdminSearch
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Buscar por nome ou e-mail..."
+            />
+            <Card padding="none">
                {renderUsersTable()}
             </Card>
           </div>
@@ -563,6 +580,7 @@ export default function AdminAccess() {
 function GroupDetail({ group }: { group: Group }) {
   const { config, updateConfig } = useAppConfig();
   const [expandedProcesses, setExpandedProcesses] = useState<Record<string, boolean>>({});
+  const [sensitiveOpen, setSensitiveOpen] = useState(false);
 
   const toggleProcess = (id: string) => {
     setExpandedProcesses(prev => ({ ...prev, [id]: !prev[id] }));
@@ -595,132 +613,126 @@ function GroupDetail({ group }: { group: Group }) {
     updateConfig({ grupos: updatedGroups });
   };
 
+  // Rótulos em linguagem de uso, não de banco: é isto que a pessoa do grupo
+  // passa a poder fazer no processo.
   const actions = [
-    { id: 'ver', label: 'Ver' },
-    { id: 'solicitar', label: 'Solicitar' },
-    { id: 'executar', label: 'Executar' },
+    { id: 'ver', label: 'Ver as solicitações' },
+    { id: 'solicitar', label: 'Abrir solicitações' },
+    { id: 'executar', label: 'Executar as etapas' },
     { id: 'aprovar', label: 'Aprovar' },
-  ];
-
-  const advancedActions = [
-    { id: 'devolver', label: 'Devolver' },
+    { id: 'devolver', label: 'Devolver para ajuste' },
     { id: 'cancelar', label: 'Cancelar' },
     { id: 'reabrir', label: 'Reabrir' },
-    { id: 'verHistorico', label: 'Ver Histórico' },
-    { id: 'verSigiloso', label: 'Ver Dados Sigilosos' },
+    { id: 'verHistorico', label: 'Ver o histórico' },
+    { id: 'verSigiloso', label: 'Ver dados sigilosos' },
   ];
 
   const sensitiveItems = [
-    { id: 'visualizarSalario', label: 'Visualizar Salário' },
-    { id: 'editarSalario', label: 'Editar Salário' },
-    { id: 'visualizarCPF', label: 'Visualizar CPF' },
-    { id: 'visualizarDocumentosPessoais', label: 'Docs Pessoais' },
-    { id: 'visualizarDadosBancarios', label: 'Dados Bancários' },
-    { id: 'visualizarASO', label: 'ASO' },
-    { id: 'visualizarMedidaDisciplinar', label: 'Medida Disciplinar' },
-    { id: 'visualizarDesligamento', label: 'Desligamento' },
-    { id: 'visualizarJuridico', label: 'Jurídico' },
-    { id: 'visualizarAuditoria', label: 'Auditoria' },
+    { id: 'visualizarSalario', label: 'Ver salário' },
+    { id: 'editarSalario', label: 'Alterar salário' },
+    { id: 'visualizarCPF', label: 'Ver CPF' },
+    { id: 'visualizarDocumentosPessoais', label: 'Ver documentos pessoais' },
+    { id: 'visualizarDadosBancarios', label: 'Ver dados bancários' },
+    { id: 'visualizarASO', label: 'Ver exames (ASO)' },
+    { id: 'visualizarMedidaDisciplinar', label: 'Ver medidas disciplinares' },
+    { id: 'visualizarDesligamento', label: 'Ver desligamentos' },
+    { id: 'visualizarJuridico', label: 'Ver processos jurídicos' },
+    { id: 'visualizarAuditoria', label: 'Ver registro de atividades' },
   ];
 
+  const sensitiveCount = sensitiveItems.filter(item => !!(group.dadosSensiveis as any)?.[item.id]).length;
+
   return (
-    <Card className="p-8 space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-2xl font-black text-gray-900 tracking-tight">{group.nome}</h3>
-          <p className="text-[13px] text-gray-500 font-medium mt-1">Este grupo possui {group.membros.length} membros ativos.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" leftIcon={<Users size={16} />}>Gerenciar Membros</Button>
-          <Button size="sm" leftIcon={<ShieldCheck size={16} />}>Salvar Grupo</Button>
-        </div>
-      </div>
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <SectionHeader
+        title={group.nome}
+        description={`${group.membros.length} pessoa(s) neste grupo. As permissões abaixo são somadas ao perfil de cada uma.`}
+        actions={
+          <>
+            <Button variant="outline" size="sm" leftIcon={<Users size={14} />}>Membros</Button>
+            <Button size="sm" leftIcon={<ShieldCheck size={14} />}>Salvar</Button>
+          </>
+        }
+      />
 
-      <div className="space-y-6">
-        <h4 className="label-caps opacity-60 flex items-center gap-2">
-          <Lock size={14} /> Permissões de Dados Sensíveis
-        </h4>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {sensitiveItems.map(item => (
-            <label key={item.id} className={`flex items-center gap-2 p-3 rounded-xl border transition-all cursor-pointer ${
-              (group.dadosSensiveis as any)?.[item.id] ? 'bg-orange-50 border-orange-200 text-orange-900' : 'bg-white border-gray-100 text-gray-500 hover:bg-gray-50'
-            }`}>
-              <input 
-                type="checkbox" 
-                checked={!!(group.dadosSensiveis as any)?.[item.id]} 
-                onChange={(e) => updateSensitive(item.id, e.target.checked)}
-                className="hidden" 
-              />
-              <span className="text-[10px] font-black uppercase tracking-tighter text-center w-full leading-tight">{item.label}</span>
-            </label>
-          ))}
+      {/* Dados sensíveis: resumo em uma linha, marcação só ao abrir. */}
+      <ExpandableRow
+        leading={<Lock size={15} className="text-gray-400 shrink-0" />}
+        title="Dados sensíveis"
+        subtitle={sensitiveCount === 0 ? 'Nenhum liberado' : `${sensitiveCount} de ${sensitiveItems.length} liberados`}
+        open={sensitiveOpen}
+        onToggle={() => setSensitiveOpen(o => !o)}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          {sensitiveItems.map(item => {
+            const checked = !!(group.dadosSensiveis as any)?.[item.id];
+            return (
+              <label
+                key={item.id}
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] border cursor-pointer transition-colors ${
+                  checked ? 'bg-orange-50/60 border-orange-200' : 'bg-white border-gray-100 hover:border-gray-200'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => updateSensitive(item.id, e.target.checked)}
+                  className="w-4 h-4 accent-orange-500 rounded border-gray-300 shrink-0"
+                />
+                <span className={`text-[13px] font-medium ${checked ? 'text-orange-900' : 'text-gray-600'}`}>{item.label}</span>
+              </label>
+            );
+          })}
         </div>
-      </div>
+      </ExpandableRow>
 
-      <div className="space-y-4 pt-6 border-t border-gray-100">
-        <div className="flex items-center justify-between">
-          <h4 className="label-caps opacity-60">Permissões por Processo RH360</h4>
-          <span className="text-[11px] text-gray-400 font-bold uppercase tracking-widest">Ações Oficiais</span>
-        </div>
-        
-        <div className="space-y-3">
+      <div className="space-y-3">
+        <SectionHeader
+          title="Permissões por processo"
+          description="Abra um processo para escolher o que este grupo pode fazer nele."
+        />
+
+        <div className="space-y-2">
           {config.processos.map((p) => {
-            const isExpanded = expandedProcesses[p.id];
-            const pPerms = group.permissoes?.[p.id] || {};
+            const pPerms = (group.permissoes?.[p.id] || {}) as Record<string, boolean>;
+            const granted = actions.filter(a => pPerms[a.id]);
 
             return (
-              <div key={p.id} className="border border-gray-100 rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-md transition-all">
-                <div 
-                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50"
-                  onClick={() => toggleProcess(p.id)}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
-                      <Shield size={16} />
-                    </div>
-                    <div>
-                      <p className="text-[13px] font-black text-gray-900 uppercase tracking-tight">{p.name}</p>
-                      <p className="text-[11px] text-gray-400 font-medium">Configure ações básicas e avançadas</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    <div className="flex gap-4">
-                      {actions.map(action => (
-                        <div key={action.id} className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          <input 
-                            type="checkbox" 
-                            checked={!!(pPerms as any)?.[action.id]}
-                            onChange={(e) => updatePermission(p.id, action.id, e.target.checked)}
-                            className="w-4 h-4 text-orange-500 rounded border-gray-300" 
-                          />
-                          <span className="text-[10px] font-bold text-gray-600 uppercase">{action.label}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <MoreHorizontal size={16} className={`text-gray-300 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                  </div>
-                </div>
-
-                {isExpanded && (
-                  <div className="p-4 bg-gray-50 border-t border-gray-100 grid grid-cols-2 md:grid-cols-5 gap-4 animate-in slide-in-from-top-2 duration-300">
-                    {advancedActions.map(action => (
-                      <label key={action.id} className="flex items-center gap-2 cursor-pointer group">
-                        <input 
-                          type="checkbox" 
-                          checked={!!(pPerms as any)?.[action.id]}
+              <ExpandableRow
+                key={p.id}
+                title={p.name}
+                subtitle={granted.length === 0
+                  ? 'Sem permissões'
+                  : granted.map(a => a.label).join(', ')}
+                open={!!expandedProcesses[p.id]}
+                onToggle={() => toggleProcess(p.id)}
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {actions.map(action => {
+                    const checked = !!pPerms[action.id];
+                    return (
+                      <label
+                        key={action.id}
+                        className={`flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] border cursor-pointer transition-colors ${
+                          checked ? 'bg-orange-50/60 border-orange-200' : 'bg-white border-gray-100 hover:border-gray-200'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
                           onChange={(e) => updatePermission(p.id, action.id, e.target.checked)}
-                          className="w-4 h-4 text-orange-500 rounded border-gray-300" 
+                          className="w-4 h-4 accent-orange-500 rounded border-gray-300 shrink-0"
                         />
-                        <span className="text-[10px] font-black text-gray-400 group-hover:text-gray-900 uppercase tracking-tighter">{action.label}</span>
+                        <span className={`text-[13px] font-medium ${checked ? 'text-orange-900' : 'text-gray-600'}`}>{action.label}</span>
                       </label>
-                    ))}
-                  </div>
-                )}
-              </div>
+                    );
+                  })}
+                </div>
+              </ExpandableRow>
             );
           })}
         </div>
       </div>
-    </Card>
+    </div>
   );
 }

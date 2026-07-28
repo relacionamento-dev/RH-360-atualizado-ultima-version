@@ -11,6 +11,7 @@ import { Badge } from './ui/Badge';
 import { Avatar } from './ui/Misc';
 import { useAppConfig } from '../contexts/AppConfigContext';
 import { useToast } from './ToastContext';
+import { isSuperAdmin } from '../utils/permissions';
 
 interface Profile360ModuleProps {
   employeeId?: string;
@@ -31,7 +32,8 @@ export default function Profile360Module({ employeeId }: Profile360ModuleProps) 
 
   const employee = config.colaboradores.find(e => e.id === selectedId) || config.colaboradores[0];
   const isSelf = employee.id === config.usuarioAtual.id;
-  const canSwitch = config.usuarioAtual.role === 'Admin' || config.usuarioAtual.role === 'RH' || config.usuarioAtual.role === 'Diretor';
+  const canSwitch = isSuperAdmin(config.usuarioAtual) ||
+    config.usuarioAtual.role === 'Admin' || config.usuarioAtual.role === 'RH' || config.usuarioAtual.role === 'Diretor';
 
   const tabs = [
     { id: 'resumo', label: 'Resumo', icon: <User size={16} /> },
