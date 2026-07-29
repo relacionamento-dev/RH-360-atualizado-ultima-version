@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { 
+import {
   Search, Filter, Plus, Eye, FileCheck, UserPlus, Clock, ChevronRight,
-  ClipboardCheck, ShieldAlert, CheckCircle2, UserCheck
+  ClipboardCheck, ShieldAlert, CheckCircle2, UserCheck, Send
 } from 'lucide-react';
 import { RHProcess, RHRequest } from '../../types';
 import { useAppConfig } from '../../contexts/AppConfigContext';
@@ -9,10 +9,13 @@ import { Card, Table } from '../ui/CardAndTable';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { SLABar } from '../ui/Misc';
+import AdmissaoDigitalDisparo from '../admissao-digital/AdmissaoDigitalDisparo';
+import AdmissaoDigitalRevisao from '../admissao-digital/AdmissaoDigitalRevisao';
 
 export default function AdmissionManager({ process, onNewRequest }: { process: RHProcess, onNewRequest: () => void }) {
   const { config, updateConfig } = useAppConfig();
   const [searchTerm, setSearchTerm] = useState('');
+  const [isDisparoOpen, setIsDisparoOpen] = useState(false);
 
   const admissions = config.solicitacoes.filter(r => r.processId === process.id);
   
@@ -36,10 +39,19 @@ export default function AdmissionManager({ process, onNewRequest }: { process: R
            <h2 className="text-2xl font-black text-gray-900 tracking-tight">Gestão de Admissões</h2>
            <p className="text-gray-500 font-medium text-[14px]">Controle de documentação, exames e contratos de novos talentos</p>
         </div>
-        <Button leftIcon={<Plus size={18} />} onClick={onNewRequest}>
-          Nova Admissão
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Button variant="secondary" leftIcon={<Send size={16} />} onClick={() => setIsDisparoOpen(true)}>
+            Disparar link de admissão digital
+          </Button>
+          <Button leftIcon={<Plus size={18} />} onClick={onNewRequest}>
+            Nova Admissão
+          </Button>
+        </div>
       </div>
+
+      <Card>
+        <AdmissaoDigitalRevisao />
+      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card className="p-4 bg-white border-l-4 border-l-blue-500">
@@ -112,6 +124,8 @@ export default function AdmissionManager({ process, onNewRequest }: { process: R
           data={filtered}
         />
       </Card>
+
+      <AdmissaoDigitalDisparo isOpen={isDisparoOpen} onClose={() => setIsDisparoOpen(false)} />
     </div>
   );
 }

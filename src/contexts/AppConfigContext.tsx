@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { AppConfig, RHRequest, Task, Announcement, HistoryEntry, Job, User, AuditLog, EmployeeMovement, Employee } from '../types';
+import { AppConfig, RHRequest, Task, Announcement, HistoryEntry, Job, User, AuditLog, EmployeeMovement, Employee, AdmissaoDigital, AdmissaoDisparo, EmployeeDocument } from '../types';
 import { 
   INITIAL_RH_PROCESSES, 
   INITIAL_RH_REQUESTS, 
@@ -26,6 +26,7 @@ import {
   menuModules 
 } from '../data';
 import { PROCESS_DEFINITIONS } from '../processDefinitions';
+import { criarBlocosAdmissao } from '../utils/admissaoDigital';
 import { isSuperAdmin, isJynxEmail, asSuperAdmin, FULL_PROCESS_PERMISSIONS, FULL_SENSITIVE_PERMISSIONS } from '../utils/permissions';
 import {
   buildApprovalChain,
@@ -57,14 +58,20 @@ interface AppConfigContextType {
   getEffectivePermissions: (userId: string, processId: string) => import('../types').ProcessPermission;
   getSensitiveDataPermissions: (userId: string) => import('../types').SensitiveDataPermission;
   updateOnboardingTask: (requestId: string, section: keyof import('../types').OnboardingData, taskId: string, updates: Partial<import('../types').OnboardingTask>) => void;
+  dispararAdmissaoDigital: (dados: Omit<AdmissaoDisparo, 'enviadoEm'>) => void;
+  atualizarAdmissaoDigital: (employeeId: string, updates: Partial<AdmissaoDigital>) => void;
+  enviarAdmissaoDigital: (employeeId: string) => void;
+  aprovarAdmissaoDigital: (employeeId: string) => void;
+  devolverAdmissaoDigital: (employeeId: string, blocoIds: string[], motivo: string) => void;
 }
 
 const INITIAL_STATE: AppConfig = {
-  // Bump ao mudar o seed (novos colaboradores EMP-024..029 e vínculo employeeId dos
-  // usuários JYNX): força a reidratação a descartar o localStorage antigo, senão os
-  // colaboradores desatualizados persistidos sobrescrevem os novos e o solicitante
-  // fica com matrícula 00000 / setor N/A.
-  version: '1.0.2',
+  // Bump ao mudar o seed: força a reidratação a descartar o localStorage antigo,
+  // senão os colaboradores desatualizados persistidos sobrescrevem os novos e o
+  // solicitante fica com matrícula 00000 / setor N/A.
+  // 1.1.0 — seed da Admissão Digital (EMP-AD-DEMO-001 em análise e
+  // EMP-AD-DEMO-002 em correção).
+  version: '1.1.0',
   empresaAtual: COMPANIES[0],
   usuarioAtual: DEMO_USERS[0], // Admin by default
   usuariosDemo: DEMO_USERS,
@@ -1113,9 +1120,238 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  // -------------------------------------------------------------------------
+  // Admissão Digital (demonstração)
+  // -------------------------------------------------------------------------
+
+  const registrarAuditoriaAdmissao = (action: string, targetId: string, details: string): AuditLog => ({
+    id: `audit-${Date.now()}`,
+    userId: config.usuarioAtual.id,
+    userName: config.usuarioAtual.name,
+    action,
+    module: 'Admissão Digital',
+    targetId,
+    details,
+    timestamp: new Date().toISOString()
+  });
+
+  /**
+   * Cria o colaborador já em Pré-admissão. Ele sai da contagem de Ativos
+   * (status) e passa a existir para o Portal do Colaborador (admissaoDigital).
+   */
+  const dispararAdmissaoDigital = (dados: Omit<AdmissaoDisparo, 'enviadoEm'>) => {
+    const agora = new Date();
+    const previsaoAdmissao = new Date(agora.getTime() + dados.prazoDias * 86400000);
+
+    const novo: Employee = {
+      id: `EMP-AD-${agora.getTime()}`,
+      name: dados.nome,
+      email: dados.email,
+      phone: '',
+      address: '',
+      city: '',
+      state: '',
+      department: 'A definir',
+      role: 'A definir',
+      branch: config.filiais[0] || 'Matriz SP',
+      company: config.empresaAtual.name,
+      status: 'Pré-admissão',
+      situacao: 'PRE_ADMISSAO',
+      admissionDate: previsaoAdmissao.toISOString().slice(0, 10),
+      birthDate: '',
+      salary: 0,
+      manager: 'A definir',
+      costCenter: 'A definir',
+      registration: `AD-${String(agora.getTime()).slice(-5)}`,
+      cpf: dados.cpf,
+      documents: [],
+      admissaoDigital: {
+        estado: 'AGUARDANDO_PREENCHIMENTO',
+        disparo: { ...dados, enviadoEm: agora.toISOString() },
+        termoAceito: false,
+        blocos: criarBlocosAdmissao()
+      }
+    };
+
+    setConfig(prev => ({
+      ...prev,
+      colaboradores: [novo, ...prev.colaboradores],
+      auditTrail: [
+        registrarAuditoriaAdmissao(
+          'Disparo de Admissão Digital',
+          novo.id,
+          `Link enviado para ${dados.nome} (${dados.email}) com prazo de ${dados.prazoDias} dias.`
+        ),
+        ...prev.auditTrail
+      ]
+    }));
+
+    addNotification(
+      'Link de admissão enviado',
+      `${dados.nome} recebeu o link e tem ${dados.prazoDias} dias para enviar os documentos.`,
+      'sistema'
+    );
+  };
+
+  /** Merge parcial usado pelo portal (aceite do termo, anexos dos blocos). */
+  const atualizarAdmissaoDigital = (employeeId: string, updates: Partial<AdmissaoDigital>) => {
+    setConfig(prev => ({
+      ...prev,
+      colaboradores: prev.colaboradores.map(emp =>
+        emp.id === employeeId && emp.admissaoDigital
+          ? { ...emp, admissaoDigital: { ...emp.admissaoDigital, ...updates } }
+          : emp
+      )
+    }));
+  };
+
+  /**
+   * Envio do colaborador. Vale para o 1º envio e para o reenvio pós-correção —
+   * neste, os blocos devolvidos voltam a PENDENTE e o motivo é limpo, senão o
+   * portal continuaria mostrando o box "Motivo da revisão".
+   */
+  const enviarAdmissaoDigital = (employeeId: string) => {
+    const emp = config.colaboradores.find(e => e.id === employeeId);
+    if (!emp?.admissaoDigital) return;
+    const eraCorrecao = emp.admissaoDigital.estado === 'EM_CORRECAO';
+    const agora = new Date().toISOString();
+
+    setConfig(prev => ({
+      ...prev,
+      colaboradores: prev.colaboradores.map(e =>
+        e.id === employeeId && e.admissaoDigital
+          ? {
+              ...e,
+              admissaoDigital: {
+                ...e.admissaoDigital,
+                estado: 'EM_ANALISE',
+                enviadoEm: agora,
+                mensagemRevisao: undefined,
+                blocos: e.admissaoDigital.blocos.map(b => ({
+                  ...b,
+                  statusRevisao: 'PENDENTE' as const,
+                  motivoRevisao: undefined
+                }))
+              }
+            }
+          : e
+      ),
+      auditTrail: [
+        registrarAuditoriaAdmissao(
+          eraCorrecao ? 'Reenvio de Documentos' : 'Envio de Documentos',
+          employeeId,
+          `${emp.name} ${eraCorrecao ? 'reenviou os documentos corrigidos' : 'enviou os documentos'} para análise do RH.`
+        ),
+        ...prev.auditTrail
+      ]
+    }));
+
+    addNotification(
+      eraCorrecao ? 'Documentos corrigidos' : 'Documentos recebidos',
+      `${emp.name} enviou a documentação de admissão. Aguardando revisão do RH.`,
+      'sistema'
+    );
+  };
+
+  /**
+   * Aprovação do RH: o colaborador vira Ativo, os anexos entram na ficha como
+   * documentos e o registro de admissão digital é encerrado (some das filas do
+   * portal e da revisão).
+   */
+  const aprovarAdmissaoDigital = (employeeId: string) => {
+    const emp = config.colaboradores.find(e => e.id === employeeId);
+    if (!emp?.admissaoDigital) return;
+
+    const novosDocumentos: EmployeeDocument[] = emp.admissaoDigital.blocos.flatMap(bloco =>
+      bloco.anexos.map(anexo => ({
+        id: `doc-${bloco.id}-${anexo.id}`,
+        type: bloco.titulo,
+        number: anexo.nome,
+        issueDate: anexo.enviadoEm.slice(0, 10),
+        status: 'Válido' as const,
+        attachmentUrl: anexo.nome,
+        origin: 'Upload' as const
+      }))
+    );
+
+    setConfig(prev => ({
+      ...prev,
+      colaboradores: prev.colaboradores.map(e =>
+        e.id === employeeId
+          ? {
+              ...e,
+              status: 'Ativo' as const,
+              situacao: 'ATIVO' as const,
+              admissionDate: new Date().toISOString().slice(0, 10),
+              documents: [...novosDocumentos, ...(e.documents || [])],
+              admissaoDigital: undefined
+            }
+          : e
+      ),
+      auditTrail: [
+        registrarAuditoriaAdmissao(
+          'Aprovação de Admissão Digital',
+          employeeId,
+          `Admissão de ${emp.name} aprovada. ${novosDocumentos.length} documento(s) anexado(s) à ficha.`
+        ),
+        ...prev.auditTrail
+      ]
+    }));
+
+    addNotification(
+      'Admissão aprovada',
+      `${emp.name} agora consta como Ativo, com os documentos já na ficha.`,
+      'sistema'
+    );
+  };
+
+  /** Devolução com pendência: só os blocos escolhidos voltam ao portal. */
+  const devolverAdmissaoDigital = (employeeId: string, blocoIds: string[], motivo: string) => {
+    const emp = config.colaboradores.find(e => e.id === employeeId);
+    if (!emp?.admissaoDigital || blocoIds.length === 0) return;
+
+    setConfig(prev => ({
+      ...prev,
+      colaboradores: prev.colaboradores.map(e =>
+        e.id === employeeId && e.admissaoDigital
+          ? {
+              ...e,
+              admissaoDigital: {
+                ...e.admissaoDigital,
+                estado: 'EM_CORRECAO',
+                mensagemRevisao: motivo,
+                // O bloco devolvido perde os anexos recusados: o colaborador
+                // precisa enviar de novo, e é isso que reabilita o botão de
+                // reenvio no portal.
+                blocos: e.admissaoDigital.blocos.map(b =>
+                  blocoIds.includes(b.id)
+                    ? { ...b, statusRevisao: 'AGUARDANDO_CORRECAO' as const, motivoRevisao: motivo, anexos: [] }
+                    : { ...b, statusRevisao: 'APROVADO' as const, motivoRevisao: undefined }
+                )
+              }
+            }
+          : e
+      ),
+      auditTrail: [
+        registrarAuditoriaAdmissao(
+          'Devolução de Admissão Digital',
+          employeeId,
+          `Admissão de ${emp.name} devolvida com ${blocoIds.length} pendência(s). Motivo: ${motivo}`
+        ),
+        ...prev.auditTrail
+      ]
+    }));
+
+    addNotification(
+      'Admissão devolvida',
+      `${emp.name} precisa corrigir ${blocoIds.length} documento(s) no portal.`,
+      'sistema'
+    );
+  };
+
   return (
-    <AppConfigContext.Provider value={{ 
-      config, 
+    <AppConfigContext.Provider value={{
+      config,
       updateConfig, 
       resetConfig, 
       createRequest, 
@@ -1133,7 +1369,12 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       isAuthorized,
       getEffectivePermissions,
       getSensitiveDataPermissions,
-      updateOnboardingTask
+      updateOnboardingTask,
+      dispararAdmissaoDigital,
+      atualizarAdmissaoDigital,
+      enviarAdmissaoDigital,
+      aprovarAdmissaoDigital,
+      devolverAdmissaoDigital
     }}>
       {children}
     </AppConfigContext.Provider>

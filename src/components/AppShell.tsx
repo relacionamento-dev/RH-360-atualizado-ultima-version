@@ -193,11 +193,17 @@ export default function AppShell({
           icon: <Users className="w-5 h-5" />, 
           view: 'employees'
         },
-        { 
-          id: 'profile-360', 
-          label: 'Perfil 360', 
-          icon: <UserIcon className="w-5 h-5" />, 
+        {
+          id: 'profile-360',
+          label: 'Perfil 360',
+          icon: <UserIcon className="w-5 h-5" />,
           view: 'profile-360'
+        },
+        {
+          id: 'portal-colaborador',
+          label: 'Portal do Colaborador',
+          icon: <MonitorSmartphone className="w-5 h-5" />,
+          view: 'portal-colaborador'
         }
       ].filter(item => {
         if (hasFullAccess) return true;

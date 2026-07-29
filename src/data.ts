@@ -1006,6 +1006,152 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     registration: '80000',
     cpf: '800.000.000-00',
     avatar: 'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?q=80&w=200&h=200&fit=crop'
+  },
+  // --- Admissão Digital: dados de demonstração -----------------------------
+  // Dois pré-admitidos já em pontos diferentes do fluxo, para a demo começar com
+  // a fila de revisão e o portal em modo correção povoados.
+  {
+    id: 'EMP-AD-DEMO-001',
+    name: 'Juliana Prado',
+    email: 'juliana.prado@rh360.demo',
+    phone: '(11) 98812-4477',
+    address: '',
+    city: 'São Paulo',
+    state: 'SP',
+    department: 'A definir',
+    role: 'A definir',
+    branch: 'Matriz SP',
+    company: 'RH360 Corporate',
+    status: 'Pré-admissão',
+    situacao: 'PRE_ADMISSAO',
+    admissionDate: '2026-08-10',
+    birthDate: '1995-04-18',
+    salary: 0,
+    manager: 'A definir',
+    costCenter: 'A definir',
+    registration: 'AD-90001',
+    cpf: '901.111.111-11',
+    documents: [],
+    admissaoDigital: {
+      estado: 'EM_ANALISE',
+      disparo: {
+        nome: 'Juliana Prado',
+        cpf: '901.111.111-11',
+        email: 'juliana.prado@rh360.demo',
+        prazoDias: 7,
+        enviadoEm: '2026-07-24T13:00:00.000Z'
+      },
+      termoAceito: true,
+      enviadoEm: '2026-07-27T18:20:00.000Z',
+      blocos: [
+        {
+          id: 'dados-pessoais',
+          titulo: 'Dados Pessoais',
+          descricao: 'Documento com nome completo, data de nascimento e nome da mãe.',
+          obrigatorio: true,
+          statusRevisao: 'PENDENTE',
+          anexos: [{ id: 'anx-jp-1', nome: 'dados-pessoais.pdf', origem: 'Arquivo', enviadoEm: '2026-07-27T18:05:00.000Z' }]
+        },
+        {
+          id: 'rg',
+          titulo: 'RG (frente e verso)',
+          descricao: 'Duas imagens legíveis, sem reflexo e com as bordas visíveis.',
+          obrigatorio: true,
+          statusRevisao: 'PENDENTE',
+          anexos: [
+            { id: 'anx-jp-2', nome: 'rg-frente.jpg', origem: 'Foto', enviadoEm: '2026-07-27T18:08:00.000Z' },
+            { id: 'anx-jp-3', nome: 'rg-verso.jpg', origem: 'Foto', enviadoEm: '2026-07-27T18:09:00.000Z' }
+          ]
+        },
+        {
+          id: 'comprovante-endereco',
+          titulo: 'Comprovante de Endereço',
+          descricao: 'Conta de luz, água ou telefone dos últimos 3 meses.',
+          obrigatorio: true,
+          statusRevisao: 'PENDENTE',
+          anexos: [{ id: 'anx-jp-4', nome: 'conta-de-luz.pdf', origem: 'Arquivo', enviadoEm: '2026-07-27T18:15:00.000Z' }]
+        },
+        {
+          id: 'ctps',
+          titulo: 'CTPS Digital',
+          descricao: 'PDF da carteira de trabalho digital (opcional nesta etapa).',
+          obrigatorio: false,
+          statusRevisao: 'PENDENTE',
+          anexos: [{ id: 'anx-jp-5', nome: 'ctps-digital.pdf', origem: 'Arquivo', enviadoEm: '2026-07-27T18:18:00.000Z' }]
+        }
+      ]
+    }
+  },
+  {
+    id: 'EMP-AD-DEMO-002',
+    name: 'Rafael Monteiro',
+    email: 'rafael.monteiro@rh360.demo',
+    phone: '(41) 99633-2210',
+    address: '',
+    city: 'Curitiba',
+    state: 'PR',
+    department: 'A definir',
+    role: 'A definir',
+    branch: 'Filial PR',
+    company: 'RH360 Corporate',
+    status: 'Pré-admissão',
+    situacao: 'PRE_ADMISSAO',
+    admissionDate: '2026-08-05',
+    birthDate: '1993-11-02',
+    salary: 0,
+    manager: 'A definir',
+    costCenter: 'A definir',
+    registration: 'AD-90002',
+    cpf: '902.222.222-22',
+    documents: [],
+    admissaoDigital: {
+      estado: 'EM_CORRECAO',
+      disparo: {
+        nome: 'Rafael Monteiro',
+        cpf: '902.222.222-22',
+        email: 'rafael.monteiro@rh360.demo',
+        prazoDias: 10,
+        enviadoEm: '2026-07-21T12:30:00.000Z'
+      },
+      termoAceito: true,
+      enviadoEm: '2026-07-25T15:40:00.000Z',
+      mensagemRevisao: 'A foto do RG está ilegível. Reenvie frente e verso em local bem iluminado, sem reflexo e com todas as bordas visíveis.',
+      blocos: [
+        {
+          id: 'dados-pessoais',
+          titulo: 'Dados Pessoais',
+          descricao: 'Documento com nome completo, data de nascimento e nome da mãe.',
+          obrigatorio: true,
+          statusRevisao: 'APROVADO',
+          anexos: [{ id: 'anx-rm-1', nome: 'dados-pessoais.pdf', origem: 'Arquivo', enviadoEm: '2026-07-25T15:20:00.000Z' }]
+        },
+        {
+          id: 'rg',
+          titulo: 'RG (frente e verso)',
+          descricao: 'Duas imagens legíveis, sem reflexo e com as bordas visíveis.',
+          obrigatorio: true,
+          statusRevisao: 'AGUARDANDO_CORRECAO',
+          motivoRevisao: 'A foto do RG está ilegível. Reenvie frente e verso em local bem iluminado, sem reflexo e com todas as bordas visíveis.',
+          anexos: []
+        },
+        {
+          id: 'comprovante-endereco',
+          titulo: 'Comprovante de Endereço',
+          descricao: 'Conta de luz, água ou telefone dos últimos 3 meses.',
+          obrigatorio: true,
+          statusRevisao: 'APROVADO',
+          anexos: [{ id: 'anx-rm-3', nome: 'conta-de-agua.pdf', origem: 'Arquivo', enviadoEm: '2026-07-25T15:33:00.000Z' }]
+        },
+        {
+          id: 'ctps',
+          titulo: 'CTPS Digital',
+          descricao: 'PDF da carteira de trabalho digital (opcional nesta etapa).',
+          obrigatorio: false,
+          statusRevisao: 'APROVADO',
+          anexos: []
+        }
+      ]
+    }
   }
 ];
 

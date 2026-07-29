@@ -15,6 +15,7 @@ import Profile360Module from './components/Profile360Module';
 import GlobalQuery from './components/GlobalQuery';
 import AdminModule from './components/AdminModule';
 import AccessManagement from './components/AccessManagement';
+import PortalColaboradorModule from './components/admissao-digital/PortalColaboradorModule';
 import RequestDetail from './components/RequestDetail';
 import RHRequestForm from './components/RHRequestForm';
 import { AppConfigProvider, useAppConfig } from './contexts/AppConfigContext';
@@ -81,6 +82,7 @@ function AppContent() {
       case 'employees':
       case 'colaboradores': return <EmployeesModule onNavigate={handleNavigate} />;
       case 'profile-360': return <Profile360Module employeeId={config.selectedEmployeeId || undefined} />;
+      case 'portal-colaborador': return <PortalColaboradorModule />;
       case 'global-query':
       case 'consultation': return <GlobalQuery />;
       case 'admin':

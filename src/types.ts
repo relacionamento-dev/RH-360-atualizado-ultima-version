@@ -201,6 +201,56 @@ export type EmployeeStatus =
   | 'Pré-admissão' 
   | 'Desligado';
 
+// ---------------------------------------------------------------------------
+// Admissão Digital (demonstração)
+//
+// Fluxo curto: o RH dispara um link → o colaborador preenche os blocos de
+// documento pelo portal → o RH revisa e aprova (vira Ativo) ou devolve com
+// pendência (volta ao portal só com os blocos marcados).
+// ---------------------------------------------------------------------------
+
+export type AdmissaoDigitalEstado =
+  | 'AGUARDANDO_PREENCHIMENTO'
+  | 'EM_ANALISE'
+  | 'EM_CORRECAO';
+
+export type DocumentoStatusRevisao = 'PENDENTE' | 'APROVADO' | 'AGUARDANDO_CORRECAO';
+
+export interface AdmissaoAnexo {
+  id: string;
+  nome: string;
+  origem: 'Foto' | 'Arquivo';
+  enviadoEm: string;
+}
+
+export interface AdmissaoBloco {
+  id: string;
+  titulo: string;
+  descricao?: string;
+  obrigatorio: boolean;
+  anexos: AdmissaoAnexo[];
+  statusRevisao: DocumentoStatusRevisao;
+  motivoRevisao?: string;
+}
+
+export interface AdmissaoDisparo {
+  nome: string;
+  cpf: string;
+  email: string;
+  prazoDias: number;
+  enviadoEm: string;
+}
+
+export interface AdmissaoDigital {
+  estado: AdmissaoDigitalEstado;
+  disparo: AdmissaoDisparo;
+  termoAceito: boolean;
+  blocos: AdmissaoBloco[];
+  /** Mensagem do RH exibida no banner "Pendência de Revisão" do portal. */
+  mensagemRevisao?: string;
+  enviadoEm?: string;
+}
+
 export interface Employee {
   id: string;
   name: string;
@@ -214,6 +264,12 @@ export interface Employee {
   branch: string;
   company: string;
   status: EmployeeStatus;
+  /**
+   * Situação do vínculo na Admissão Digital. Ausente = colaborador antigo do
+   * seed, tratado como 'ATIVO' (ver `situacaoDoColaborador`).
+   */
+  situacao?: 'PRE_ADMISSAO' | 'ATIVO';
+  admissaoDigital?: AdmissaoDigital;
   admissionDate: string;
   birthDate: string;
   salary: number;
