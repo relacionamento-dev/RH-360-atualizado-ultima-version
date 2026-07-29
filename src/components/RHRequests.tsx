@@ -19,7 +19,7 @@ import RHRequestForm from './RHRequestForm';
 import { Modal } from './ui/Misc';
 import { Select } from './ui/Select';
 import { getStatusVariant, isPendingStatus } from '../utils/requestStatus';
-import { isSuperAdmin } from '../utils/permissions';
+import { isSuperAdmin, podeAbrirPeloFluxoGenerico } from '../utils/permissions';
 import { useAppConfig } from '../contexts/AppConfigContext';
 import { useToast } from './ToastContext';
 import { FormRenderer } from './FormRenderer';
@@ -161,7 +161,7 @@ export default function RHRequests({
       {/* New Request Modal */}
       <Modal isOpen={isNewRequestOpen} onClose={() => setIsNewRequestOpen(false)} title="Nova Solicitação">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-2">
-          {config.processos.filter(p => p.ativo && isAuthorized(p.id, 'solicitar')).map(process => (
+          {config.processos.filter(p => p.ativo && isAuthorized(p.id, 'solicitar') && podeAbrirPeloFluxoGenerico(p.id)).map(process => (
             <button
               key={process.id}
               className="flex items-start gap-4 p-4 bg-gray-50 rounded-[12px] border border-[var(--color-brand-border)] hover:bg-white hover:border-[var(--color-brand-primary)] hover:shadow-md transition-all text-left group"

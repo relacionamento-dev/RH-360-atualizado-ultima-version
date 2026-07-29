@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Search, Filter, Plus, Eye, FileCheck, UserPlus, Clock, ChevronRight,
-  ClipboardCheck, ShieldAlert, CheckCircle2, UserCheck, Send
+  ClipboardCheck, ShieldAlert, CheckCircle2, UserCheck
 } from 'lucide-react';
 import { RHProcess, RHRequest } from '../../types';
 import { useAppConfig } from '../../contexts/AppConfigContext';
@@ -12,7 +12,11 @@ import { SLABar } from '../ui/Misc';
 import AdmissaoDigitalDisparo from '../admissao-digital/AdmissaoDigitalDisparo';
 import AdmissaoDigitalRevisao from '../admissao-digital/AdmissaoDigitalRevisao';
 
-export default function AdmissionManager({ process, onNewRequest }: { process: RHProcess, onNewRequest: () => void }) {
+/**
+ * `onNewRequest` (formulário genérico do processo) não é usado aqui: a Admissão
+ * Digital tem uma entrada única — "+ Nova Admissão" abre o disparo do link.
+ */
+export default function AdmissionManager({ process }: { process: RHProcess, onNewRequest: () => void }) {
   const { config, updateConfig } = useAppConfig();
   const [searchTerm, setSearchTerm] = useState('');
   const [isDisparoOpen, setIsDisparoOpen] = useState(false);
@@ -36,14 +40,11 @@ export default function AdmissionManager({ process, onNewRequest }: { process: R
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-           <h2 className="text-2xl font-black text-gray-900 tracking-tight">Gestão de Admissões</h2>
-           <p className="text-gray-500 font-medium text-[14px]">Controle de documentação, exames e contratos de novos talentos</p>
+           <h2 className="text-2xl font-black text-gray-900 tracking-tight">Admissão Digital</h2>
+           <p className="text-gray-500 font-medium text-[14px]">Do link enviado ao candidato até a aprovação dos documentos pelo RH</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
-          <Button variant="secondary" leftIcon={<Send size={16} />} onClick={() => setIsDisparoOpen(true)}>
-            Disparar link de admissão digital
-          </Button>
-          <Button leftIcon={<Plus size={18} />} onClick={onNewRequest}>
+          <Button leftIcon={<Plus size={18} />} onClick={() => setIsDisparoOpen(true)}>
             Nova Admissão
           </Button>
         </div>

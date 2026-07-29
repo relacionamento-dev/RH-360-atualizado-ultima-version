@@ -133,10 +133,10 @@ export const PROCESS_DEFINITIONS: Record<string, ProcessDefinition> = {
           
           { name: 'salario', label: 'Salário Nominal (R$)', type: 'currency', origin: 'C', required: true, section: 'Condições Contratuais' },
           { name: 'dataAdmissao', label: 'Data Prevista de Início', type: 'date', origin: 'C', required: true, section: 'Condições Contratuais' },
-          { name: 'tipoContrato', label: 'Regime Jurídico', type: 'select', origin: 'C', options: ['CLT', 'PJ', 'Estágio', 'Temporário'], required: true, section: 'Condições Contratuais' },
-          { name: 'statusDocs', label: 'Validação de Documentos', type: 'select', origin: 'C', options: ['Pendente', 'Conferido'], required: true, section: 'Status da Admissão' },
-          { name: 'statusASO', label: 'Exame Admissional (ASO)', type: 'select', origin: 'C', options: ['Pendente', 'Apto', 'Inapto'], required: true, section: 'Status da Admissão' },
-          { name: 'anexo', label: 'Contrato Assinado / Proposta', type: 'file', origin: 'C', section: 'Status da Admissão' }
+          { name: 'tipoContrato', label: 'Regime Jurídico', type: 'select', origin: 'C', options: ['CLT', 'PJ', 'Estágio', 'Temporário'], required: true, section: 'Condições Contratuais' }
+          // A seção "Status da Admissão" (validação de documentos, ASO e upload
+          // manual do contrato) saiu: documentação vem do Portal do Colaborador e
+          // é tratada na tela de Revisão da Admissão Digital.
         ]
       }
     ]

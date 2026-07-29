@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, CornerUpLeft, Paperclip, FileSearch } from 'lucide-react';
+import { CheckCircle2, CornerUpLeft, FileSearch } from 'lucide-react';
 import { Employee } from '../../types';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
@@ -7,7 +7,8 @@ import { Avatar, EmptyState } from '../ui/Misc';
 import { ADMIN_FIELD_CLASS, ExpandableRow, Field, SectionHeader, InfoNote } from '../admin/AdminUI';
 import { useAppConfig } from '../../contexts/AppConfigContext';
 import { useToast } from '../ToastContext';
-import { blocoPreenchido } from '../../utils/admissaoDigital';
+import { BlocoResumo } from './BlocoResumo';
+import { blocoAplicavel, blocoConcluido, tituloBloco } from '../../utils/admissaoDigital';
 
 /**
  * Fila de revisão do RH: quem enviou os documentos e está EM_ANALISE.
@@ -69,7 +70,11 @@ function LinhaRevisao({
   const [blocosSelecionados, setBlocosSelecionados] = useState<string[]>([]);
 
   const admissao = employee.admissaoDigital!;
-  const totalAnexos = admissao.blocos.reduce((soma, b) => soma + b.anexos.length, 0);
+  // Os certificados guardam o arquivo na própria linha, fora de `anexos`.
+  const totalAnexos = admissao.blocos.reduce(
+    (soma, b) => soma + b.anexos.length + (b.certificados || []).filter(c => c.arquivo).length,
+    0
+  );
 
   const alternarBloco = (blocoId: string) => {
     setBlocosSelecionados(prev =>
@@ -106,47 +111,39 @@ function LinhaRevisao({
     >
       <div className="space-y-5">
         <div className="space-y-3">
-          {admissao.blocos.map(bloco => (
-            <div key={bloco.id} className="rounded-[12px] border border-gray-100 p-4 space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[14px] font-bold text-gray-900">{bloco.titulo}</span>
-                {!bloco.obrigatorio && <Badge variant="gray" size="sm">Opcional</Badge>}
-                {blocoPreenchido(bloco) ? (
-                  <Badge variant="green" size="sm">Enviado</Badge>
-                ) : (
-                  <Badge variant="gray" size="sm">Sem anexo</Badge>
+          {admissao.blocos.map(bloco => {
+            const naoSeAplica = !blocoAplicavel(bloco);
+            return (
+              <div key={bloco.id} className="rounded-[12px] border border-gray-100 p-4 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[14px] font-bold text-gray-900">{tituloBloco(admissao, bloco)}</span>
+                  {!bloco.obrigatorio && <Badge variant="gray" size="sm">Opcional</Badge>}
+                  {naoSeAplica ? (
+                    <Badge variant="gray" size="sm">Não se aplica</Badge>
+                  ) : blocoConcluido(bloco) ? (
+                    <Badge variant="green" size="sm">Concluído</Badge>
+                  ) : (
+                    <Badge variant="gray" size="sm">Pendente</Badge>
+                  )}
+                </div>
+
+                <BlocoResumo admissao={admissao} bloco={bloco} />
+
+                {/* Bloco que não se aplica não pode ser devolvido: não há o que corrigir. */}
+                {devolvendo && !naoSeAplica && (
+                  <label className="flex items-center gap-2.5 pt-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={blocosSelecionados.includes(bloco.id)}
+                      onChange={() => alternarBloco(bloco.id)}
+                      className="w-4 h-4 accent-[var(--color-brand-primary)] cursor-pointer"
+                    />
+                    <span className="text-[12px] font-bold text-gray-600">Pedir correção deste bloco</span>
+                  </label>
                 )}
               </div>
-
-              {bloco.anexos.length > 0 ? (
-                <ul className="space-y-1.5">
-                  {bloco.anexos.map(anexo => (
-                    <li key={anexo.id} className="flex items-center gap-2 text-[13px] text-gray-600 font-medium">
-                      <Paperclip size={13} className="text-gray-400 shrink-0" />
-                      <span className="truncate">{anexo.nome}</span>
-                      <span className="text-[11px] text-gray-400">
-                        · {anexo.origem} · {new Date(anexo.enviadoEm).toLocaleDateString('pt-BR')}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-[12px] text-gray-400 font-medium">Nada anexado neste bloco.</p>
-              )}
-
-              {devolvendo && (
-                <label className="flex items-center gap-2.5 pt-1 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={blocosSelecionados.includes(bloco.id)}
-                    onChange={() => alternarBloco(bloco.id)}
-                    className="w-4 h-4 accent-[var(--color-brand-primary)] cursor-pointer"
-                  />
-                  <span className="text-[12px] font-bold text-gray-600">Pedir correção deste documento</span>
-                </label>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {devolvendo ? (

@@ -48,7 +48,7 @@ const RECRUITMENT_FUNNEL = [
 ];
 
 const SLA_BY_PROCESS = [
-  { process: 'Admissão', sla: 98 },
+  { process: 'Admissão Digital', sla: 98 },
   { process: 'Férias', sla: 95 },
   { process: 'Recrutamento', sla: 78 },
   { process: 'Benefícios', sla: 99 },

@@ -675,7 +675,7 @@ function HandoffConfig({ process, update }: { process: RHProcess, update: (u: an
                 onChange={(value) => update({ handoffs: { ...process.handoffs, nextProcessId: value } })}
                 options={[
                   { value: '', label: 'Nenhum' },
-                  { value: '3', label: 'Admissão' },
+                  { value: '3', label: 'Admissão Digital' },
                   { value: '4', label: 'Onboarding' },
                   { value: '14', label: 'Treinamento' },
                 ]}

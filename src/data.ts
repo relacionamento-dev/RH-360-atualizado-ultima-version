@@ -1,4 +1,22 @@
-import { Employee, RHProcess, RHRequest, Group, Job, Application, Task, Announcement, BenefitConfig, Company, CostCenter, Sector, User, HistoryEntry, Accesso, TargetMode } from './types';
+import { Employee, RHProcess, RHRequest, Group, Job, Application, Task, Announcement, BenefitConfig, Company, CostCenter, Sector, User, HistoryEntry, Accesso, TargetMode, AdmissaoBloco, DocumentoStatusRevisao } from './types';
+import { criarBlocosAdmissao } from './utils/admissaoDigital';
+
+/**
+ * Blocos de demonstração da Admissão Digital derivados da definição canônica
+ * (`criarBlocosAdmissao`), para o seed não desencostar da lista real de blocos:
+ * quando um bloco novo entra, os dois pré-admitidos do seed já o recebem.
+ * O padrão aqui é "tudo confirmado"; o override descreve só o que difere.
+ */
+const blocosDemo = (
+  statusPadrao: DocumentoStatusRevisao,
+  overrides: Record<string, Partial<AdmissaoBloco>>
+): AdmissaoBloco[] =>
+  criarBlocosAdmissao().map(bloco => ({
+    ...bloco,
+    statusRevisao: statusPadrao,
+    confirmado: true,
+    ...(overrides[bloco.id] || {})
+  }));
 
 // COMPANIES
 export const COMPANIES: Company[] = [
@@ -1018,68 +1036,104 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     address: '',
     city: 'São Paulo',
     state: 'SP',
-    department: 'A definir',
-    role: 'A definir',
+    // Cargo, setor, unidade e centro de custo vêm da vaga aprovada VAG-002,
+    // como acontece em qualquer disparo feito pela tela.
+    department: 'RH',
+    role: 'Analista de RH',
     branch: 'Matriz SP',
     company: 'RH360 Corporate',
     status: 'Pré-admissão',
     situacao: 'PRE_ADMISSAO',
     admissionDate: '2026-08-10',
     birthDate: '1995-04-18',
-    salary: 0,
+    salary: 6200,
     manager: 'A definir',
-    costCenter: 'A definir',
+    costCenter: '1010 - ADM',
     registration: 'AD-90001',
     cpf: '901.111.111-11',
     documents: [],
     admissaoDigital: {
       estado: 'EM_ANALISE',
       disparo: {
+        vagaId: 'VAG-002',
+        vagaTitulo: 'Analista de RH',
         nome: 'Juliana Prado',
         cpf: '901.111.111-11',
         email: 'juliana.prado@rh360.demo',
+        telefone: '(11) 98812-4477',
+        salario: 6200,
+        dataAdmissao: '2026-08-10',
+        tipoContrato: 'CLT',
         prazoDias: 7,
         enviadoEm: '2026-07-24T13:00:00.000Z'
       },
       termoAceito: true,
       enviadoEm: '2026-07-27T18:20:00.000Z',
-      blocos: [
-        {
-          id: 'dados-pessoais',
-          titulo: 'Dados Pessoais',
-          descricao: 'Documento com nome completo, data de nascimento e nome da mãe.',
-          obrigatorio: true,
-          statusRevisao: 'PENDENTE',
-          anexos: [{ id: 'anx-jp-1', nome: 'dados-pessoais.pdf', origem: 'Arquivo', enviadoEm: '2026-07-27T18:05:00.000Z' }]
+      // Preenchimento completo, aguardando o RH. Cobre os dois lados dos
+      // condicionais: CNH e dependentes em "Sim", reservista e certificados
+      // em "Não".
+      blocos: blocosDemo('PENDENTE', {
+        'foto-perfil': {
+          anexos: [{ id: 'anx-jp-0', nome: 'foto-perfil.jpg', origem: 'Foto', enviadoEm: '2026-07-27T18:02:00.000Z' }]
         },
-        {
-          id: 'rg',
-          titulo: 'RG (frente e verso)',
-          descricao: 'Duas imagens legíveis, sem reflexo e com as bordas visíveis.',
-          obrigatorio: true,
-          statusRevisao: 'PENDENTE',
+        'dados-pessoais': {
+          dados: {
+            nome: 'Juliana Prado',
+            cpf: '901.111.111-11',
+            dataNascimento: '1995-04-18',
+            estadoCivil: 'Solteiro(a)',
+            sexo: 'Feminino',
+            nomeMae: 'Marta Prado'
+          }
+        },
+        rg: {
           anexos: [
             { id: 'anx-jp-2', nome: 'rg-frente.jpg', origem: 'Foto', enviadoEm: '2026-07-27T18:08:00.000Z' },
             { id: 'anx-jp-3', nome: 'rg-verso.jpg', origem: 'Foto', enviadoEm: '2026-07-27T18:09:00.000Z' }
           ]
         },
-        {
-          id: 'comprovante-endereco',
-          titulo: 'Comprovante de Endereço',
-          descricao: 'Conta de luz, água ou telefone dos últimos 3 meses.',
-          obrigatorio: true,
-          statusRevisao: 'PENDENTE',
-          anexos: [{ id: 'anx-jp-4', nome: 'conta-de-luz.pdf', origem: 'Arquivo', enviadoEm: '2026-07-27T18:15:00.000Z' }]
+        'titulo-eleitor': {
+          dados: { numero: '0123 4567 8910' },
+          anexos: [{ id: 'anx-jp-6', nome: 'titulo-eleitor.jpg', origem: 'Foto', enviadoEm: '2026-07-27T18:11:00.000Z' }]
         },
-        {
-          id: 'ctps',
-          titulo: 'CTPS Digital',
-          descricao: 'PDF da carteira de trabalho digital (opcional nesta etapa).',
-          obrigatorio: false,
-          statusRevisao: 'PENDENTE',
+        certidao: {
+          anexos: [{ id: 'anx-jp-7', nome: 'certidao-nascimento.pdf', origem: 'Arquivo', enviadoEm: '2026-07-27T18:13:00.000Z' }]
+        },
+        ctps: {
           anexos: [{ id: 'anx-jp-5', nome: 'ctps-digital.pdf', origem: 'Arquivo', enviadoEm: '2026-07-27T18:18:00.000Z' }]
-        }
-      ]
+        },
+        cnh: {
+          aplicavel: true,
+          dados: { numero: '01234567890' },
+          anexos: [{ id: 'anx-jp-8', nome: 'cnh.jpg', origem: 'Foto', enviadoEm: '2026-07-27T18:15:00.000Z' }]
+        },
+        reservista: { aplicavel: false },
+        endereco: {
+          dados: {
+            cep: '01310-100',
+            logradouro: 'Avenida Paulista',
+            numero: '1000',
+            complemento: 'Apto 82',
+            bairro: 'Bela Vista',
+            cidade: 'São Paulo',
+            uf: 'SP'
+          }
+        },
+        dependentes: {
+          aplicavel: true,
+          dependentes: [
+            {
+              id: 'dep-jp-1',
+              name: 'Miguel Prado Alves',
+              relationship: 'Filho(a)',
+              birthDate: '2019-03-12',
+              cpf: '903.333.333-33',
+              benefits: ['Plano de Saúde']
+            }
+          ]
+        },
+        certificados: { aplicavel: false }
+      })
     }
   },
   {
@@ -1090,67 +1144,101 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     address: '',
     city: 'Curitiba',
     state: 'PR',
-    department: 'A definir',
-    role: 'A definir',
+    // Origem: vaga aprovada VAG-004 (Filial PR).
+    department: 'TI',
+    role: 'Analista de Suporte Técnico',
     branch: 'Filial PR',
     company: 'RH360 Corporate',
     status: 'Pré-admissão',
     situacao: 'PRE_ADMISSAO',
     admissionDate: '2026-08-05',
     birthDate: '1993-11-02',
-    salary: 0,
+    salary: 4800,
     manager: 'A definir',
-    costCenter: 'A definir',
+    costCenter: '2020 - TI',
     registration: 'AD-90002',
     cpf: '902.222.222-22',
     documents: [],
     admissaoDigital: {
       estado: 'EM_CORRECAO',
       disparo: {
+        vagaId: 'VAG-004',
+        vagaTitulo: 'Analista de Suporte Técnico',
         nome: 'Rafael Monteiro',
         cpf: '902.222.222-22',
         email: 'rafael.monteiro@rh360.demo',
+        telefone: '(41) 99633-2210',
+        salario: 4800,
+        dataAdmissao: '2026-08-05',
+        tipoContrato: 'CLT',
         prazoDias: 10,
         enviadoEm: '2026-07-21T12:30:00.000Z'
       },
       termoAceito: true,
       enviadoEm: '2026-07-25T15:40:00.000Z',
       mensagemRevisao: 'A foto do RG está ilegível. Reenvie frente e verso em local bem iluminado, sem reflexo e com todas as bordas visíveis.',
-      blocos: [
-        {
-          id: 'dados-pessoais',
-          titulo: 'Dados Pessoais',
-          descricao: 'Documento com nome completo, data de nascimento e nome da mãe.',
-          obrigatorio: true,
-          statusRevisao: 'APROVADO',
-          anexos: [{ id: 'anx-rm-1', nome: 'dados-pessoais.pdf', origem: 'Arquivo', enviadoEm: '2026-07-25T15:20:00.000Z' }]
+      // Tudo aprovado menos o RG, que voltou para correção. Espelha a Juliana
+      // nos condicionais (CNH e dependentes em "Não", reservista e
+      // certificados em "Sim") para a demo mostrar os dois caminhos.
+      blocos: blocosDemo('APROVADO', {
+        'foto-perfil': {
+          anexos: [{ id: 'anx-rm-0', nome: 'foto-perfil.jpg', origem: 'Foto', enviadoEm: '2026-07-25T15:18:00.000Z' }]
         },
-        {
-          id: 'rg',
-          titulo: 'RG (frente e verso)',
-          descricao: 'Duas imagens legíveis, sem reflexo e com as bordas visíveis.',
-          obrigatorio: true,
+        'dados-pessoais': {
+          dados: {
+            nome: 'Rafael Monteiro',
+            cpf: '902.222.222-22',
+            dataNascimento: '1993-11-02',
+            estadoCivil: 'Casado(a)',
+            sexo: 'Masculino',
+            nomeMae: 'Sandra Monteiro'
+          }
+        },
+        rg: {
           statusRevisao: 'AGUARDANDO_CORRECAO',
           motivoRevisao: 'A foto do RG está ilegível. Reenvie frente e verso em local bem iluminado, sem reflexo e com todas as bordas visíveis.',
+          confirmado: false,
           anexos: []
         },
-        {
-          id: 'comprovante-endereco',
-          titulo: 'Comprovante de Endereço',
-          descricao: 'Conta de luz, água ou telefone dos últimos 3 meses.',
-          obrigatorio: true,
-          statusRevisao: 'APROVADO',
-          anexos: [{ id: 'anx-rm-3', nome: 'conta-de-agua.pdf', origem: 'Arquivo', enviadoEm: '2026-07-25T15:33:00.000Z' }]
+        'titulo-eleitor': {
+          dados: { numero: '9876 5432 1098' },
+          anexos: [{ id: 'anx-rm-4', nome: 'titulo-eleitor.pdf', origem: 'Arquivo', enviadoEm: '2026-07-25T15:25:00.000Z' }]
         },
-        {
-          id: 'ctps',
-          titulo: 'CTPS Digital',
-          descricao: 'PDF da carteira de trabalho digital (opcional nesta etapa).',
-          obrigatorio: false,
-          statusRevisao: 'APROVADO',
-          anexos: []
+        // Casado(a): o bloco aparece como "Certidão de Casamento".
+        certidao: {
+          anexos: [{ id: 'anx-rm-5', nome: 'certidao-casamento.pdf', origem: 'Arquivo', enviadoEm: '2026-07-25T15:28:00.000Z' }]
+        },
+        ctps: { anexos: [] },
+        cnh: { aplicavel: false },
+        reservista: {
+          aplicavel: true,
+          dados: { numero: 'RM-88221199' },
+          anexos: [{ id: 'anx-rm-6', nome: 'reservista.jpg', origem: 'Foto', enviadoEm: '2026-07-25T15:30:00.000Z' }]
+        },
+        endereco: {
+          dados: {
+            cep: '80020-320',
+            logradouro: 'Rua XV de Novembro',
+            numero: '250',
+            complemento: '',
+            bairro: 'Centro',
+            cidade: 'Curitiba',
+            uf: 'PR'
+          }
+        },
+        dependentes: { aplicavel: false },
+        certificados: {
+          aplicavel: true,
+          certificados: [
+            {
+              id: 'cert-rm-1',
+              nome: 'Técnico em Informática',
+              arquivo: 'diploma-tecnico.pdf',
+              enviadoEm: '2026-07-25T15:35:00.000Z'
+            }
+          ]
         }
-      ]
+      })
     }
   }
 ];
@@ -1299,7 +1387,9 @@ export const INITIAL_RH_PROCESSES: RHProcess[] = [
     handoffs: { updateProfile: false, createRecord360: false, createTask: true, generateDoc: false, requireSignature: false, handoffType: 'automatico', nextProcessId: '3' },
     aiConfig: { enabled: true, points: [], model: 'gemini-1.5-flash', purpose: 'Análise de currículos', requireReview: true }
   },
-  { id: '3', name: 'Admissão', description: 'Formalização da proposta e admissão', icon: 'CheckCircle2', pendingCount: 3, ativo: true, category: 'Recrutamento', viewType: 'admission', targetMode: TargetMode.CANDIDATE_ZOOM, roles: { employee: false, manager: true, hr: true, director: false }, etapas: ['Documentação', 'Exame Médico', 'Contrato', 'Finalizado'], version: 1, isSensitive: true, allowDraft: true, allowCancel: true, approvals: [], handoffs: { updateProfile: true, createRecord360: true, createTask: false, generateDoc: true, requireSignature: true, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
+  // Rótulo "Admissão Digital"; o id continua '3' — rotas, permissões, handoffs e
+  // processDefinitions apontam para ele.
+  { id: '3', name: 'Admissão Digital', description: 'Link de admissão, documentos pelo portal e aprovação do RH', icon: 'CheckCircle2', pendingCount: 3, ativo: true, category: 'Recrutamento', viewType: 'admission', targetMode: TargetMode.CANDIDATE_ZOOM, roles: { employee: false, manager: true, hr: true, director: false }, etapas: ['Documentação', 'Exame Médico', 'Contrato', 'Finalizado'], version: 1, isSensitive: true, allowDraft: true, allowCancel: true, approvals: [], handoffs: { updateProfile: true, createRecord360: true, createTask: false, generateDoc: true, requireSignature: true, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
   { id: '4', name: 'Onboarding', description: 'Checklist de integração de novos colaboradores', icon: 'Flag', pendingCount: 3, ativo: true, category: 'Recrutamento', viewType: 'onboarding', targetMode: TargetMode.EMPLOYEE_ZOOM, roles: { employee: true, manager: true, hr: true, director: false }, etapas: ['Pré-admissão', 'Primeiro Dia', 'Primeira Semana', 'Primeiro Mês'], version: 1, isSensitive: false, allowDraft: false, allowCancel: false, approvals: [], handoffs: { updateProfile: false, createRecord360: false, createTask: true, generateDoc: false, requireSignature: false, handoffType: 'desativado' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
   { id: '5', name: 'Recebimento de VR/VA', description: 'Confirmação mensal de recebimento de benefícios', icon: 'CreditCard', pendingCount: 3, ativo: true, category: 'Benefícios', viewType: 'vr-va', targetMode: TargetMode.CURRENT_USER, roles: { employee: true, manager: false, hr: true, director: false }, etapas: ['Crédito Lançado', 'Confirmação do Colaborador', 'Recebimento Registrado'], version: 1, isSensitive: false, allowDraft: false, allowCancel: false, approvals: [], handoffs: { updateProfile: false, createRecord360: false, createTask: false, generateDoc: true, requireSignature: true, handoffType: 'desativado' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
   { id: '6', name: 'Gestão de Dependentes', description: 'Inclusão ou alteração de dependentes', icon: 'Users', pendingCount: 3, ativo: true, category: 'Benefícios', viewType: 'generic', targetMode: TargetMode.CURRENT_USER, roles: { employee: true, manager: false, hr: true, director: false }, etapas: ['Solicitado', 'Validação RH', 'Concluído'], version: 1, isSensitive: false, allowDraft: true, allowCancel: true, approvals: [], handoffs: { updateProfile: true, createRecord360: true, createTask: false, generateDoc: false, requireSignature: false, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
@@ -1765,6 +1855,24 @@ export const INITIAL_JOBS: Job[] = [
     type: 'CLT',
     salaryRange: 'R$ 3.000,00 - R$ 4.000,00',
     createdAt: '2024-01-25',
+  },
+  // Vaga aprovada da Filial PR — é a origem do pré-admitido Rafael Monteiro
+  // (EMP-AD-DEMO-002) no seed da Admissão Digital.
+  {
+    id: 'VAG-004',
+    code: 'VAG-004',
+    title: 'Analista de Suporte Técnico',
+    company: 'RH360 Corporate',
+    branch: 'Filial PR',
+    department: 'TI',
+    sector: 'Suporte',
+    costCenter: '2020 - TI',
+    location: 'Curitiba, PR',
+    quantity: 1,
+    status: 'Aberto',
+    type: 'CLT',
+    salaryRange: 'R$ 4.000,00 - R$ 5.500,00',
+    createdAt: '2026-07-10',
   },
   { 
     id: 'v1', 

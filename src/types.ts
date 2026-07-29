@@ -223,6 +223,31 @@ export interface AdmissaoAnexo {
   enviadoEm: string;
 }
 
+/** Campo declarado dentro de um bloco do portal (Dados Pessoais, Endereço...). */
+export interface AdmissaoCampo {
+  id: string;
+  label: string;
+  tipo: 'text' | 'date' | 'select';
+  opcoes?: string[];
+  obrigatorio?: boolean;
+  placeholder?: string;
+  /**
+   * Já veio do disparo (nome, CPF): aparece preenchido só para conferência, em
+   * vez de ser pedido de novo ao colaborador.
+   */
+  somenteLeitura?: boolean;
+  /** Largura no grid de 2 colunas do bloco. */
+  largura?: 1 | 2;
+}
+
+/** Certificado/diploma anexado pelo colaborador, com o nome do curso. */
+export interface AdmissaoCertificado {
+  id: string;
+  nome: string;
+  arquivo: string;
+  enviadoEm: string;
+}
+
 export interface AdmissaoBloco {
   id: string;
   titulo: string;
@@ -231,12 +256,47 @@ export interface AdmissaoBloco {
   anexos: AdmissaoAnexo[];
   statusRevisao: DocumentoStatusRevisao;
   motivoRevisao?: string;
+  /**
+   * Etapa fechada pelo colaborador no botão "Confirmar etapa" do portal. É o
+   * que acende a bolinha verde do acordeão, alimenta a barra de progresso e
+   * libera o envio — ter anexo não basta, porque o anexo pode estar sendo
+   * trocado. Qualquer mudança no conteúdo do bloco derruba a confirmação.
+   */
+  confirmado?: boolean;
+
+  /** Campos do bloco e os valores digitados pelo colaborador. */
+  campos?: AdmissaoCampo[];
+  dados?: Record<string, any>;
+  /** Bloco pede foto/arquivo. Blocos só de formulário (Endereço) não pedem. */
+  pedeAnexo?: boolean;
+  /**
+   * Pergunta Sim/Não que liga o bloco (CNH, Reservista, Dependentes,
+   * Certificados). `aplicavel` guarda a resposta: `undefined` = ainda não
+   * respondida, `false` = não se aplica (fecha verde sem exigir nada).
+   */
+  perguntaCondicional?: string;
+  aplicavel?: boolean;
+  /** Blocos com editor de lista próprio em vez de campos simples. */
+  lista?: 'dependentes' | 'certificados';
+  /** Reaproveita o mesmo formato do processo "Gestão de Dependentes". */
+  dependentes?: Dependent[];
+  certificados?: AdmissaoCertificado[];
 }
 
 export interface AdmissaoDisparo {
+  /** Requisição de Vaga aprovada que originou a admissão (Job.id). */
+  vagaId: string;
+  /** Título da vaga, guardado junto para o histórico não depender do cadastro. */
+  vagaTitulo: string;
   nome: string;
   cpf: string;
   email: string;
+  telefone: string;
+  /** Condições contratuais definidas pelo RH no disparo. */
+  salario: number;
+  /** Data prevista de início, sempre em ISO (aaaa-mm-dd). */
+  dataAdmissao: string;
+  tipoContrato: string;
   prazoDias: number;
   enviadoEm: string;
 }

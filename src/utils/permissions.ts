@@ -39,6 +39,16 @@ export const asSuperAdmin = (user: User): User => ({
 export const hasGlobalScope = (user?: Pick<User, 'profile' | 'scope'> | null): boolean =>
   isSuperAdmin(user) || user?.scope === 'global';
 
+// Processos com entrada própria não entram no modal genérico "Nova
+// Solicitação". A Admissão Digital ('3') só pode ser iniciada pelo botão
+// "+ Nova Admissão" dentro da tela do processo, que dispara o link de admissão
+// — abrir o formulário genérico criaria uma solicitação fora desse fluxo.
+// Não afeta permissão ('solicitar' segue valendo), só a vitrine de abertura.
+export const PROCESSOS_SEM_ABERTURA_GENERICA = ['3'];
+
+export const podeAbrirPeloFluxoGenerico = (processId: string): boolean =>
+  !PROCESSOS_SEM_ABERTURA_GENERICA.includes(processId);
+
 export const FULL_PROCESS_PERMISSIONS: ProcessPermission = {
   ver: true,
   solicitar: true,

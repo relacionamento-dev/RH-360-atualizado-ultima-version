@@ -26,7 +26,7 @@ import {
   menuModules 
 } from '../data';
 import { PROCESS_DEFINITIONS } from '../processDefinitions';
-import { criarBlocosAdmissao } from '../utils/admissaoDigital';
+import { blocosComDadosDoDisparo, criarBlocosAdmissao } from '../utils/admissaoDigital';
 import { isSuperAdmin, isJynxEmail, asSuperAdmin, FULL_PROCESS_PERMISSIONS, FULL_SENSITIVE_PERMISSIONS } from '../utils/permissions';
 import {
   buildApprovalChain,
@@ -71,7 +71,14 @@ const INITIAL_STATE: AppConfig = {
   // solicitante fica com matrícula 00000 / setor N/A.
   // 1.1.0 — seed da Admissão Digital (EMP-AD-DEMO-001 em análise e
   // EMP-AD-DEMO-002 em correção).
-  version: '1.1.0',
+  // 1.2.0 — processo '3' renomeado para "Admissão Digital" e disparo com Vaga
+  // Aprovada + condições contratuais (os dois seeds ganharam esses campos).
+  // 1.3.0 — acordeão do Portal do Colaborador: blocos ganharam `confirmado`,
+  // que é o que acende a bolinha verde e libera o envio.
+  // 1.4.0 — conjunto completo de blocos (foto, dados pessoais, título, certidão,
+  // CNH, reservista, endereço, dependentes e certificados), com campos, listas
+  // e condicionais Sim/Não.
+  version: '1.4.0',
   empresaAtual: COMPANIES[0],
   usuarioAtual: DEMO_USERS[0], // Admin by default
   usuariosDemo: DEMO_USERS,
@@ -811,7 +818,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
           const admissionProcess = prev.processos.find(p => p.id === '3');
           const targetTask: Task = {
             id: `task-${Date.now() + 2}`,
-            title: `Iniciar Admissão - ${req.data.nomeCandidato || 'Candidato'}`,
+            title: `Iniciar Admissão Digital - ${req.data.nomeCandidato || 'Candidato'}`,
             description: `Gerar admissão para o candidato aprovado na vaga ${req.data.vagaId || req.alvo}.`,
             assignedTo: 'RH-001',
             dueDate: new Date(Date.now() + 48 * 3600000).toISOString(),
@@ -822,7 +829,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
             requestId: req.id,
             requestNumber: req.numero,
             processId: admissionProcess?.ativo ? '3' : '2',
-            process: admissionProcess?.ativo ? 'Admissão' : 'Recrutamento e Seleção',
+            process: admissionProcess?.ativo ? 'Admissão Digital' : 'Recrutamento e Seleção',
             solicitante: req.solicitante,
             type: 'Onboarding',
             responsible: 'RH/DP',
@@ -848,7 +855,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
             requestId: req.id,
             requestNumber: req.numero,
             processId: onboardingProcess?.ativo ? '4' : '3',
-            process: onboardingProcess?.ativo ? 'Onboarding' : 'Admissão',
+            process: onboardingProcess?.ativo ? 'Onboarding' : 'Admissão Digital',
             solicitante: req.solicitante,
             type: 'Onboarding',
             responsible: 'RH/DP',
@@ -1138,30 +1145,35 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
   /**
    * Cria o colaborador já em Pré-admissão. Ele sai da contagem de Ativos
    * (status) e passa a existir para o Portal do Colaborador (admissaoDigital).
+   * Cargo, setor, empresa/filial e centro de custo vêm da Vaga Aprovada
+   * escolhida no disparo; salário, início e regime, das condições contratuais.
    */
   const dispararAdmissaoDigital = (dados: Omit<AdmissaoDisparo, 'enviadoEm'>) => {
     const agora = new Date();
-    const previsaoAdmissao = new Date(agora.getTime() + dados.prazoDias * 86400000);
+    const vaga = config.vagas.find(v => v.id === dados.vagaId);
+    // Sem data informada, cai no prazo do link — mantém o comportamento antigo.
+    const previsaoAdmissao =
+      dados.dataAdmissao || new Date(agora.getTime() + dados.prazoDias * 86400000).toISOString().slice(0, 10);
 
     const novo: Employee = {
       id: `EMP-AD-${agora.getTime()}`,
       name: dados.nome,
       email: dados.email,
-      phone: '',
+      phone: dados.telefone || '',
       address: '',
       city: '',
       state: '',
-      department: 'A definir',
-      role: 'A definir',
-      branch: config.filiais[0] || 'Matriz SP',
-      company: config.empresaAtual.name,
+      department: vaga?.department || vaga?.sector || 'A definir',
+      role: vaga?.title || dados.vagaTitulo || 'A definir',
+      branch: vaga?.branch || config.filiais[0] || 'Matriz SP',
+      company: vaga?.company || config.empresaAtual.name,
       status: 'Pré-admissão',
       situacao: 'PRE_ADMISSAO',
-      admissionDate: previsaoAdmissao.toISOString().slice(0, 10),
+      admissionDate: previsaoAdmissao,
       birthDate: '',
-      salary: 0,
+      salary: dados.salario || 0,
       manager: 'A definir',
-      costCenter: 'A definir',
+      costCenter: vaga?.costCenter || 'A definir',
       registration: `AD-${String(agora.getTime()).slice(-5)}`,
       cpf: dados.cpf,
       documents: [],
@@ -1169,7 +1181,9 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
         estado: 'AGUARDANDO_PREENCHIMENTO',
         disparo: { ...dados, enviadoEm: agora.toISOString() },
         termoAceito: false,
-        blocos: criarBlocosAdmissao()
+        // Nome e CPF já vieram do disparo: o bloco Dados Pessoais nasce com
+        // eles preenchidos, para o colaborador só conferir.
+        blocos: blocosComDadosDoDisparo(criarBlocosAdmissao(), { nome: dados.nome, cpf: dados.cpf })
       }
     };
 
@@ -1180,7 +1194,8 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
         registrarAuditoriaAdmissao(
           'Disparo de Admissão Digital',
           novo.id,
-          `Link enviado para ${dados.nome} (${dados.email}) com prazo de ${dados.prazoDias} dias.`
+          `Link enviado para ${dados.nome} (${dados.email}) com prazo de ${dados.prazoDias} dias.` +
+            (dados.vagaTitulo ? ` Vaga: ${dados.vagaTitulo}.` : '')
         ),
         ...prev.auditTrail
       ]
@@ -1282,7 +1297,9 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
               ...e,
               status: 'Ativo' as const,
               situacao: 'ATIVO' as const,
-              admissionDate: new Date().toISOString().slice(0, 10),
+              // Vale a data prevista de início combinada no disparo; sem ela
+              // (registro antigo), a admissão passa a valer a partir de hoje.
+              admissionDate: emp.admissaoDigital?.disparo.dataAdmissao || new Date().toISOString().slice(0, 10),
               documents: [...novosDocumentos, ...(e.documents || [])],
               admissaoDigital: undefined
             }
@@ -1320,13 +1337,19 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
                 ...e.admissaoDigital,
                 estado: 'EM_CORRECAO',
                 mensagemRevisao: motivo,
-                // O bloco devolvido perde os anexos recusados: o colaborador
-                // precisa enviar de novo, e é isso que reabilita o botão de
-                // reenvio no portal.
+                // O bloco devolvido perde os anexos recusados e a confirmação
+                // da etapa: volta ao portal com o anel laranja, e o colaborador
+                // precisa reanexar e confirmar de novo para liberar o reenvio.
                 blocos: e.admissaoDigital.blocos.map(b =>
                   blocoIds.includes(b.id)
-                    ? { ...b, statusRevisao: 'AGUARDANDO_CORRECAO' as const, motivoRevisao: motivo, anexos: [] }
-                    : { ...b, statusRevisao: 'APROVADO' as const, motivoRevisao: undefined }
+                    ? {
+                        ...b,
+                        statusRevisao: 'AGUARDANDO_CORRECAO' as const,
+                        motivoRevisao: motivo,
+                        anexos: [],
+                        confirmado: false
+                      }
+                    : { ...b, statusRevisao: 'APROVADO' as const, motivoRevisao: undefined, confirmado: true }
                 )
               }
             }

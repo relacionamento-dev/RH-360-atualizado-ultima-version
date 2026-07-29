@@ -11,7 +11,7 @@ import { useAppConfig } from '../contexts/AppConfigContext';
 import { Avatar, Modal, Badge } from './ui/Misc';
 import { Button } from './ui/Button';
 import { RHProcess, ProcessPermission, RHRequest, User } from '../types';
-import { isSuperAdmin } from '../utils/permissions';
+import { isSuperAdmin, podeAbrirPeloFluxoGenerico } from '../utils/permissions';
 import RHRequestForm from './RHRequestForm';
 import RequestDetail from './RequestDetail';
 
@@ -715,7 +715,7 @@ export default function AppShell({
         title="Nova Solicitação"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-2">
-          {(config.processos || []).filter(p => p.ativo && isAuthorized(p.id, 'solicitar')).map(process => (
+          {(config.processos || []).filter(p => p.ativo && isAuthorized(p.id, 'solicitar') && podeAbrirPeloFluxoGenerico(p.id)).map(process => (
             <button
               key={process.id}
               className="flex items-start gap-4 p-4 bg-gray-50 rounded-[12px] border border-[var(--color-brand-border)] hover:bg-white hover:border-[var(--color-brand-primary)] hover:shadow-md transition-all text-left group"
