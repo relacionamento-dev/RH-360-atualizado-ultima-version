@@ -338,19 +338,19 @@ export const PROCESS_DEFINITIONS: Record<string, ProcessDefinition> = {
     targetMode: TargetMode.EMPLOYEE_ZOOM,
     steps: [
       {
-        name: 'Aviso de Desligamento',
+        name: 'Medida Disciplinar',
         fields: [
           { name: 'colaboradorId', label: 'Colaborador', type: 'zoom', origin: 'C', required: true, section: 'Identificação', zoomConfig: { entity: 'employee', fields: ['name', 'registration'] } },
           { name: 'cargo', label: 'Cargo', type: 'text', origin: 'F', section: 'Situação Atual' },
           { name: 'gestor', label: 'Gestor Direto', type: 'text', origin: 'F', section: 'Situação Atual' },
-          { name: 'dataAdmissao', label: 'Data de Admissão', type: 'text', origin: 'F', section: 'Situação Atual' },
-          
-          { name: 'tipoDesligamento', label: 'Motivo do Desligamento', type: 'select', origin: 'C', options: ['Pedido de Demissão', 'Sem Justa Causa', 'Com Justa Causa', 'Término de Contrato'], required: true, section: 'Dados da Rescisão' },
-          { name: 'avisoPrevio', label: 'Tipo de Aviso Prévio', type: 'select', origin: 'C', options: ['Trabalhado', 'Indenizado', 'Dispensado'], required: true, section: 'Dados da Rescisão' },
-          { name: 'ultimoDia', label: 'Último Dia Trabalhado', type: 'date', origin: 'C', required: true, section: 'Dados da Rescisão' },
-          { name: 'justificativa', label: 'Parecer do Gestor / Justificativa', type: 'textarea', origin: 'C', required: true, gridCols: 3, section: 'Dados da Rescisão' },
-          { name: 'substituto', label: 'Necessário Substituição?', type: 'boolean', origin: 'C', section: 'Planejamento' },
-          { name: 'anexo', label: 'Carta de Demissão / Documento', type: 'file', origin: 'C', section: 'Dados da Rescisão' }
+          { name: 'dataAdmissao', label: 'Data de Admissão', type: 'date', origin: 'F', section: 'Situação Atual' },
+
+          { name: 'tipoMedida', label: 'Tipo de Medida', type: 'select', origin: 'C', options: ['Advertência Verbal', 'Advertência Escrita', 'Suspensão'], required: true, section: 'Dados da Medida' },
+          { name: 'dataOcorrido', label: 'Data do Ocorrido', type: 'date', origin: 'C', required: true, section: 'Dados da Medida' },
+          { name: 'motivo', label: 'Motivo', type: 'textarea', origin: 'C', required: true, maxLength: 500, gridCols: 3, section: 'Dados da Medida' },
+
+          { name: 'testemunhas', label: 'Testemunha(s)', type: 'text', origin: 'C', required: false, placeholder: 'Nomes separados por vírgula', section: 'Registro da Ocorrência' },
+          { name: 'anexo', label: 'Documento / Registro da Ocorrência', type: 'file', origin: 'C', required: false, section: 'Registro da Ocorrência' }
         ]
       }
     ]

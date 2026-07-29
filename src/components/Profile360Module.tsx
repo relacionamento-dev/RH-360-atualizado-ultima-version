@@ -759,7 +759,7 @@ function RequestsTab({ employee, config, onNavigate }: { employee: Employee, con
           { header: 'STATUS', accessor: 'status', render: (val) => <Badge variant={val === 'Concluída' ? 'green' : val === 'Cancelada' ? 'red' : 'blue'}>{val}</Badge> },
           { header: 'ETAPA ATUAL', accessor: 'etapaAtual', render: (val) => <span className="text-[12px] text-gray-500 font-medium">{val}</span> },
           { header: 'DATA', accessor: 'createdAt', render: (val) => <span className="text-[13px] text-gray-500">{new Date(val).toLocaleDateString('pt-BR')}</span> },
-          { header: '', accessor: 'id', render: (val) => <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onNavigate({ currentRequestId: val })}><ExternalLink size={14} /></Button> }
+          { header: '', accessor: 'id', render: (val) => <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onNavigate({ activeView: 'request-detail', currentRequestId: val })}><ExternalLink size={14} /></Button> }
         ]}
         data={requests}
       />

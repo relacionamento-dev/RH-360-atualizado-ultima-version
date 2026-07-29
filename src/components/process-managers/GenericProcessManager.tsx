@@ -91,7 +91,7 @@ export default function GenericProcessManager({ process, onNewRequest }: Generic
               </div>
             )},
             { header: 'AÇÕES', accessor: 'id', render: (_, row) => (
-              <Button variant="ghost" size="icon" title="Ver detalhes" aria-label="Ver detalhes" onClick={() => updateConfig({ currentRequestId: row.id })}>
+              <Button variant="ghost" size="icon" title="Ver detalhes" aria-label="Ver detalhes" onClick={() => updateConfig({ activeView: 'request-detail', currentRequestId: row.id })}>
                 <Eye className="w-5 h-5 text-gray-500 hover:text-orange-500" />
               </Button>
             )}

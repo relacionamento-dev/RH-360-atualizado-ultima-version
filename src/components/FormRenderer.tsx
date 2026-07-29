@@ -4,6 +4,7 @@ import { computeAnchoredPosition, AnchoredPosition } from '../utils/anchoredPosi
 import { computeDerivedFields } from '../utils/computedFields';
 import { isEmptyFieldValue } from '../utils/formValues';
 import { getBenefitCredit } from '../utils/benefitCredit';
+import { localDateFromString } from '../utils/dateLocal';
 import { FormField, ProcessDefinition } from '../types';
 import { Button } from './ui/Button';
 import { 
@@ -47,28 +48,6 @@ type CalendarPosition = AnchoredPosition;
 // a largura do calendário em 320px.
 const computeCalendarPosition = (anchor: HTMLElement, height: number): CalendarPosition =>
   computeAnchoredPosition(anchor, height, { width: CALENDAR_WIDTH, gap: 8, margin: VIEWPORT_MARGIN });
-
-const localDateFromString = (value: string) => {
-  if (!value) return null;
-  const str = String(value).trim();
-  const dmYMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (dmYMatch) {
-    const day = Number(dmYMatch[1]);
-    const month = Number(dmYMatch[2]) - 1;
-    const year = Number(dmYMatch[3]);
-    const date = new Date(year, month, day);
-    return date.getFullYear() === year && date.getMonth() === month && date.getDate() === day ? date : null;
-  }
-  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (isoMatch) {
-    const year = Number(isoMatch[1]);
-    const month = Number(isoMatch[2]) - 1;
-    const day = Number(isoMatch[3]);
-    const date = new Date(year, month, day);
-    return date.getFullYear() === year && date.getMonth() === month && date.getDate() === day ? date : null;
-  }
-  return null;
-};
 
 const localDateToDisplay = (date: Date) => {
   const day = String(date.getDate()).padStart(2, '0');

@@ -14,6 +14,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { PROCESS_DEFINITIONS } from '../processDefinitions';
 import { getStatusVariant } from '../utils/requestStatus';
 import { ensureApprovalChain, getCurrentLevelIndex } from '../utils/approvalFlow';
+import { isDateOnlyString, localDateFromString } from '../utils/dateLocal';
 
 interface RequestDetailProps {
   requestId: string;
@@ -97,10 +98,12 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
   const parseDateString = (dateString: string) => {
     if (!dateString) return null;
     const str = dateString.trim();
-    const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (isoMatch) return new Date(`${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`);
-    const dmYMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (dmYMatch) return new Date(`${dmYMatch[3]}-${dmYMatch[2]}-${dmYMatch[1]}`);
+    // Data sem hora ('2026-07-14' / '14/07/2026'): o resultado local é final,
+    // inclusive quando é null (31/02) — deixar cair no parse nativo faria o
+    // Date rolar em silêncio para 03/03.
+    if (isDateOnlyString(str)) return localDateFromString(str);
+    // Timestamp completo (createdAt, decidedAt, histórico): já traz fuso, então
+    // o parse nativo é o correto aqui.
     const parsed = new Date(str);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   };

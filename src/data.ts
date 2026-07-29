@@ -1362,7 +1362,11 @@ export const INITIAL_RH_PROCESSES: RHProcess[] = [
     allowCancel: true,
     approvals: [
       { id: 'app-1', name: 'Gestor Direto', order: 1, active: true, responsibilityType: 'gestor-direto', sla: 24, slaUnit: 'h', isMandatory: true },
-      { id: 'app-2', name: 'Diretoria', order: 2, active: true, responsibilityType: 'diretoria', sla: 48, slaUnit: 'h', isMandatory: true, conditionField: 'salario', conditionOperator: '>', conditionValue: 10000 }
+      // `conditionField` precisa casar com a CHAVE do campo no formulário
+      // (`id || name` de PROCESS_DEFINITIONS['1']): aqui é `salarioSugerido`.
+      // Com um nome inexistente a comparação numérica lê `undefined` e o nível
+      // simplesmente nunca dispara — sem erro em lugar nenhum.
+      { id: 'app-2', name: 'Diretoria', order: 2, active: true, responsibilityType: 'diretoria', sla: 48, slaUnit: 'h', isMandatory: true, conditionField: 'salarioSugerido', conditionOperator: '>', conditionValue: 10000 }
     ],
     handoffs: { updateProfile: false, createRecord360: false, createTask: true, generateDoc: false, requireSignature: false, handoffType: 'sugestao' },
     aiConfig: { enabled: false, points: [], model: 'gemini-1.5-flash', purpose: 'Triagem de perfil', requireReview: true }
@@ -1504,6 +1508,7 @@ const generateInitialRequests = () => {
         case '7': return { tipoAlteracao: 'Promoção', novoCargo: 'Coordenador Operacional', novoSalario: 9500, vigencia: '2026-09-01', justificativa: 'Destaque na liderança de projetos de automação.' };
         case '8': return { competencia: 'Fevereiro/2026', tipoDespesa: 'Hospedagem', fornecedor: 'Hotel Transamerica', data: '2026-02-15', valor: 450.00, justificativa: 'Estadia para treinamento técnico em Curitiba.' };
         case '9': return { periodoAquisitivo: '2024/2025 (30 dias)', dataInicio: '2026-12-20', diasGozo: 30, abonoPecuniario: false, adianta13: true };
+        case '10': return { tipoMedida: 'Advertência Escrita', dataOcorrido: '2026-07-14', motivo: 'Ausência não justificada por dois dias consecutivos, sem comunicação prévia ao gestor.', testemunhas: 'Ana Paula Lima, Carlos Eduardo' };
         default: return { justificativa: 'Demonstração de fluxo padrão.' };
       }
     };

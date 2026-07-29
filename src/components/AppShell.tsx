@@ -67,7 +67,7 @@ export default function AppShell({
       updateConfig({ selectedEmployeeId: result.id });
       onNavigate('profile-360');
     } else if (result.type === 'solicitacao') {
-      updateConfig({ currentRequestId: result.id });
+      updateConfig({ activeView: 'request-detail', currentRequestId: result.id });
     } else if (result.type === 'processo') {
       const process = config.processos.find(p => p.id === result.id);
       if (process) {
