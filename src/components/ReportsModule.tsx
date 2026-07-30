@@ -69,7 +69,10 @@ export default function ReportsModule() {
 
   // Derived metrics from real state
   const totalEmployees = config.colaboradores.length;
-  const inactiveEmployees = config.colaboradores.filter(e => e.status === 'Inativo').length;
+  // Vínculo encerrado conta como saída no turnover. 'Desligado' é o status que o
+  // fluxo de Desligamento grava na aprovação final (AppConfigContext.tsx:190-201);
+  // 'Inativo' cobre os cadastros que já vêm assim do seed.
+  const inactiveEmployees = config.colaboradores.filter(e => ['Inativo', 'Desligado'].includes(e.status)).length;
   const turnoverRate = ((inactiveEmployees / totalEmployees) * 100).toFixed(2);
   
   const completedAdmissions = config.solicitacoes.filter(r => r.tipoProcesso === '3' && r.status === 'Concluída');

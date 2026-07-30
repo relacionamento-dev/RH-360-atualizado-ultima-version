@@ -52,6 +52,8 @@ interface AppConfigContextType {
   cancelRequest: (requestId: string, reason: string) => void;
   completeTask: (taskId: string) => void;
   createAnnouncement: (announcement: Partial<Announcement>) => void;
+  comentarComunicado: (comunicadoId: string, texto: string) => void;
+  removerComentario: (comunicadoId: string, comentarioId: string) => void;
   addNotification: (titulo: string, mensagem: string, tipo: import('../types').Notificacao['tipo']) => void;
   resetDemo: () => void;
   isAuthorized: (processId: string, action: keyof import('../types').ProcessPermission) => boolean;
@@ -78,7 +80,9 @@ const INITIAL_STATE: AppConfig = {
   // 1.4.0 — conjunto completo de blocos (foto, dados pessoais, título, certidão,
   // CNH, reservista, endereço, dependentes e certificados), com campos, listas
   // e condicionais Sim/Não.
-  version: '1.4.0',
+  // 1.5.0 — Intranet: comunicados com banner, anexo e comentários (o carrossel
+  // passou a ter 4 itens de exemplo em vez de 1).
+  version: '1.5.0',
   empresaAtual: COMPANIES[0],
   usuarioAtual: DEMO_USERS[0], // Admin by default
   usuariosDemo: DEMO_USERS,
@@ -121,6 +125,86 @@ const INITIAL_STATE: AppConfig = {
 };
 
 const AppConfigContext = createContext<AppConfigContextType | undefined>(undefined);
+
+/**
+ * Handoff de cadastro: o que a CONCLUSÃO de uma solicitação muda na ficha do
+ * colaborador. Mora fora do provider porque existem dois caminhos que concluem
+ * uma solicitação e os dois precisam aplicar a mesma regra:
+ *
+ * - `approveRequest` — aprovação da última alçada da cascata (o caminho normal,
+ *   pelo botão "Aprovar");
+ * - `updateRequest`  — mudança direta de status (protocolo/acknowledgement e
+ *   ajustes feitos pela tela de detalhe).
+ *
+ * Puro de propósito: recebe a lista de colaboradores e devolve a nova lista com
+ * as notificações a disparar, sem tocar em estado. Quem chama decide quando
+ * notificar.
+ */
+function aplicarHandoffCadastro(
+  colaboradores: Employee[],
+  req: Pick<RHRequest, 'employeeId' | 'colaborador' | 'alvo' | 'alvoId' | 'data'>,
+  processId?: string
+): { colaboradores: Employee[]; notificacoes: { titulo: string; mensagem: string }[] } {
+  const notificacoes: { titulo: string; mensagem: string }[] = [];
+  const HANDOFFS = ['7', '11', '15'];
+  if (!processId || !HANDOFFS.includes(processId)) {
+    return { colaboradores, notificacoes };
+  }
+
+  const dados = req.data || {};
+  // O alvo pode chegar como id ou como nome, dependendo de por onde a
+  // solicitação foi aberta: o zoom do formulário guarda o nome em
+  // `colaboradorId` e o id real em `colaboradorIdId` (FormRenderer:557), e as
+  // solicitações do seed usam `employeeId`/`colaborador`. Mesma leitura em dois
+  // passos que o Perfil 360 já faz (Profile360Module:230).
+  const referencias = [
+    req.employeeId,
+    req.alvoId,
+    req.colaborador,
+    req.alvo,
+    dados.employeeId,
+    dados.colaboradorIdId,
+    dados.colaboradorId
+  ].filter(Boolean);
+
+  const idx = colaboradores.findIndex(e => referencias.some(ref => ref === e.id || ref === e.name));
+  if (idx === -1) return { colaboradores, notificacoes };
+
+  const novos = [...colaboradores];
+  const emp = novos[idx];
+
+  // Alteração de Cargos e Salários (7) e Movimentação de Pessoal (11) reescrevem
+  // a ficha; cada campo só muda se a solicitação trouxe o valor novo.
+  if (processId === '7' || processId === '11') {
+    novos[idx] = {
+      ...emp,
+      role: dados.novoCargo || emp.role,
+      salary: dados.novoSalario || emp.salary,
+      department: dados.setorDestino || emp.department,
+      costCenter: dados.ccDestino || emp.costCenter,
+      manager: dados.gestorDestino?.name || emp.manager,
+      branch: dados.filialDestino || emp.branch
+    };
+    notificacoes.push({
+      titulo: 'Cadastro Atualizado',
+      mensagem: `O perfil de ${emp.name} foi atualizado automaticamente.`
+    });
+  }
+
+  // Desligamento (15) encerra o vínculo. O status é 'Desligado' (e não o
+  // genérico 'Inativo') porque é por ele que a aba "Histórico de Desligamento"
+  // do Perfil 360 (Profile360Module.tsx:840) e o contador de desligados da
+  // lista de colaboradores (EmployeesModule.tsx:44) filtram.
+  if (processId === '15') {
+    novos[idx] = { ...emp, status: 'Desligado' };
+    notificacoes.push({
+      titulo: 'Colaborador Desligado',
+      mensagem: `${emp.name} agora consta como Desligado.`
+    });
+  }
+
+  return { colaboradores: novos, notificacoes };
+}
 
 export function AppConfigProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<AppConfig>(() => {
@@ -610,33 +694,13 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
 
       // CONCLUSION LOGIC
       if (newReq.status === 'Concluída' && oldReq.status !== 'Concluída') {
-        const process = prev.processos.find(p => p.id === newReq.tipoProcesso);
-        
-        // Handoffs and special updates
-        if (process?.id === '7' || process?.id === '11') { // Alteração Salarial ou Movimentação
-          const empIdx = newColaboradores.findIndex(e => e.id === newReq.employeeId || e.name === newReq.colaborador);
-          if (empIdx !== -1) {
-            const emp = newColaboradores[empIdx];
-            newColaboradores[empIdx] = {
-              ...emp,
-              role: newReq.data.novoCargo || emp.role,
-              salary: newReq.data.novoSalario || emp.salary,
-              department: newReq.data.setorDestino || emp.department,
-              costCenter: newReq.data.ccDestino || emp.costCenter,
-              manager: newReq.data.gestorDestino?.name || emp.manager,
-              branch: newReq.data.filialDestino || emp.branch
-            };
-            addNotification('Cadastro Atualizado', `O perfil de ${emp.name} foi atualizado automaticamente.`);
-          }
-        }
-
-        if (process?.id === '15') { // Desligamento
-          const empIdx = newColaboradores.findIndex(e => e.id === newReq.employeeId || e.name === newReq.colaborador);
-          if (empIdx !== -1) {
-            newColaboradores[empIdx] = { ...newColaboradores[empIdx], status: 'Inativo' };
-            addNotification('Colaborador Desligado', `${newColaboradores[empIdx].name} agora consta como Inativo.`);
-          }
-        }
+        const handoff = aplicarHandoffCadastro(
+          newColaboradores,
+          newReq,
+          newReq.tipoProcesso || newReq.processId
+        );
+        newColaboradores = handoff.colaboradores;
+        handoff.notificacoes.forEach(n => addNotification(n.titulo, n.mensagem));
       }
 
       return { 
@@ -767,6 +831,13 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       }
 
       if (isFinal) {
+        // Última alçada aprovada = solicitação concluída: é AQUI que a ficha do
+        // colaborador é reescrita (promoção, transferência, desligamento).
+        // Mesma regra usada pela conclusão via updateRequest.
+        const handoff = aplicarHandoffCadastro(newColaboradores, req, processId);
+        newColaboradores = handoff.colaboradores;
+        handoff.notificacoes.forEach(n => addNotification(n.titulo, n.mensagem));
+
         if (processId === '1') {
           const jobTitle = req.data.cargo || req.data.cargoRep || 'Nova Vaga';
           const newJob: import('../types').Job = {
@@ -1075,12 +1146,46 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       date: new Date().toLocaleDateString('pt-BR'),
       category: announcement.category || 'RH',
       priority: announcement.priority || 'Normal',
+      comentarios: [],
       ...announcement
     };
 
     setConfig(prev => ({
       ...prev,
       comunicados: [newAnnouncement, ...prev.comunicados]
+    }));
+  };
+
+  const comentarComunicado = (comunicadoId: string, texto: string) => {
+    const limpo = texto.trim();
+    if (!limpo) return;
+    const novo: import('../types').ComentarioComunicado = {
+      id: `com-${Date.now()}`,
+      autor: config.usuarioAtual.name,
+      // Guardar o id (e não só o nome) é o que permite saber, depois, se o
+      // comentário é de quem está logado — quem decide o botão de apagar.
+      autorId: config.usuarioAtual.id,
+      texto: limpo,
+      dataHora: new Date().toISOString()
+    };
+    setConfig(prev => ({
+      ...prev,
+      comunicados: prev.comunicados.map(c =>
+        c.id === comunicadoId ? { ...c, comentarios: [...(c.comentarios || []), novo] } : c
+      )
+    }));
+  };
+
+  /** Só o autor apaga o próprio comentário — a regra vale no estado, não só na tela. */
+  const removerComentario = (comunicadoId: string, comentarioId: string) => {
+    setConfig(prev => ({
+      ...prev,
+      comunicados: prev.comunicados.map(c => {
+        if (c.id !== comunicadoId) return c;
+        const alvo = (c.comentarios || []).find(x => x.id === comentarioId);
+        if (!alvo || alvo.autorId !== prev.usuarioAtual.id) return c;
+        return { ...c, comentarios: (c.comentarios || []).filter(x => x.id !== comentarioId) };
+      })
     }));
   };
 
@@ -1385,6 +1490,8 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       cancelRequest,
       completeTask,
       createAnnouncement,
+      comentarComunicado,
+      removerComentario,
       addNotification,
       login,
       logout,

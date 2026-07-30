@@ -6,6 +6,13 @@
   
   /* Brand Colors */
   --color-brand-primary: #F26522; /* JYNX */
+  /*
+   * Mesmo laranja 20% mais escuro, para TEXTO pequeno e rótulos.
+   * #F26522 sobre branco dá 3.14:1 e reprova no WCAG AA (mínimo 4.5:1 para
+   * texto normal); este tom dá 4.68:1. Botões e blocos grandes continuam com
+   * --color-brand-primary, que já cumpre os 3:1 exigidos deles.
+   */
+  --color-brand-primary-text: #C2511B;
   --color-brand-bg: #F7F8FA;
   --color-brand-surface: #FFFFFF;
   --color-brand-text-primary: #1A1D21;
@@ -41,6 +48,24 @@
 
   .label-caps {
     @apply text-[11px] font-bold uppercase tracking-wider text-[var(--color-brand-text-secondary)];
+  }
+
+  /*
+   * O preflight do Tailwind v4 deixou de aplicar cursor:pointer em botões, e o
+   * app inteiro ficou com a seta padrão. Repor aqui resolve os ~257 clicáveis de
+   * uma vez, sem tocar em componente por componente.
+   */
+  button:not(:disabled):not([aria-disabled='true']),
+  summary,
+  [role='button']:not([aria-disabled='true']),
+  a[href],
+  label[for] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
   }
 }
 

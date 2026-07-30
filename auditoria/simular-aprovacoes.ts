@@ -20,8 +20,8 @@
  *   INITIAL_RH_PROCESSES (src/data.ts) e os formulários de PROCESS_DEFINITIONS
  *   (src/processDefinitions.ts).
  * - ESPELHO: `abrirSolicitacao` e `aprovarUmNivel` reproduzem as transições de
- *   estado de `createRequest` (AppConfigContext.tsx:363-501) e `approveRequest`
- *   (AppConfigContext.tsx:650-767), que hoje moram dentro do provider React e
+ *   estado de `createRequest` (AppConfigContext.tsx:440-578) e `approveRequest`
+ *   (AppConfigContext.tsx:707-824), que hoje moram dentro do provider React e
  *   não são importáveis fora do browser. As linhas de origem estão citadas
  *   junto de cada transição. Se aquele arquivo mudar, este espelho precisa
  *   acompanhar.
@@ -57,85 +57,90 @@ interface SolicitacaoSimulada {
   tarefas: { title: string; assignedTo?: string }[];
 }
 
-/** Espelha createRequest (AppConfigContext.tsx:363-501), caminho não-rascunho. */
+/** Espelha createRequest (AppConfigContext.tsx:440-578), caminho não-rascunho. */
 function abrirSolicitacao(process: RHProcess, data: Record<string, any>): SolicitacaoSimulada {
-  const acknowledgement = PROCESS_DEFINITIONS[process.id]?.acknowledgement; // :372
-  const approvalChain = acknowledgement ? [] : buildApprovalChain(process, data); // :376
-  const firstLevel = approvalChain[0]; // :377
+  const acknowledgement = PROCESS_DEFINITIONS[process.id]?.acknowledgement; // :449
+  const approvalChain = acknowledgement ? [] : buildApprovalChain(process, data); // :453
+  const firstLevel = approvalChain[0]; // :454
 
   const req: SolicitacaoSimulada = {
     numero: `RH-SIM-${process.id}`,
     processId: process.id,
-    status: acknowledgement?.status || 'Pendente de Aprovação', // :414
-    etapaAtual: acknowledgement?.etapa || firstLevel?.name || 'Aprovação', // :415
-    responsavelAtual: acknowledgement ? 'Colaborador' : (firstLevel?.responsibleLabel || 'Administrador Demo'), // :416-418
+    status: acknowledgement?.status || 'Pendente de Aprovação', // :491
+    etapaAtual: acknowledgement?.etapa || firstLevel?.name || 'Aprovação', // :492
+    responsavelAtual: acknowledgement ? 'Colaborador' : (firstLevel?.responsibleLabel || 'Administrador Demo'), // :493-495
     approvalChain,
-    trail: acknowledgement?.trail || ['Solicitação', ...approvalChain.map(l => l.name), 'Conclusão'], // :423
+    trail: acknowledgement?.trail || ['Solicitação', ...approvalChain.map(l => l.name), 'Conclusão'], // :500
     data,
     historico: [
       {
-        etapa: 'Solicitação', // :434
+        etapa: 'Solicitação', // :511
         de: 'Novo',
-        para: acknowledgement?.etapa || firstLevel?.name || 'Aprovação', // :436
-        action: acknowledgement ? 'Confirmação' : 'Envio', // :439
+        para: acknowledgement?.etapa || firstLevel?.name || 'Aprovação', // :513
+        action: acknowledgement ? 'Confirmação' : 'Envio', // :516
         comentario:
           acknowledgement?.comment ||
           `Solicitação enviada. Fluxo com ${approvalChain.length} nível(is) de aprovação: ${approvalChain
             .map(l => l.name)
-            .join(' → ')}.` // :442-443
+            .join(' → ')}.` // :519-520
       }
     ],
     tarefas: []
   };
 
   if (!acknowledgement) {
-    // :449-475 — a tarefa nasce no responsável do PRIMEIRO nível.
+    // :526-552 — a tarefa nasce no responsável do PRIMEIRO nível.
     req.tarefas.push({
       title: `Aprovar ${process.name} — ${firstLevel?.name || 'Aprovação'}`,
       assignedTo: firstLevel?.responsibleUserId || 'ADMIN-001'
     });
   }
-  // Só para exercitar o cálculo de SLA da abertura (:419).
+  // Só para exercitar o cálculo de SLA da abertura (:496).
   if (firstLevel) slaToMs(firstLevel);
 
   return req;
 }
 
-/** Espelha approveRequest (AppConfigContext.tsx:650-767). Retorna false se não há nível pendente. */
+/** Espelha approveRequest (AppConfigContext.tsx:707-824). Retorna false se não há nível pendente. */
 function aprovarUmNivel(req: SolicitacaoSimulada, process: RHProcess, aprovador = 'Administrador Demo'): boolean {
-  const chain = ensureApprovalChain(req as any, process); // :664
-  const levelIndex = getCurrentLevelIndex(chain); // :665
-  const approvedLevel = chain[levelIndex]; // :666
-  if (!approvedLevel) return false; // :668-671
+  const chain = ensureApprovalChain(req as any, process); // :721
+  const levelIndex = getCurrentLevelIndex(chain); // :722
+  const approvedLevel = chain[levelIndex]; // :723
+  if (!approvedLevel) return false; // :725-728
 
   const newChain = chain.map((level, i) =>
     i === levelIndex ? { ...level, status: 'aprovado' as const, decidedBy: aprovador } : level
-  ); // :674-683
+  ); // :731-740
 
-  const nextLevel = newChain[levelIndex + 1]; // :685
-  const isFinal = !nextLevel; // :686
-  const currentLabel = levelLabel(newChain, levelIndex); // :688
+  const nextLevel = newChain[levelIndex + 1]; // :742
+  const isFinal = !nextLevel; // :743
+  const currentLabel = levelLabel(newChain, levelIndex); // :745
 
   req.historico.push({
-    etapa: approvedLevel.name, // :698
+    etapa: approvedLevel.name, // :755
     de: req.status,
-    para: isFinal ? 'Concluída' : nextLevel.name, // :700
-    action: isFinal ? 'Aprovação Final' : `Aprovação — ${currentLabel}` // :689
+    para: isFinal ? 'Concluída' : nextLevel.name, // :757
+    action: isFinal ? 'Aprovação Final' : `Aprovação — ${currentLabel}` // :746
   });
 
-  req.status = isFinal ? 'Concluída' : 'Em Aprovação'; // :687
-  req.etapaAtual = isFinal ? 'Conclusão' : nextLevel.name; // :709
-  req.approvalChain = newChain; // :710
-  req.responsavelAtual = isFinal ? '' : nextLevel.responsibleLabel; // :712
-  req.trail = ['Solicitação', ...newChain.map(l => l.name), 'Conclusão']; // :714
+  req.status = isFinal ? 'Concluída' : 'Em Aprovação'; // :744
+  req.etapaAtual = isFinal ? 'Conclusão' : nextLevel.name; // :766
+  req.approvalChain = newChain; // :767
+  req.responsavelAtual = isFinal ? '' : nextLevel.responsibleLabel; // :769
+  req.trail = ['Solicitação', ...newChain.map(l => l.name), 'Conclusão']; // :771
 
   if (!isFinal) {
-    // :743-766 — abre a tarefa do PRÓXIMO nível.
+    // :800-823 — abre a tarefa do PRÓXIMO nível.
     req.tarefas.push({
       title: `Aprovar ${process.name} — ${nextLevel.name}`,
       assignedTo: nextLevel.responsibleUserId || 'ADMIN-001'
     });
   }
+  // Fora do espelho: no nível final o approveRequest real também aplica o
+  // handoff de cadastro (`aplicarHandoffCadastro`, AppConfigContext.tsx:125-199)
+  // — promoção, movimentação e desligamento reescrevem a ficha do colaborador.
+  // Aqui não há lista de colaboradores para alterar; a auditoria olha só a
+  // cascata. Esse efeito é conferido no teste de tela, não neste simulador.
   return true;
 }
 

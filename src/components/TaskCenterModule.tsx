@@ -12,6 +12,28 @@ import { PageHeader } from './ui/FormAndHeader';
 import { useAppConfig } from '../contexts/AppConfigContext';
 import { Task } from '../types';
 
+/**
+ * Quanto da janela de SLA já foi consumido, de 0 a 100.
+ *
+ * Vem do dado real da tarefa (abertura → prazo), não de `Math.random()`: com o
+ * sorteio no render as barras mudavam sozinhas a cada visita à tela, o que numa
+ * demonstração parece número inventado. Tarefa sem prazo cai num valor derivado
+ * do id — pseudo-aleatório, porém sempre o mesmo para a mesma tarefa.
+ */
+function consumoDoSLA(task: Task): number {
+  const inicio = task.createdAt ? new Date(task.createdAt).getTime() : NaN;
+  const fim = task.dueDate || task.prazo ? new Date(task.dueDate || task.prazo!).getTime() : NaN;
+
+  if (Number.isFinite(inicio) && Number.isFinite(fim) && fim > inicio) {
+    const decorrido = Date.now() - inicio;
+    return Math.min(100, Math.max(0, Math.round((decorrido / (fim - inicio)) * 100)));
+  }
+
+  let hash = 0;
+  for (const c of task.id || '') hash = (hash * 31 + c.charCodeAt(0)) | 0;
+  return 40 + (Math.abs(hash) % 40);
+}
+
 export default function TaskCenterModule() {
   const { config, updateConfig } = useAppConfig();
   const [activeTab, setActiveTab] = useState('all');
@@ -45,7 +67,7 @@ export default function TaskCenterModule() {
       subject: t.title,
       requester: relatedReq?.solicitante || 'Sistema',
       date: new Date(t.createdAt).toLocaleDateString('pt-BR'),
-      sla: t.status === 'Atrasada' ? 100 : Math.floor(Math.random() * 40) + 40,
+      sla: t.status === 'Atrasada' ? 100 : consumoDoSLA(t),
       // Crítico = atrasada ou pendente com prazo vencido (mesma noção da lista).
       slaStatus: (t.status === 'Atrasada' || (t.status === 'Pendente' && !!t.dueDate && new Date(t.dueDate) < new Date())) ? 'critical' : 'normal',
       group: t.assignedTo === config.usuarioAtual.id ? 'Meus Pendentes' : 'Grupo'

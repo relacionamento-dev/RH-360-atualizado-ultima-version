@@ -16,9 +16,12 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  /** Nunca mais que isto na tela: uma sequência de ações empilhava sem limite. */
+  const MAX_VISIVEIS = 3;
+
   const addToast = useCallback((message: string, type: ToastType) => {
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, type, message }]);
+    setToasts((prev) => [...prev, { id, type, message }].slice(-MAX_VISIVEIS));
   }, []);
 
   const removeToast = useCallback((id: string) => {

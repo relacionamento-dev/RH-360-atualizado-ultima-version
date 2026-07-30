@@ -18,13 +18,21 @@ export const Avatar: React.FC<AvatarProps> = ({ src, name, size = 'md', classNam
 
   const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
 
+  // URL quebrada no cadastro mostrava o ícone de imagem partida do navegador.
+  // Ao falhar, cai nas mesmas iniciais de quem não tem foto nenhuma.
+  const [falhou, setFalhou] = React.useState(false);
+  React.useEffect(() => setFalhou(false), [src]);
+
+  const mostrarFoto = !!src && !falhou;
+
   return (
     <div className={`shrink-0 flex items-center justify-center overflow-hidden ring-2 ring-white shadow-sm hover:shadow-md transition-shadow duration-300 ${className.includes('rounded-') ? '' : 'rounded-full'} ${sizes[size]} ${className}`}>
-      {src ? (
-        <img 
-          src={src} 
-          alt={name} 
-          className="w-full h-full object-cover transition-transform duration-500 hover:scale-110" 
+      {mostrarFoto ? (
+        <img
+          src={src}
+          alt={name}
+          onError={() => setFalhou(true)}
+          className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
           referrerPolicy="no-referrer"
         />
       ) : (

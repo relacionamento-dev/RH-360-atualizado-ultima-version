@@ -2032,8 +2032,56 @@ export const INITIAL_APPLICATIONS: Application[] = [
 ];
 
 // ANNOUNCEMENTS
+// O carrossel de comunicados oficiais usa os itens que têm `imagem`. Com um
+// item só as setas ‹ › não tinham para onde ir e pareciam quebradas — daí os
+// quatro comunicados de exemplo, com banners e categorias diferentes.
 export const INITIAL_ANNOUNCEMENTS: Announcement[] = [
-  { id: 'a1', title: 'Novo Plano de Saúde', content: 'A partir do mês que vem teremos novos benefícios...', author: 'RH', date: '10/07/2026', category: 'RH', priority: 'Importante' },
+  {
+    id: 'a1',
+    title: 'Novo Plano de Saúde',
+    content: 'A partir do mês que vem teremos novos benefícios: rede credenciada ampliada, telemedicina 24h e coparticipação reduzida. O RH abre inscrições para dependentes na primeira semana.',
+    author: 'RH',
+    date: '10/07/2026',
+    category: 'RH',
+    priority: 'Importante',
+    imagem: 'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&q=80&w=1200',
+    comentarios: [
+      { id: 'c-a1-1', autor: 'Ana Paula Lima', autorId: 'RH-001', texto: 'A rede credenciada nova já vale para dependentes?', dataHora: '2026-07-10T14:20:00.000Z' }
+    ]
+  },
+  {
+    id: 'a2',
+    title: 'Política de Trabalho Híbrido: mais flexibilidade para você',
+    content: 'A partir de agosto cada time define os dias presenciais junto com o gestor, respeitando o mínimo de dois encontros por mês. O guia completo está na base de conhecimento.',
+    author: 'Comunicação Corporativa',
+    date: '12/07/2026',
+    category: 'Geral',
+    priority: 'Normal',
+    imagem: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=1200',
+    comentarios: []
+  },
+  {
+    id: 'a3',
+    title: 'Hackathon interno 2026: inscrições abertas',
+    content: 'Três dias para transformar ideias em protótipos, com mentoria da liderança técnica. Times de até cinco pessoas, de qualquer área. As inscrições vão até o dia 25.',
+    author: 'Tecnologia',
+    date: '15/07/2026',
+    category: 'Evento',
+    priority: 'Normal',
+    imagem: 'https://images.unsplash.com/photo-1515187029135-18ee286d815b?auto=format&fit=crop&q=80&w=1200',
+    comentarios: []
+  },
+  {
+    id: 'a4',
+    title: 'Manutenção programada dos sistemas no fim de semana',
+    content: 'No sábado, das 8h às 12h, o portal e a folha ficam indisponíveis para atualização de infraestrutura. Solicitações em andamento não são perdidas.',
+    author: 'TI',
+    date: '18/07/2026',
+    category: 'TI',
+    priority: 'Importante',
+    imagem: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&q=80&w=1200',
+    comentarios: []
+  }
 ];
 
 // PROCESS DEFINITIONS FOR FORM RENDERER

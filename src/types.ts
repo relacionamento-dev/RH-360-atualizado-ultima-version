@@ -742,6 +742,28 @@ export interface Task {
   prazo?: string;
 }
 
+/** Foto ou arquivo anexado a um post do feed da Intranet. */
+export interface AnexoComunicado {
+  nome: string;
+  tipo: 'imagem' | 'arquivo';
+  /**
+   * Prévia embutida (data URL). Só é guardada para imagens pequenas — o config
+   * inteiro vai para o localStorage e um anexo grande estoura a cota. Sem ela o
+   * feed mostra o chip com o nome do arquivo.
+   */
+  previa?: string;
+  tamanho: number;
+}
+
+export interface ComentarioComunicado {
+  id: string;
+  autor: string;
+  /** Id do usuário: é o que decide quem pode apagar o comentário. */
+  autorId: string;
+  texto: string;
+  dataHora: string;
+}
+
 export interface Announcement {
   id: string;
   title: string;
@@ -750,6 +772,10 @@ export interface Announcement {
   date: string;
   category: 'Geral' | 'RH' | 'Evento' | 'TI';
   priority: 'Normal' | 'Importante' | 'Urgente';
+  /** Banner do carrossel de comunicados oficiais. */
+  imagem?: string;
+  anexo?: AnexoComunicado;
+  comentarios?: ComentarioComunicado[];
 }
 
 export interface BenefitConfig {

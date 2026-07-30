@@ -5,6 +5,7 @@ Diagnóstico dos 15 processos do RH360. **Nada aqui altera código de produção
 | Arquivo | O que é |
 |---|---|
 | [AUDITORIA-PROCESSOS.md](AUDITORIA-PROCESSOS.md) | O relatório. Sumário executivo, achados transversais, VR/VA em profundidade e uma seção por processo (OK / inconsistente com arquivo:linha / recomendação). |
+| [AUDITORIA-UX.md](AUDITORIA-UX.md) | Auditoria de UX/QA de toda a aplicação em Chrome headless: botão morto, fluxo incoerente e feedback visual, com prioridade CORE/COSMÉTICO. 51 achados. |
 | [simular-aprovacoes.ts](simular-aprovacoes.ts) | Simula a abertura de uma solicitação em cada processo e percorre a cascata de alçadas, conferindo condição, status final, histórico e tarefas. 159 verificações. |
 | [mapear-campos.ts](mapear-campos.ts) | Cruza cada campo de `processDefinitions.ts` com o uso real no `src/`, apontando campos órfãos e chaves declaradas mais de uma vez. |
 

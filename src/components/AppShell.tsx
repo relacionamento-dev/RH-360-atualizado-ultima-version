@@ -388,14 +388,14 @@ export default function AppShell({
                     }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-[6px] transition-all duration-200 group relative ${
                       active 
-                        ? 'bg-orange-50 text-[var(--color-brand-primary)]' 
+                        ? 'bg-orange-50 text-[var(--color-brand-primary-text)]' 
                         : 'text-[var(--color-brand-text-secondary)] hover:bg-gray-50'
                     }`}
                   >
                       {active && !isSidebarCollapsed && (
                         <div className="absolute left-0 top-2 bottom-2 w-1 bg-[var(--color-brand-primary)] rounded-r-full"></div>
                       )}
-                      <div className={`${active ? 'text-[var(--color-brand-primary)]' : 'text-gray-400 group-hover:text-gray-600'} transition-colors shrink-0`}>
+                      <div className={`${active ? 'text-[var(--color-brand-primary-text)]' : 'text-gray-400 group-hover:text-gray-600'} transition-colors shrink-0`}>
                         {item.icon}
                       </div>
                       {!isSidebarCollapsed && (
@@ -419,7 +419,7 @@ export default function AppShell({
                             }}
                             className={`w-full text-left py-2 px-3 text-[13px] font-medium rounded-[4px] transition-colors ${
                               config.activeView === sub.view 
-                                ? 'text-[var(--color-brand-primary)] bg-orange-50/50' 
+                                ? 'text-[var(--color-brand-primary-text)] bg-orange-50/50' 
                                 : 'text-[var(--color-brand-text-secondary)] hover:text-[var(--color-brand-text-primary)] hover:bg-gray-50'
                             }`}
                           >
@@ -574,7 +574,7 @@ export default function AppShell({
               >
                 <div className="text-right hidden sm:block leading-tight">
                   <p className="text-[13px] font-bold text-[var(--color-brand-text-primary)] group-hover:text-[var(--color-brand-primary)] transition-colors">{config.usuarioAtual.name}</p>
-                  <p className="label-caps text-[var(--color-brand-primary)]">{config.usuarioAtual.role}</p>
+                  <p className="label-caps text-[var(--color-brand-primary-text)]">{config.usuarioAtual.role}</p>
                 </div>
                 <Avatar src={config.usuarioAtual.avatar} name={config.usuarioAtual.name} className="ring-2 ring-[var(--color-brand-primary)]/10 ring-offset-2" />
               </button>
@@ -587,7 +587,7 @@ export default function AppShell({
                       <div className="px-3 py-2 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Perfil Atual</div>
                       <div className="px-3 py-2 bg-orange-50/50 rounded-md mx-1 mb-2">
                         <div className="text-[13px] font-bold text-gray-900">{config.usuarioAtual.name}</div>
-                        <div className="text-[11px] font-medium text-[var(--color-brand-primary)] uppercase">{config.usuarioAtual.role}</div>
+                        <div className="text-[11px] font-medium text-[var(--color-brand-primary-text)] uppercase">{config.usuarioAtual.role}</div>
                       </div>
 
                       {impersonationOptions.length > 0 && (
