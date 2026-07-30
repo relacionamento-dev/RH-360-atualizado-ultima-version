@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, CornerUpLeft, FileSearch } from 'lucide-react';
+import { AlertCircle, CheckCircle2, CornerUpLeft, FileSearch } from 'lucide-react';
 import { Employee } from '../../types';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
@@ -9,6 +9,9 @@ import { useAppConfig } from '../../contexts/AppConfigContext';
 import { useToast } from '../ToastContext';
 import { BlocoResumo } from './BlocoResumo';
 import { blocoAplicavel, blocoConcluido, tituloBloco } from '../../utils/admissaoDigital';
+
+/** Motivo curto não ajuda o colaborador a entender o que refazer. */
+const MOTIVO_MIN_CARACTERES = 10;
 
 /**
  * Fila de revisão do RH: quem enviou os documentos e está EM_ANALISE.
@@ -68,6 +71,8 @@ function LinhaRevisao({
   const [devolvendo, setDevolvendo] = useState(false);
   const [motivo, setMotivo] = useState('');
   const [blocosSelecionados, setBlocosSelecionados] = useState<string[]>([]);
+  // Só cobra o preenchimento depois da primeira tentativa: nada de erro em campo intocado.
+  const [tentouConfirmar, setTentouConfirmar] = useState(false);
 
   const admissao = employee.admissaoDigital!;
   // Os certificados guardam o arquivo na própria linha, fora de `anexos`.
@@ -88,16 +93,31 @@ function LinhaRevisao({
     onFinish();
   };
 
+  const faltamCaracteres = Math.max(0, MOTIVO_MIN_CARACTERES - motivo.trim().length);
+  const semBlocos = blocosSelecionados.length === 0;
+  const podeDevolver = !semBlocos && faltamCaracteres === 0;
+  const erroMotivo = tentouConfirmar && faltamCaracteres > 0;
+  const erroBlocos = tentouConfirmar && semBlocos;
+
+  const fecharDevolucao = () => {
+    setDevolvendo(false);
+    setTentouConfirmar(false);
+  };
+
+  // Clique sempre responde: se falta algo, aponta o que falta em vez de ficar inerte.
   const devolver = () => {
+    if (!podeDevolver) {
+      setTentouConfirmar(true);
+      return;
+    }
     devolverAdmissaoDigital(employee.id, blocosSelecionados, motivo.trim());
     addToast(`Admissão devolvida para ${employee.name} corrigir.`, 'info');
     setDevolvendo(false);
+    setTentouConfirmar(false);
     setMotivo('');
     setBlocosSelecionados([]);
     onFinish();
   };
-
-  const podeDevolver = blocosSelecionados.length > 0 && motivo.trim().length >= 10;
 
   return (
     <ExpandableRow
@@ -151,18 +171,51 @@ function LinhaRevisao({
             <InfoNote>
               O colaborador vai ver só os documentos marcados acima, junto com o motivo escrito aqui.
             </InfoNote>
-            <Field label="Motivo da revisão" hint="Explique em linguagem simples o que precisa ser refeito (mínimo 10 caracteres).">
+            <Field
+              label="Motivo da revisão"
+              hint={`Explique em linguagem simples o que precisa ser refeito (mínimo ${MOTIVO_MIN_CARACTERES} caracteres).`}
+            >
               <textarea
                 value={motivo}
                 onChange={e => setMotivo(e.target.value)}
                 rows={3}
                 placeholder="Ex.: A foto do RG está ilegível. Reenvie frente e verso em local bem iluminado."
-                className={`${ADMIN_FIELD_CLASS} w-full resize-none`}
+                aria-invalid={erroMotivo}
+                className={`${ADMIN_FIELD_CLASS} w-full resize-none ${
+                  erroMotivo ? 'border-red-300! focus:ring-red-500/20!' : ''
+                }`}
               />
+              {erroMotivo && (
+                <p role="alert" className="flex items-start gap-1.5 ml-1 text-[12px] font-bold text-red-600">
+                  <AlertCircle size={13} className="shrink-0 mt-0.5" />
+                  <span>
+                    {faltamCaracteres === 1
+                      ? 'Falta 1 caractere'
+                      : `Faltam ${faltamCaracteres} caracteres`}{' '}
+                    para o motivo ficar completo.
+                  </span>
+                </p>
+              )}
             </Field>
+            {erroBlocos && (
+              <p role="alert" className="flex items-start gap-1.5 ml-1 text-[12px] font-bold text-red-600">
+                <AlertCircle size={13} className="shrink-0 mt-0.5" />
+                <span>Marque acima pelo menos um documento para o colaborador corrigir.</span>
+              </p>
+            )}
             <div className="flex flex-col sm:flex-row justify-end gap-2">
-              <Button variant="ghost" onClick={() => setDevolvendo(false)}>Cancelar</Button>
-              <Button variant="danger" disabled={!podeDevolver} onClick={devolver}>
+              <Button variant="ghost" onClick={fecharDevolucao}>Cancelar</Button>
+              {/* Fica clicável de propósito: o clique bloqueado é o que revela o aviso. */}
+              <Button
+                variant="danger"
+                aria-disabled={!podeDevolver}
+                className={
+                  podeDevolver
+                    ? ''
+                    : 'bg-gray-200! text-gray-500! shadow-none! hover:bg-gray-200! focus:ring-gray-300! cursor-not-allowed'
+                }
+                onClick={devolver}
+              >
                 Confirmar devolução
               </Button>
             </div>
