@@ -41,6 +41,27 @@ const diaMes = (iso?: string) => {
 
 const doisDigitos = (n: number) => String(n).padStart(2, '0');
 
+/**
+ * Banner de reserva do comunicado criado sem imagem. É um SVG embutido (não
+ * depende de rede) só para o item entrar no carrossel com aparência de capa.
+ */
+const BANNER_PADRAO =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#1A1D21"/>
+          <stop offset="60%" stop-color="#33261f"/>
+          <stop offset="100%" stop-color="#F26522"/>
+        </linearGradient>
+      </defs>
+      <rect width="1200" height="400" fill="url(#g)"/>
+      <circle cx="1010" cy="90" r="190" fill="#ffffff" opacity="0.05"/>
+      <circle cx="180" cy="330" r="130" fill="#ffffff" opacity="0.04"/>
+    </svg>`
+  );
+
 export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
   const { config, createAnnouncement, comentarComunicado, removerComentario } = useAppConfig();
   const { addToast } = useToast();
@@ -52,8 +73,14 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
   const [pautaAberta, setPautaAberta] = useState(false);
   const [pauta, setPauta] = useState({ titulo: '', descricao: '' });
   const [calendarioAberto, setCalendarioAberto] = useState(false);
+  const [notificacoesAbertas, setNotificacoesAbertas] = useState(false);
+  const [comunicadoAberto, setComunicadoAberto] = useState(false);
+  const [comunicado, setComunicado] = useState<{ titulo: string; descricao: string; imagem?: string; nomeImagem?: string }>({
+    titulo: '', descricao: ''
+  });
 
   const inputArquivo = useRef<HTMLInputElement>(null);
+  const inputBanner = useRef<HTMLInputElement>(null);
 
   // Só comunicados com banner entram no carrossel.
   const destaques = useMemo(() => config.comunicados.filter(c => c.imagem), [config.comunicados]);
@@ -118,6 +145,52 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
     setRascunhoComentario('');
   };
 
+  const aoEscolherBanner = (evento: React.ChangeEvent<HTMLInputElement>) => {
+    const arquivo = evento.target.files?.[0];
+    evento.target.value = '';
+    if (!arquivo) return;
+    if (arquivo.size > LIMITE_PREVIA_BYTES) {
+      addToast(`A imagem tem ${formatarTamanho(arquivo.size)}. Escolha uma até 400 KB.`, 'warning');
+      return;
+    }
+    const leitor = new FileReader();
+    leitor.onload = () =>
+      setComunicado(c => ({ ...c, imagem: String(leitor.result), nomeImagem: arquivo.name }));
+    leitor.readAsDataURL(arquivo);
+  };
+
+  const publicarComunicado = () => {
+    if (!comunicado.titulo.trim() || !comunicado.descricao.trim()) return;
+    createAnnouncement({
+      title: comunicado.titulo.trim(),
+      content: comunicado.descricao.trim(),
+      category: 'Geral',
+      priority: 'Importante',
+      // Sem imagem o comunicado não apareceria no carrossel; o banner de
+      // reserva garante que ele entre lá como comunicado oficial.
+      imagem: comunicado.imagem || BANNER_PADRAO
+    });
+    setComunicado({ titulo: '', descricao: '' });
+    setComunicadoAberto(false);
+    setActiveAnnouncement(0); // o novo entra no topo da lista
+    addToast('Comunicado oficial publicado no carrossel.', 'success');
+  };
+
+  // Notificações não lidas primeiro; as lidas ficam no fim como histórico.
+  const notificacoes = useMemo(() => {
+    const todas = config.notificacoes || [];
+    return [...todas].sort((a, b) => Number(a.lida) - Number(b.lida));
+  }, [config.notificacoes]);
+  const naoLidas = notificacoes.filter(n => !n.lida).length;
+
+  // Mesmos status que o Hub conta como "aguardando" (RHRequests.tsx:206), para
+  // o painel não divergir do resto da tela.
+  const EM_ABERTO = ['Pendente de Aprovação', 'Em Aprovação', 'Enviada', 'Em Análise'];
+  const aprovacoesPendentes = useMemo(
+    () => config.solicitacoes.filter(r => EM_ABERTO.includes(r.status)).length,
+    [config.solicitacoes]
+  );
+
   const enviarPauta = () => {
     if (!pauta.titulo.trim() || !pauta.descricao.trim()) return;
     setPautaAberta(false);
@@ -171,14 +244,92 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
         aria-hidden="true"
         onChange={aoEscolherArquivo}
       />
+      <input
+        ref={inputBanner}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        aria-hidden="true"
+        onChange={aoEscolherBanner}
+      />
 
       <PageHeader
         title="Intranet Corporativa"
         subtitle="O canal oficial de comunicação e engajamento do ecossistema RH360."
         actions={
           <div className="flex gap-3">
-            <Button variant="outline" leftIcon={<Bell size={16} />}>Notificações</Button>
-            <Button leftIcon={<Plus size={16} />}>Novo Comunicado</Button>
+            <div className="relative">
+              <Button
+                variant="outline"
+                leftIcon={<Bell size={16} />}
+                aria-expanded={notificacoesAbertas}
+                onClick={() => setNotificacoesAbertas(a => !a)}
+              >
+                Notificações
+                {naoLidas > 0 && (
+                  <span className="ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[var(--color-brand-primary)] text-white text-[10px] font-black">
+                    {naoLidas}
+                  </span>
+                )}
+              </Button>
+
+              {notificacoesAbertas && (
+                <>
+                  <div className="fixed inset-0 z-[55]" onClick={() => setNotificacoesAbertas(false)} />
+                  <div className="absolute top-full right-0 mt-2 w-96 bg-white border border-gray-100 rounded-[12px] shadow-2xl z-[60] overflow-hidden animate-in fade-in slide-in-from-top-2 text-left">
+                    <div className="p-4 border-b border-gray-50 flex items-center justify-between bg-gray-50/50">
+                      <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">Pendências e avisos</span>
+                      <Badge variant="blue" size="sm">{naoLidas} NOVAS</Badge>
+                    </div>
+
+                    {aprovacoesPendentes > 0 && (
+                      <button
+                        onClick={() => { setNotificacoesAbertas(false); onNavigate?.('approvals'); }}
+                        className="w-full p-4 border-b border-gray-50 hover:bg-orange-50/40 transition-colors text-left flex items-center gap-3"
+                      >
+                        <div className="w-9 h-9 rounded-[10px] bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
+                          <CheckCircle2 size={16} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-black text-gray-900 leading-tight">
+                            {aprovacoesPendentes} solicitaç{aprovacoesPendentes === 1 ? 'ão' : 'ões'} aguardando aprovação
+                          </p>
+                          <p className="text-[12px] text-gray-500">Abrir Minhas Aprovações</p>
+                        </div>
+                      </button>
+                    )}
+
+                    <div className="max-h-[360px] overflow-y-auto">
+                      {notificacoes.length > 0 ? (
+                        notificacoes.map(n => (
+                          <div key={n.id} className="p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                            <div className="flex items-start gap-3">
+                              <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.lida ? 'bg-gray-200' : 'bg-orange-500'}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[13px] font-black text-gray-900 leading-tight">{n.titulo}</p>
+                                <p className="text-[12px] text-gray-500 mt-1">{n.mensagem}</p>
+                                <p className="text-[10px] text-gray-400 font-bold mt-2 uppercase tracking-tight">
+                                  {new Date(n.dataHora).toLocaleString('pt-BR')}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        aprovacoesPendentes === 0 && (
+                          <div className="p-8 text-center">
+                            <Bell size={24} className="mx-auto text-gray-200 mb-2" />
+                            <p className="text-[13px] font-bold text-gray-400">Nenhuma notificação</p>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <Button leftIcon={<Plus size={16} />} onClick={() => setComunicadoAberto(true)}>Novo Comunicado</Button>
           </div>
         }
       />
@@ -200,7 +351,12 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
                   <div className="absolute bottom-0 left-0 p-8 space-y-2">
                     <Badge variant="blue" size="sm" className="bg-[var(--color-brand-primary)] text-white border-transparent uppercase tracking-widest text-[9px]">COMUNICADO OFICIAL</Badge>
                     <h2 className="text-2xl font-bold text-white tracking-tight max-w-xl">{destaque.title}</h2>
-                    <p className="text-gray-300 text-[12px] font-bold flex items-center gap-2"><Calendar size={14} /> {destaque.date}</p>
+                    {/* `shrink-0`: sem ele o SVG é item flexível e pode ser
+                        comprimido contra o primeiro dígito da data. */}
+                    <p className="text-gray-300 text-[12px] font-bold flex items-center gap-2.5">
+                      <Calendar size={14} className="shrink-0" />
+                      <span>{destaque.date}</span>
+                    </p>
                   </div>
                 </motion.div>
               </AnimatePresence>
@@ -208,20 +364,28 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
               {/* Com um comunicado só as setas não teriam para onde ir. */}
               {total > 1 && (
                 <>
-                  <div className="absolute bottom-8 right-8 flex items-center gap-2">
-                    <span className="text-white/80 text-[11px] font-bold tabular-nums mr-1">{indice + 1}/{total}</span>
-                    <Button variant="ghost" size="icon" aria-label="Comunicado anterior" className="bg-white/10 backdrop-blur-md text-white hover:bg-white/20" onClick={() => girar(-1)}><ChevronLeft size={16} /></Button>
-                    <Button variant="ghost" size="icon" aria-label="Próximo comunicado" className="bg-white/10 backdrop-blur-md text-white hover:bg-white/20" onClick={() => girar(1)}><ChevronRight size={16} /></Button>
-                  </div>
-                  <div className="absolute bottom-10 left-8 flex gap-1.5">
-                    {destaques.map((c, i) => (
-                      <button
-                        key={c.id}
-                        aria-label={`Ir para o comunicado ${i + 1}`}
-                        onClick={() => setActiveAnnouncement(i)}
-                        className={`h-1.5 rounded-full transition-all ${i === indice ? 'w-6 bg-white' : 'w-1.5 bg-white/40 hover:bg-white/70'}`}
-                      />
-                    ))}
+                  {/*
+                    Controles todos no mesmo canto. As bolinhas ficavam em
+                    `bottom-10 left-8` e caíam em cima da linha da data — a
+                    bolinha ativa é uma barra branca de 24px e cortava o
+                    "/07/" de "18/07/2026".
+                  */}
+                  <div className="absolute bottom-8 right-8 flex items-center gap-3">
+                    <div className="flex gap-1.5">
+                      {destaques.map((c, i) => (
+                        <button
+                          key={c.id}
+                          aria-label={`Ir para o comunicado ${i + 1}`}
+                          onClick={() => setActiveAnnouncement(i)}
+                          className={`h-1.5 rounded-full transition-all ${i === indice ? 'w-6 bg-white' : 'w-1.5 bg-white/40 hover:bg-white/70'}`}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-white/80 text-[11px] font-bold tabular-nums">{indice + 1}/{total}</span>
+                    <div className="flex gap-2">
+                      <Button variant="ghost" size="icon" aria-label="Comunicado anterior" className="bg-white/10 backdrop-blur-md text-white hover:bg-white/20" onClick={() => girar(-1)}><ChevronLeft size={16} /></Button>
+                      <Button variant="ghost" size="icon" aria-label="Próximo comunicado" className="bg-white/10 backdrop-blur-md text-white hover:bg-white/20" onClick={() => girar(1)}><ChevronRight size={16} /></Button>
+                    </div>
                   </div>
                 </>
               )}
@@ -499,6 +663,75 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
           </Card>
         </div>
       </div>
+
+      {comunicadoAberto && (
+        <Modal isOpen title="Novo comunicado oficial" onClose={() => setComunicadoAberto(false)} size="md">
+          <div className="space-y-5">
+            <p className="text-[13px] text-gray-500 font-medium">
+              O comunicado entra no carrossel do topo da Intranet e no feed, com seu nome como autor.
+            </p>
+
+            <div className="space-y-1.5">
+              <label htmlFor="com-titulo" className="label-caps ml-1 block">Título</label>
+              <input
+                id="com-titulo"
+                value={comunicado.titulo}
+                onChange={e => setComunicado(c => ({ ...c, titulo: e.target.value }))}
+                placeholder="Ex.: Novo horário de atendimento do RH"
+                className="w-full bg-white border border-gray-200 rounded-[8px] px-3 py-2 text-[13px] font-bold text-gray-700 outline-none focus:ring-2 focus:ring-orange-500/20 placeholder:font-medium placeholder:text-gray-400"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="com-descricao" className="label-caps ml-1 block">Descrição</label>
+              <textarea
+                id="com-descricao"
+                rows={4}
+                value={comunicado.descricao}
+                onChange={e => setComunicado(c => ({ ...c, descricao: e.target.value }))}
+                placeholder="O que o time precisa saber, em poucas linhas."
+                className="w-full bg-white border border-gray-200 rounded-[8px] px-3 py-2 text-[13px] font-bold text-gray-700 outline-none focus:ring-2 focus:ring-orange-500/20 resize-none placeholder:font-medium placeholder:text-gray-400"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="label-caps ml-1 block">Imagem de capa (opcional)</span>
+              {comunicado.imagem ? (
+                <div className="flex items-center gap-3 rounded-[12px] border border-gray-100 bg-gray-50 p-3">
+                  <img src={comunicado.imagem} alt="" className="w-20 h-14 rounded-[8px] object-cover shrink-0" />
+                  <p className="flex-1 min-w-0 text-[13px] font-bold text-gray-700 truncate" title={comunicado.nomeImagem}>
+                    {comunicado.nomeImagem}
+                  </p>
+                  <button
+                    onClick={() => setComunicado(c => ({ ...c, imagem: undefined, nomeImagem: undefined }))}
+                    aria-label="Remover imagem de capa"
+                    className="p-1.5 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <Button variant="outline" size="sm" leftIcon={<ImageIcon size={14} />} onClick={() => inputBanner.current?.click()}>
+                    Escolher imagem
+                  </Button>
+                  <span className="text-[12px] font-medium text-gray-400">Sem imagem, entra com uma capa padrão.</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setComunicadoAberto(false)}>Cancelar</Button>
+              <Button
+                disabled={!comunicado.titulo.trim() || !comunicado.descricao.trim()}
+                onClick={publicarComunicado}
+              >
+                Publicar comunicado
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {pautaAberta && (
         <Modal isOpen title="Sugerir pauta" onClose={() => setPautaAberta(false)} size="md">

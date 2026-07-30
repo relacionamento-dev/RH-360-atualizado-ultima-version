@@ -53,6 +53,24 @@ export default function AppShell({
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
+  const irParaInicio = () => {
+    setIsMobileMenuOpen(false);
+    onNavigate('intranet');
+  };
+
+  /**
+   * `usuarioAtual.id` é id de USUÁRIO ('JYNX-001'); a ficha vive em
+   * `colaboradores` com id de colaborador ('EMP-024'). Sem traduzir pelo
+   * `employeeId`, "Meu perfil" caía no primeiro colaborador da lista.
+   */
+  const abrirMeuPerfil = () => {
+    const eu = config.colaboradores.find(
+      e => e.id === config.usuarioAtual.employeeId || e.name === config.usuarioAtual.name
+    );
+    updateConfig({ selectedEmployeeId: eu?.id || config.selectedEmployeeId || null });
+    onNavigate('profile-360');
+  };
+
   const searchResults = searchQuery.trim() === '' ? [] : [
     ...(config.colaboradores || []).filter(e => e.name.toLowerCase().includes(searchQuery.toLowerCase())).map(e => ({ type: 'colaborador', id: e.id, label: e.name, subtitle: e.role, icon: <Users size={14} /> })),
     ...(config.solicitacoes || []).filter(r => r.numero.toLowerCase().includes(searchQuery.toLowerCase()) || r.alvo?.toLowerCase().includes(searchQuery.toLowerCase())).map(r => ({ type: 'solicitacao', id: r.id, label: r.numero, subtitle: r.processName || r.alvo, icon: <FileText size={14} /> })),
@@ -347,13 +365,24 @@ export default function AppShell({
         } ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="p-6 flex items-center justify-between">
+          {/* Logo leva para a tela inicial, como em qualquer sistema. */}
           {!isSidebarCollapsed && (
-            <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={irParaInicio}
+              aria-label="Ir para a Intranet"
+              title="Ir para a Intranet"
+              className="flex items-center gap-3"
+            >
               <LogoIcon />
               <span className="font-bold text-xl tracking-tight text-[var(--color-brand-text-primary)]">RH<span className="text-[var(--color-brand-primary)]">360</span></span>
-            </div>
+            </button>
           )}
-          {isSidebarCollapsed && <div className="mx-auto"><LogoIcon /></div>}
+          {isSidebarCollapsed && (
+            <button type="button" onClick={irParaInicio} aria-label="Ir para a Intranet" title="Ir para a Intranet" className="mx-auto">
+              <LogoIcon />
+            </button>
+          )}
           <button 
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             className="absolute -right-3 top-8 w-6 h-6 bg-white border border-[var(--color-brand-border)] rounded-full flex items-center justify-center text-gray-400 hover:text-[var(--color-brand-primary)] shadow-sm z-30"
@@ -481,10 +510,16 @@ export default function AppShell({
             >
               <Menu size={24} />
             </button>
-            <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={irParaInicio}
+              aria-label="Ir para a Intranet"
+              title="Ir para a Intranet"
+              className="flex items-center gap-2"
+            >
               <LogoIcon />
               <span className="font-bold text-lg tracking-tight text-[var(--color-brand-text-primary)]">RH<span className="text-[var(--color-brand-primary)]">360</span></span>
-            </div>
+            </button>
           </div>
 
           <div className="flex-1 max-w-xl relative hidden md:block">
@@ -624,7 +659,7 @@ export default function AppShell({
                         </>
                       )}
                       <div className="h-px bg-[var(--color-brand-border)] my-1 mx-1" />
-                      <button onClick={() => { onNavigate('profile-360'); setShowUserMenu(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-[4px] transition-colors text-left">
+                      <button onClick={() => { abrirMeuPerfil(); setShowUserMenu(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-[4px] transition-colors text-left">
                         <UserIcon className="w-4 h-4 text-gray-400" />
                         <span className="text-[14px] font-medium text-gray-700">Meu perfil</span>
                       </button>
