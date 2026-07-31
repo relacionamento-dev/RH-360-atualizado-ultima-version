@@ -215,6 +215,37 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
     [config.colaboradores, mesAtual]
   );
 
+  // --- Foto de quem assina o post/comentário do feed ---
+  // O comunicado só guarda o nome do autor (o comentário guarda também o id),
+  // então a foto tem que vir do cadastro. Indexa por id e por nome; contas
+  // genéricas ("RH", "Comunicação Corporativa", "Tecnologia") não existem no
+  // cadastro e ficam sem `src` — o próprio Avatar mostra as iniciais, o mesmo
+  // fallback que ele já usa no `onError` de URL quebrada.
+  const fotosDoCadastro = useMemo(() => {
+    const porId = new Map<string, string>();
+    const porNome = new Map<string, string>();
+    const registrar = (id?: string, nome?: string, avatar?: string) => {
+      if (!avatar) return;
+      if (id) porId.set(id, avatar);
+      if (nome) porNome.set(nome.trim().toLowerCase(), avatar);
+    };
+    // Ordem: o cadastro do colaborador vale mais que o usuário de demonstração,
+    // e o usuário logado (que pode ter trocado a foto na sessão) vale mais que os dois.
+    (config.usuariosDemo || []).forEach(u => registrar(u.id, u.name, u.avatar));
+    config.colaboradores.forEach(e => registrar(e.id, e.name, e.avatar));
+    registrar(config.usuarioAtual.id, config.usuarioAtual.name, config.usuarioAtual.avatar);
+    return { porId, porNome };
+  }, [config.colaboradores, config.usuariosDemo, config.usuarioAtual]);
+
+  const fotoDoAutor = (nome?: string, id?: string): string | undefined => {
+    if (id) {
+      const porId = fotosDoCadastro.porId.get(id);
+      if (porId) return porId;
+    }
+    if (nome) return fotosDoCadastro.porNome.get(nome.trim().toLowerCase());
+    return undefined;
+  };
+
   const LinhaPessoa = ({
     pessoa, data, cor, icone
   }: { pessoa: Employee; data?: string; cor: string; icone: React.ReactNode }) => (
@@ -478,7 +509,7 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
                 <Card key={item.id} className="p-8 space-y-6 hover:border-[var(--color-brand-primary)] transition-all group bg-white">
                   <div className="flex items-start justify-between">
                     <div className="flex gap-4">
-                      <Avatar name={item.author} className="w-10 h-10 rounded-[12px] border border-gray-100" />
+                      <Avatar src={fotoDoAutor(item.author)} name={item.author} className="w-10 h-10 rounded-[12px] border border-gray-100" />
                       <div>
                         <p className="text-[14px] font-bold text-gray-900">{item.author}</p>
                         <p className="text-[11px] font-bold text-[var(--color-brand-primary-text)] uppercase tracking-widest">{item.category}</p>
@@ -540,7 +571,7 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
                             const meu = c.autorId === config.usuarioAtual.id;
                             return (
                               <li key={c.id} className="flex gap-3 items-start">
-                                <Avatar name={c.autor} size="sm" className="shrink-0" />
+                                <Avatar src={fotoDoAutor(c.autor, c.autorId)} name={c.autor} size="sm" className="shrink-0" />
                                 <div className="flex-1 min-w-0 rounded-[12px] bg-gray-50 px-4 py-3">
                                   <div className="flex items-center gap-2">
                                     <p className="text-[12px] font-bold text-gray-900">{c.autor}</p>
