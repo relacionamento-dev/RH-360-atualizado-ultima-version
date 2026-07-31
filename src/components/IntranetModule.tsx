@@ -2,7 +2,8 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   Plus, MessageSquare, Heart, Share2,
   Image as ImageIcon, Paperclip, Send, Calendar, ChevronLeft, ChevronRight,
-  Bell, CheckCircle2, X, Trash2, FileText, Cake, UserPlus
+  Bell, CheckCircle2, X, Trash2, FileText, Cake, UserPlus, MoreHorizontal, Pencil,
+  AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/Button';
@@ -13,7 +14,8 @@ import { Avatar, Modal, EmptyState } from './ui/Misc';
 
 import { useAppConfig } from '../contexts/AppConfigContext';
 import { useToast } from './ToastContext';
-import { AnexoComunicado, Employee } from '../types';
+import { AnexoComunicado, Announcement, Employee } from '../types';
+import { podeGerenciarComunicado } from '../utils/permissions';
 
 interface IntranetModuleProps {
   onNavigate?: (view: string) => void;
@@ -62,14 +64,67 @@ const BANNER_PADRAO =
     </svg>`
   );
 
+const fotoDoSeed = (id: string) => `https://images.unsplash.com/photo-${id}?q=80&w=200&h=200&fit=crop`;
+
+/**
+ * Avatar das contas institucionais do feed ("RH", "Comunicação Corporativa",
+ * "Tecnologia", "TI"). Elas não são uma pessoa, então iniciais em cima de um
+ * quadrado cinza não dizem nada — cada uma usa uma foto que JÁ EXISTE no seed
+ * de colaboradores (`data.ts`), sem imagem nova entrando no projeto.
+ *
+ * Critério da escolha, nesta ordem:
+ * 1. uma foto por conta, nenhuma repetida;
+ * 2. nada de quem pode assinar um post no feed — as fotos dos DEMO_USERS (todo
+ *    login publica com a própria foto) e a da Ana Paula Lima, autora do
+ *    comentário do seed, ficaram de fora, senão a mesma cara apareceria com dois
+ *    nomes diferentes;
+ * 3. só URL que responde 200: as três mortas do seed (Karina Lopes, Giovana
+ *    Santos e Isabela Rocha) estão fora. Se alguma cair depois, o `onError` do
+ *    Avatar devolve as iniciais.
+ */
+const AVATARES_INSTITUCIONAIS: Record<string, string> = {
+  'rh': fotoDoSeed('1573496359142-b8d87734a5a2'),                         // Ana Souza       · EMP-002 · Departamento Pessoal
+  'comunicação corporativa': fotoDoSeed('1560250097-0b93528c311a'),       // Bruno Meirelles · EMP-009 · Vendas
+  'tecnologia': fotoDoSeed('1506794778202-cad84cf45f1d'),                 // Daniel Rocha    · EMP-011 · Tech Lead
+  'ti': fotoDoSeed('1504257432389-52343af06ae3')                          // Helio Garcia    · EMP-015 · Operações
+};
+
+/** Reserva para conta institucional fora da lista acima — mesmo seed, sem repetir as de cima. */
+const AVATARES_RESERVA = [
+  fotoDoSeed('1554151228-14d9def656e4'), // Eliana Martins   · EMP-012
+  fotoDoSeed('1594744803329-e58b31de8bf5'), // Marta Rocha    · EMP-020
+  fotoDoSeed('1539571696357-5a69c17a67c6'), // Renato Oliveira · EMP-007
+  fotoDoSeed('1544005313-94ddf0286df2'),    // Fabiana Lima    · EMP-008
+  fotoDoSeed('1542909168-82c3e7fdca5c'),    // Felipe Neves    · EMP-013
+  fotoDoSeed('1492562080023-ab3db95bfbce'), // Jorge Amado     · EMP-017
+  fotoDoSeed('1463453091185-61582044d556')  // Leonardo Vinci  · EMP-019
+];
+
+/** `chave` já vem normalizada (minúsculas, sem espaços nas pontas). */
+const avatarInstitucional = (chave: string) => {
+  const definido = AVATARES_INSTITUCIONAIS[chave];
+  if (definido) return definido;
+  // Hash do nome: a conta desconhecida ganha sempre a mesma foto, sem sorteio
+  // que mude a cada render.
+  let hash = 0;
+  for (let i = 0; i < chave.length; i++) hash = (hash * 31 + chave.charCodeAt(i)) % 9973;
+  return AVATARES_RESERVA[hash % AVATARES_RESERVA.length];
+};
+
 export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
-  const { config, createAnnouncement, comentarComunicado, removerComentario } = useAppConfig();
+  const { config, createAnnouncement, editarComunicado, excluirComunicado, comentarComunicado, removerComentario } = useAppConfig();
   const { addToast } = useToast();
   const [activeAnnouncement, setActiveAnnouncement] = useState(0);
   const [postContent, setPostContent] = useState('');
   const [anexo, setAnexo] = useState<AnexoComunicado | null>(null);
   const [comentandoEm, setComentandoEm] = useState<string | null>(null);
   const [rascunhoComentario, setRascunhoComentario] = useState('');
+  // Ações do post: menu aberto, post em edição inline e post aguardando
+  // confirmação de exclusão.
+  const [menuPost, setMenuPost] = useState<string | null>(null);
+  const [editandoPost, setEditandoPost] = useState<string | null>(null);
+  const [rascunhoPost, setRascunhoPost] = useState('');
+  const [excluindoPost, setExcluindoPost] = useState<Announcement | null>(null);
   const [pautaAberta, setPautaAberta] = useState(false);
   const [pauta, setPauta] = useState({ titulo: '', descricao: '' });
   const [calendarioAberto, setCalendarioAberto] = useState(false);
@@ -124,11 +179,14 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
     setAnexo(base);
   };
 
+  /** Post do feed não tem título próprio: ele sai do começo do texto. */
+  const tituloDoTexto = (texto: string) => texto.slice(0, 50) + (texto.length > 50 ? '...' : '');
+
   const handlePublish = () => {
     if (!postContent.trim() && !anexo) return;
     const texto = postContent.trim();
     createAnnouncement({
-      title: texto ? texto.slice(0, 50) + (texto.length > 50 ? '...' : '') : anexo!.nome,
+      title: texto ? tituloDoTexto(texto) : anexo!.nome,
       content: texto,
       category: 'Geral',
       priority: 'Normal',
@@ -137,6 +195,38 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
     setPostContent('');
     setAnexo(null);
     addToast('Comunicado publicado com sucesso!', 'success');
+  };
+
+  const abrirEdicao = (item: Announcement) => {
+    setMenuPost(null);
+    setEditandoPost(item.id);
+    setRascunhoPost(item.content);
+  };
+
+  const cancelarEdicao = () => {
+    setEditandoPost(null);
+    setRascunhoPost('');
+  };
+
+  const salvarEdicao = (item: Announcement) => {
+    const texto = rascunhoPost.trim();
+    if (!texto) return;
+    // O título só acompanha o texto quando foi derivado dele (post do feed).
+    // Comunicado oficial tem título próprio, digitado no modal — esse fica.
+    const derivado = item.title === tituloDoTexto(item.content);
+    editarComunicado(item.id, derivado ? { content: texto, title: tituloDoTexto(texto) } : { content: texto });
+    cancelarEdicao();
+    addToast('Publicação atualizada.', 'success');
+  };
+
+  const confirmarExclusao = () => {
+    if (!excluindoPost) return;
+    excluirComunicado(excluindoPost.id);
+    if (editandoPost === excluindoPost.id) cancelarEdicao();
+    if (comentandoEm === excluindoPost.id) setComentandoEm(null);
+    setExcluindoPost(null);
+    setActiveAnnouncement(0); // o carrossel pode ter perdido o item em que estava
+    addToast('Publicação excluída do feed.', 'success');
   };
 
   const enviarComentario = (comunicadoId: string) => {
@@ -224,7 +314,12 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
   const fotosDoCadastro = useMemo(() => {
     const porId = new Map<string, string>();
     const porNome = new Map<string, string>();
+    // Quem existe no cadastro, com ou sem foto: é o que separa uma pessoa real
+    // sem retrato (fica nas iniciais) de uma conta institucional (silhueta).
+    const pessoas = new Set<string>();
     const registrar = (id?: string, nome?: string, avatar?: string) => {
+      if (id) pessoas.add(id);
+      if (nome) pessoas.add(nome.trim().toLowerCase());
       if (!avatar) return;
       if (id) porId.set(id, avatar);
       if (nome) porNome.set(nome.trim().toLowerCase(), avatar);
@@ -234,16 +329,27 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
     (config.usuariosDemo || []).forEach(u => registrar(u.id, u.name, u.avatar));
     config.colaboradores.forEach(e => registrar(e.id, e.name, e.avatar));
     registrar(config.usuarioAtual.id, config.usuarioAtual.name, config.usuarioAtual.avatar);
-    return { porId, porNome };
+    return { porId, porNome, pessoas };
   }, [config.colaboradores, config.usuariosDemo, config.usuarioAtual]);
 
-  const fotoDoAutor = (nome?: string, id?: string): string | undefined => {
+  /**
+   * O que entra no `src` do Avatar: a foto do cadastro; a foto institucional
+   * quando o autor não é uma pessoa cadastrada; e `undefined` — as iniciais do
+   * próprio Avatar — para a pessoa cadastrada que não tem foto.
+   */
+  const avatarDoAutor = (nome?: string, id?: string): string | undefined => {
     if (id) {
       const porId = fotosDoCadastro.porId.get(id);
       if (porId) return porId;
     }
-    if (nome) return fotosDoCadastro.porNome.get(nome.trim().toLowerCase());
-    return undefined;
+    const chave = nome?.trim().toLowerCase();
+    if (chave) {
+      const porNome = fotosDoCadastro.porNome.get(chave);
+      if (porNome) return porNome;
+    }
+    const ehPessoa = (id && fotosDoCadastro.pessoas.has(id)) || (chave && fotosDoCadastro.pessoas.has(chave));
+    if (ehPessoa || !chave) return undefined;
+    return avatarInstitucional(chave);
   };
 
   const LinhaPessoa = ({
@@ -505,21 +611,74 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
             {config.comunicados.map((item) => {
               const comentarios = item.comentarios || [];
               const aberto = comentandoEm === item.id;
+              // Mesma regra que o estado aplica ao salvar/excluir: autor do post
+              // ou Administrador Geral (incluído o bypass @jynx.com.br).
+              const podeGerenciar = podeGerenciarComunicado(config.usuarioAtual, item);
+              const editando = editandoPost === item.id;
               return (
                 <Card key={item.id} className="p-8 space-y-6 hover:border-[var(--color-brand-primary)] transition-all group bg-white">
                   <div className="flex items-start justify-between">
                     <div className="flex gap-4">
-                      <Avatar src={fotoDoAutor(item.author)} name={item.author} className="w-10 h-10 rounded-[12px] border border-gray-100" />
+                      <Avatar src={avatarDoAutor(item.author, item.authorId)} name={item.author} className="w-10 h-10 rounded-[12px] border border-gray-100" />
                       <div>
                         <p className="text-[14px] font-bold text-gray-900">{item.author}</p>
                         <p className="text-[11px] font-bold text-[var(--color-brand-primary-text)] uppercase tracking-widest">{item.category}</p>
                       </div>
                     </div>
-                    <span className="text-[11px] font-bold text-gray-400 tabular-nums uppercase">{item.date}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[11px] font-bold text-gray-400 tabular-nums uppercase">{item.date}</span>
+                      {podeGerenciar && (
+                        <div className="relative">
+                          <button
+                            onClick={() => setMenuPost(m => (m === item.id ? null : item.id))}
+                            aria-label={`Ações da publicação de ${item.author}`}
+                            aria-expanded={menuPost === item.id}
+                            className="p-1.5 rounded-full text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                          >
+                            <MoreHorizontal size={16} />
+                          </button>
+
+                          {menuPost === item.id && (
+                            <>
+                              <div className="fixed inset-0 z-[55]" onClick={() => setMenuPost(null)} />
+                              <div className="absolute top-full right-0 mt-1 w-40 bg-white border border-gray-100 rounded-[12px] shadow-2xl z-[60] overflow-hidden animate-in fade-in slide-in-from-top-1">
+                                <button
+                                  onClick={() => abrirEdicao(item)}
+                                  className="w-full px-4 py-2.5 flex items-center gap-2 text-[12px] font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                                >
+                                  <Pencil size={14} /> Editar
+                                </button>
+                                <button
+                                  onClick={() => { setMenuPost(null); setExcluindoPost(item); }}
+                                  className="w-full px-4 py-2.5 flex items-center gap-2 text-[12px] font-bold text-red-600 hover:bg-red-50 transition-colors border-t border-gray-50"
+                                >
+                                  <Trash2 size={14} /> Excluir
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  {item.content && (
-                    <p className="text-[13px] text-gray-700 leading-relaxed font-medium">{item.content}</p>
+                  {editando ? (
+                    <div className="space-y-3">
+                      <textarea
+                        value={rascunhoPost}
+                        onChange={e => setRascunhoPost(e.target.value)}
+                        aria-label="Editar publicação"
+                        className="w-full bg-gray-50 border border-gray-100 rounded-[16px] p-4 text-[13px] font-medium outline-none focus:ring-2 focus:ring-orange-500/20 resize-none min-h-[100px]"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="sm" onClick={cancelarEdicao}>Cancelar</Button>
+                        <Button size="sm" disabled={!rascunhoPost.trim()} onClick={() => salvarEdicao(item)}>Salvar</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    item.content && (
+                      <p className="text-[13px] text-gray-700 leading-relaxed font-medium">{item.content}</p>
+                    )
                   )}
 
                   {item.anexo && (
@@ -571,7 +730,7 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
                             const meu = c.autorId === config.usuarioAtual.id;
                             return (
                               <li key={c.id} className="flex gap-3 items-start">
-                                <Avatar src={fotoDoAutor(c.autor, c.autorId)} name={c.autor} size="sm" className="shrink-0" />
+                                <Avatar src={avatarDoAutor(c.autor, c.autorId)} name={c.autor} size="sm" className="shrink-0" />
                                 <div className="flex-1 min-w-0 rounded-[12px] bg-gray-50 px-4 py-3">
                                   <div className="flex items-center gap-2">
                                     <p className="text-[12px] font-bold text-gray-900">{c.autor}</p>
@@ -694,6 +853,38 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
           </Card>
         </div>
       </div>
+
+      {excluindoPost && (
+        <Modal isOpen title="Excluir publicação" onClose={() => setExcluindoPost(null)} size="sm">
+          <div className="space-y-5">
+            <div className="flex gap-3">
+              <div className="w-10 h-10 rounded-[12px] bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                <AlertTriangle size={18} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[13px] font-bold text-gray-900">
+                  Esta publicação sai do feed para todo mundo.
+                </p>
+                <p className="text-[13px] text-gray-500 font-medium">
+                  Os comentários dela também são apagados, e não dá para desfazer.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-[12px] bg-gray-50 border border-gray-100 p-4">
+              <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{excluindoPost.author}</p>
+              <p className="text-[13px] text-gray-700 font-medium mt-1 line-clamp-3">
+                {excluindoPost.content || excluindoPost.title}
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setExcluindoPost(null)}>Cancelar</Button>
+              <Button variant="danger" leftIcon={<Trash2 size={14} />} onClick={confirmarExclusao}>Excluir publicação</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {comunicadoAberto && (
         <Modal isOpen title="Novo comunicado oficial" onClose={() => setComunicadoAberto(false)} size="md">

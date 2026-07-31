@@ -26,8 +26,8 @@ import {
   menuModules 
 } from '../data';
 import { PROCESS_DEFINITIONS } from '../processDefinitions';
-import { blocosComDadosDoDisparo, criarBlocosAdmissao } from '../utils/admissaoDigital';
-import { isSuperAdmin, isJynxEmail, asSuperAdmin, FULL_PROCESS_PERMISSIONS, FULL_SENSITIVE_PERMISSIONS } from '../utils/permissions';
+import { blocosComDadosDoDisparo, criarBlocosAdmissao, fotoDePerfilDaAdmissao } from '../utils/admissaoDigital';
+import { isSuperAdmin, isJynxEmail, asSuperAdmin, podeGerenciarComunicado, FULL_PROCESS_PERMISSIONS, FULL_SENSITIVE_PERMISSIONS } from '../utils/permissions';
 import {
   buildApprovalChain,
   ensureApprovalChain,
@@ -52,6 +52,8 @@ interface AppConfigContextType {
   cancelRequest: (requestId: string, reason: string) => void;
   completeTask: (taskId: string) => void;
   createAnnouncement: (announcement: Partial<Announcement>) => void;
+  editarComunicado: (comunicadoId: string, updates: Partial<Pick<Announcement, 'title' | 'content'>>) => void;
+  excluirComunicado: (comunicadoId: string) => void;
   comentarComunicado: (comunicadoId: string, texto: string) => void;
   removerComentario: (comunicadoId: string, comentarioId: string) => void;
   addNotification: (titulo: string, mensagem: string, tipo: import('../types').Notificacao['tipo']) => void;
@@ -1143,6 +1145,9 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       title: announcement.title || 'Novo Comunicado',
       content: announcement.content || '',
       author: config.usuarioAtual.name,
+      // Sem o id, depois não dá para saber que o post é desta pessoa — é ele
+      // que libera o menu de editar/excluir no feed.
+      authorId: config.usuarioAtual.id,
       date: new Date().toLocaleDateString('pt-BR'),
       category: announcement.category || 'RH',
       priority: announcement.priority || 'Normal',
@@ -1153,6 +1158,23 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
     setConfig(prev => ({
       ...prev,
       comunicados: [newAnnouncement, ...prev.comunicados]
+    }));
+  };
+
+  const editarComunicado = (comunicadoId: string, updates: Partial<Pick<Announcement, 'title' | 'content'>>) => {
+    setConfig(prev => ({
+      ...prev,
+      comunicados: prev.comunicados.map(c =>
+        // A data original fica: editar não republica o post no topo do feed.
+        c.id === comunicadoId && podeGerenciarComunicado(prev.usuarioAtual, c) ? { ...c, ...updates } : c
+      )
+    }));
+  };
+
+  const excluirComunicado = (comunicadoId: string) => {
+    setConfig(prev => ({
+      ...prev,
+      comunicados: prev.comunicados.filter(c => !(c.id === comunicadoId && podeGerenciarComunicado(prev.usuarioAtual, c)))
     }));
   };
 
@@ -1394,6 +1416,12 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       }))
     );
 
+    // A foto anexada no bloco "Foto de Perfil" vira o avatar da ficha — o mesmo
+    // campo que o feed, o Perfil 360 e o Gente & Celebrações já leem. Só o
+    // upload de imagem real produz esse dado; com o "Tirar foto" simulado a
+    // ficha continua sem foto e o Avatar mostra as iniciais.
+    const fotoDePerfil = fotoDePerfilDaAdmissao(emp.admissaoDigital);
+
     setConfig(prev => ({
       ...prev,
       colaboradores: prev.colaboradores.map(e =>
@@ -1405,6 +1433,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
               // Vale a data prevista de início combinada no disparo; sem ela
               // (registro antigo), a admissão passa a valer a partir de hoje.
               admissionDate: emp.admissaoDigital?.disparo.dataAdmissao || new Date().toISOString().slice(0, 10),
+              avatar: fotoDePerfil || e.avatar,
               documents: [...novosDocumentos, ...(e.documents || [])],
               admissaoDigital: undefined
             }
@@ -1490,6 +1519,8 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       cancelRequest,
       completeTask,
       createAnnouncement,
+      editarComunicado,
+      excluirComunicado,
       comentarComunicado,
       removerComentario,
       addNotification,

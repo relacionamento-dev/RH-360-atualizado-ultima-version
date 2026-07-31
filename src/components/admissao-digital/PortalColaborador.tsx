@@ -20,8 +20,21 @@ import {
   prazoFinal,
   progressoAdmissao,
   tituloBloco,
+  BLOCO_FOTO_PERFIL,
   PARENTESCO_OPCOES
 } from '../../utils/admissaoDigital';
+
+/**
+ * Teto da foto de perfil guardada embutida. Mesmo motivo do anexo do feed
+ * (IntranetModule): o config inteiro vai para o localStorage e uma imagem
+ * grande em base64 estoura a cota.
+ */
+const LIMITE_FOTO_BYTES = 400 * 1024;
+
+const formatarTamanho = (bytes: number) =>
+  bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 /**
  * Visão que o colaborador acessa pelo link da admissão digital.
@@ -97,12 +110,12 @@ export default function PortalColaborador({
     atualizarBloco(blocoId, bloco => ({ ...bloco, aplicavel }));
   };
 
-  const adicionarAnexo = (blocoId: string, nome: string, origem: 'Foto' | 'Arquivo') => {
+  const adicionarAnexo = (blocoId: string, nome: string, origem: 'Foto' | 'Arquivo', imagem?: string) => {
     atualizarBloco(blocoId, bloco => ({
       ...bloco,
       anexos: [
         ...bloco.anexos,
-        { id: `anx-${Date.now()}`, nome, origem, enviadoEm: new Date().toISOString() }
+        { id: `anx-${Date.now()}`, nome, origem, enviadoEm: new Date().toISOString(), imagem }
       ]
     }));
     addToast(origem === 'Foto' ? 'Foto anexada.' : `Arquivo "${nome}" anexado.`, 'success');
@@ -196,15 +209,36 @@ export default function PortalColaborador({
 
   const handleArquivoSelecionado = (event: React.ChangeEvent<HTMLInputElement>) => {
     const arquivo = event.target.files?.[0];
-    if (arquivo && alvoUpload) {
-      if (alvoUpload.certificadoId) {
-        atualizarCertificado(alvoUpload.blocoId, alvoUpload.certificadoId, 'arquivo', arquivo.name);
-      } else {
-        adicionarAnexo(alvoUpload.blocoId, arquivo.name, 'Arquivo');
-      }
-    }
+    const alvo = alvoUpload;
     event.target.value = '';
     setAlvoUpload(null);
+    if (!arquivo || !alvo) return;
+
+    if (alvo.certificadoId) {
+      atualizarCertificado(alvo.blocoId, alvo.certificadoId, 'arquivo', arquivo.name);
+      return;
+    }
+
+    // Só a Foto de Perfil guarda a imagem embutida: é a única que vira dado da
+    // ficha (o `avatar` do colaborador, na aprovação). Guardar o base64 de todo
+    // documento — RG, certidão, CNH — estouraria a cota do localStorage, onde o
+    // config inteiro é serializado.
+    const ehFotoDePerfil = alvo.blocoId === BLOCO_FOTO_PERFIL && arquivo.type.startsWith('image/');
+    if (ehFotoDePerfil && arquivo.size > LIMITE_FOTO_BYTES) {
+      addToast(
+        `A imagem tem ${formatarTamanho(arquivo.size)}. Ela vai como anexo, mas só até ${formatarTamanho(LIMITE_FOTO_BYTES)} vira a foto do perfil.`,
+        'warning'
+      );
+    }
+
+    if (ehFotoDePerfil && arquivo.size <= LIMITE_FOTO_BYTES) {
+      const leitor = new FileReader();
+      leitor.onload = () => adicionarAnexo(alvo.blocoId, arquivo.name, 'Arquivo', String(leitor.result));
+      leitor.readAsDataURL(arquivo);
+      return;
+    }
+
+    adicionarAnexo(alvo.blocoId, arquivo.name, 'Arquivo');
   };
 
   const aceitarTermo = (aceito: boolean) => {

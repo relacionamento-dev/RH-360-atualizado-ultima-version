@@ -35,6 +35,19 @@ export const asSuperAdmin = (user: User): User => ({
   canManageAccesses: true
 });
 
+// Feed da Intranet: quem pode editar ou excluir uma publicação. É o mesmo
+// critério da exclusão de comentário (comparação de id), mais o bypass do
+// Administrador Geral. Comunicado sem `authorId` é post de conta institucional
+// ou publicação anterior ao campo — aí só o nome do autor serve de comparação.
+export const podeGerenciarComunicado = (
+  user: Pick<User, 'id' | 'name' | 'profile'> | null | undefined,
+  comunicado: { author: string; authorId?: string }
+): boolean => {
+  if (!user) return false;
+  if (isSuperAdmin(user)) return true;
+  return comunicado.authorId ? comunicado.authorId === user.id : comunicado.author === user.name;
+};
+
 // Escopo de dados: enxerga todas as empresas e filiais.
 export const hasGlobalScope = (user?: Pick<User, 'profile' | 'scope'> | null): boolean =>
   isSuperAdmin(user) || user?.scope === 'global';

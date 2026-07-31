@@ -221,6 +221,13 @@ export interface AdmissaoAnexo {
   nome: string;
   origem: 'Foto' | 'Arquivo';
   enviadoEm: string;
+  /**
+   * Imagem embutida (data URL). Só o bloco "Foto de Perfil" guarda, e só quando
+   * o arquivo veio do "Importar arquivo" e é uma imagem pequena — é ela que
+   * vira o `avatar` do colaborador na aprovação. O "Tirar foto" da demo é
+   * simulado e não produz imagem; anexo sem `imagem` deixa a ficha sem foto.
+   */
+  imagem?: string;
 }
 
 /** Campo declarado dentro de um bloco do portal (Dados Pessoais, Endereço...). */
@@ -769,6 +776,12 @@ export interface Announcement {
   title: string;
   content: string;
   author: string;
+  /**
+   * Id de quem publicou. Ausente nos comunicados do seed, que são de contas
+   * institucionais ("RH", "Comunicação Corporativa") e não de uma pessoa — é o
+   * que decide quem pode editar/excluir o post no feed.
+   */
+  authorId?: string;
   date: string;
   category: 'Geral' | 'RH' | 'Evento' | 'TI';
   priority: 'Normal' | 'Importante' | 'Urgente';

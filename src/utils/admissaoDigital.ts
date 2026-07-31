@@ -129,6 +129,22 @@ export const BLOCOS_ADMISSAO_PADRAO: Omit<AdmissaoBloco, 'anexos' | 'statusRevis
   }
 ];
 
+/** Bloco cuja imagem vira a foto da ficha do colaborador (ver `fotoDePerfilDaAdmissao`). */
+export const BLOCO_FOTO_PERFIL = 'foto-perfil';
+
+/**
+ * Imagem que o colaborador anexou em "Foto de Perfil", quando ela existe de
+ * verdade: só o "Importar arquivo" com uma imagem guarda o data URL. O "Tirar
+ * foto" da demo é simulado (anexo sem `imagem`) e devolve `undefined` — aí a
+ * ficha fica sem `avatar` e o app cai nas iniciais, como sempre fez.
+ *
+ * Havendo mais de uma, vale a última anexada.
+ */
+export function fotoDePerfilDaAdmissao(admissao: AdmissaoDigital): string | undefined {
+  const bloco = admissao.blocos.find(b => b.id === BLOCO_FOTO_PERFIL);
+  return bloco?.anexos.filter(a => a.imagem).pop()?.imagem;
+}
+
 export function criarBlocosAdmissao(): AdmissaoBloco[] {
   return BLOCOS_ADMISSAO_PADRAO.map(bloco => ({
     ...bloco,
