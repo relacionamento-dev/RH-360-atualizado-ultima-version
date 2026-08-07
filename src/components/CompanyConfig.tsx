@@ -36,7 +36,7 @@ export default function CompanyConfig() {
                   type="text" 
                   value={localConfig.appName ?? ''}
                   onChange={e => setLocalConfig({...localConfig, appName: e.target.value})}
-                  className="w-full bg-gray-50 border-none rounded-[12px] p-4 text-[13px] font-bold text-gray-900 focus:ring-1 focus:ring-[var(--color-brand-primary)] transition-all outline-none"
+                  className="w-full bg-white hairline-border rounded-[12px] p-4 text-[13px] font-bold text-gray-900 focus:ring-1 focus:ring-[var(--color-brand-primary)] transition-all outline-none"
                 />
               </div>
               <div className="space-y-2">
@@ -44,7 +44,7 @@ export default function CompanyConfig() {
                 <input 
                   type="text" 
                   defaultValue="RH360 Soluções Corporativas LTDA"
-                  className="w-full bg-gray-50 border-none rounded-[12px] p-4 text-[13px] font-bold text-gray-900 focus:ring-1 focus:ring-[var(--color-brand-primary)] transition-all outline-none"
+                  className="w-full bg-white hairline-border rounded-[12px] p-4 text-[13px] font-bold text-gray-900 focus:ring-1 focus:ring-[var(--color-brand-primary)] transition-all outline-none"
                 />
               </div>
               <div className="space-y-2">
@@ -62,13 +62,13 @@ export default function CompanyConfig() {
                      type="text" 
                      value={localConfig.primaryColor ?? '#F26522'}
                      onChange={e => setLocalConfig({...localConfig, primaryColor: e.target.value})}
-                     className="flex-1 bg-gray-50 border-none rounded-[12px] px-4 text-[13px] font-bold text-gray-900 focus:ring-1 focus:ring-[var(--color-brand-primary)] transition-all outline-none"
+                     className="flex-1 bg-white hairline-border rounded-[12px] px-4 text-[13px] font-bold text-gray-900 focus:ring-1 focus:ring-[var(--color-brand-primary)] transition-all outline-none"
                    />
                 </div>
               </div>
               <div className="space-y-2">
                 <label className="label-caps opacity-40">UNIDADE PADRÃO</label>
-                <select className="w-full bg-gray-50 border-none rounded-[12px] p-4 text-[13px] font-bold text-gray-900 focus:ring-1 focus:ring-[var(--color-brand-primary)] transition-all outline-none">
+                <select className="w-full bg-white hairline-border rounded-[12px] p-4 text-[13px] font-bold text-gray-900 focus:ring-1 focus:ring-[var(--color-brand-primary)] transition-all outline-none">
                    <option>Sede Brasília</option>
                    <option>Unidade São Paulo</option>
                 </select>

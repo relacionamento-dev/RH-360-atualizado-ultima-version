@@ -114,7 +114,7 @@ export default function EmployeesModule({ onNavigate }: EmployeesModuleProps) {
                 placeholder="Buscar por nome, matrícula ou CPF..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-[var(--color-brand-border)] rounded-[8px] text-[13px] focus:ring-2 focus:ring-orange-500/20 outline-none transition-all"
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-[var(--color-brand-border)] rounded-[8px] text-[13px] focus:ring-2 focus:ring-orange-500/20 outline-none transition-all"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -291,16 +291,16 @@ export default function EmployeesModule({ onNavigate }: EmployeesModuleProps) {
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Nome Completo</label>
-                  <input type="text" className="w-full p-2.5 bg-gray-50 border border-[var(--color-brand-border)] rounded-[8px] text-[13px] outline-none" />
+                  <input type="text" className="w-full p-2.5 bg-white border border-[var(--color-brand-border)] rounded-[8px] text-[13px] outline-none" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">CPF</label>
-                    <input type="text" className="w-full p-2.5 bg-gray-50 border border-[var(--color-brand-border)] rounded-[8px] text-[13px] outline-none" />
+                    <input type="text" className="w-full p-2.5 bg-white border border-[var(--color-brand-border)] rounded-[8px] text-[13px] outline-none" />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Data Nasc.</label>
-                    <input type="date" className="w-full p-2.5 bg-gray-50 border border-[var(--color-brand-border)] rounded-[8px] text-[13px] outline-none" />
+                    <input type="date" className="w-full p-2.5 bg-white border border-[var(--color-brand-border)] rounded-[8px] text-[13px] outline-none" />
                   </div>
                 </div>
               </div>
@@ -312,16 +312,16 @@ export default function EmployeesModule({ onNavigate }: EmployeesModuleProps) {
               <div className="space-y-4">
                  <div className="space-y-1.5">
                   <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Cargo</label>
-                  <input type="text" className="w-full p-2.5 bg-gray-50 border border-[var(--color-brand-border)] rounded-[8px] text-[13px] outline-none" />
+                  <input type="text" className="w-full p-2.5 bg-white border border-[var(--color-brand-border)] rounded-[8px] text-[13px] outline-none" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Departamento</label>
-                    <input type="text" className="w-full p-2.5 bg-gray-50 border border-[var(--color-brand-border)] rounded-[8px] text-[13px] outline-none" />
+                    <input type="text" className="w-full p-2.5 bg-white border border-[var(--color-brand-border)] rounded-[8px] text-[13px] outline-none" />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Filial</label>
-                    <select className="w-full p-2.5 bg-gray-50 border border-[var(--color-brand-border)] rounded-[8px] text-[13px] outline-none font-bold">
+                    <select className="w-full p-2.5 bg-white border border-[var(--color-brand-border)] rounded-[8px] text-[13px] outline-none font-bold">
                       <option>Matriz SP</option>
                       <option>Filial PR</option>
                       <option>Filial RJ</option>

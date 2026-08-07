@@ -5,6 +5,7 @@ import { Card, Table } from './ui/CardAndTable';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Misc';
 import { PageHeader } from './ui/FormAndHeader';
+import { READONLY_INPUT } from './ui/ReadOnlyField';
 import { useAppConfig } from '../contexts/AppConfigContext';
 import { Accesso } from '../types';
 import { isSuperAdmin } from '../utils/permissions';
@@ -225,7 +226,7 @@ export default function AccessManagement() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar por cliente, email ou perfil..."
-              className="w-full bg-gray-50 border border-gray-200 rounded-[14px] px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+              className="w-full bg-white border border-gray-200 rounded-[14px] px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
             />
           </div>
           <div className="flex flex-wrap gap-2 text-sm text-gray-500">
@@ -248,7 +249,7 @@ export default function AccessManagement() {
             <input
               value={newAccess.client || ''}
               onChange={(e) => setNewAccess((prev) => ({ ...prev, client: e.target.value }))}
-              className="w-full rounded-[14px] border border-gray-200 bg-gray-50 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+              className="w-full rounded-[14px] border border-gray-200 bg-white px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
             />
           </div>
           <div className="space-y-4">
@@ -256,7 +257,7 @@ export default function AccessManagement() {
             <input
               value={newAccess.email || ''}
               onChange={(e) => setNewAccess((prev) => ({ ...prev, email: e.target.value }))}
-              className="w-full rounded-[14px] border border-gray-200 bg-gray-50 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+              className="w-full rounded-[14px] border border-gray-200 bg-white px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
             />
           </div>
           <div className="space-y-4 lg:col-span-2">
@@ -265,7 +266,7 @@ export default function AccessManagement() {
               <input
                 value={newAccess.password || ''}
                 onChange={(e) => setNewAccess((prev) => ({ ...prev, password: e.target.value }))}
-                className="w-full rounded-[14px] border border-gray-200 bg-gray-50 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+                className="w-full rounded-[14px] border border-gray-200 bg-white px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
               />
               <Button variant="secondary" onClick={() => setNewAccess((prev) => ({ ...prev, password: generatePassword() }))}>Gerar senha</Button>
             </div>
@@ -275,7 +276,7 @@ export default function AccessManagement() {
             <select
               value={newAccess.grantedProfile || 'Administrador'}
               onChange={(e) => setNewAccess((prev) => ({ ...prev, grantedProfile: e.target.value as Accesso['grantedProfile'] }))}
-              className="w-full rounded-[14px] border border-gray-200 bg-gray-50 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+              className="w-full rounded-[14px] border border-gray-200 bg-white px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
             >
               {PROFILE_OPTIONS.map((option) => (
                 <option key={option} value={option}>{option}</option>
@@ -296,7 +297,7 @@ export default function AccessManagement() {
                   expirationDate: calculateExpiration(`${value}T00:00:00.000Z`, expirationDays)
                 }));
               }}
-              className="w-full rounded-[14px] border border-gray-200 bg-gray-50 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+              className="w-full rounded-[14px] border border-gray-200 bg-white px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
             />
           </div>
           <div className="space-y-4 lg:col-span-2">
@@ -321,7 +322,8 @@ export default function AccessManagement() {
                     min={1}
                     value={customDays}
                     onChange={(e) => handleCustomDaysChange(Number(e.target.value) || 1)}
-                    className="w-28 rounded-[14px] border border-gray-200 bg-gray-50 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+                    // Editável: fundo branco, como manda a regra do app.
+                    className="w-28 rounded-[14px] border border-gray-200 bg-white px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
                   />
                   <span className="text-sm text-gray-600">dias</span>
                 </div>
@@ -334,7 +336,8 @@ export default function AccessManagement() {
               type="text"
               value={newAccess.expirationDate ? formatDate(newAccess.expirationDate) : ''}
               readOnly
-              className="w-full rounded-[14px] border border-gray-200 bg-gray-100 px-4 py-3 text-gray-600 outline-none"
+              // Calculada a partir do prazo escolhido: campo de leitura.
+              className={`w-full rounded-[14px] border px-4 py-3 outline-none ${READONLY_INPUT}`}
             />
           </div>
         </div>

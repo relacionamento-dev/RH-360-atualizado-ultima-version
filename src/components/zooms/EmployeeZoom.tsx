@@ -2,6 +2,7 @@ import React, { useRef, useState, useMemo } from 'react';
 import { Search, X } from 'lucide-react';
 import { useAppConfig } from '../../contexts/AppConfigContext';
 import { AnchoredDropdown } from '../ui/AnchoredDropdown';
+import { READONLY_BOX } from '../ui/ReadOnlyField';
 
 interface EmployeeZoomProps {
   onSelect: (item: any) => void;
@@ -54,7 +55,11 @@ export function EmployeeZoom({ onSelect, onClear, value, selectedId, readOnly, l
     return items;
   }, [config.colaboradores, selectedBranch, selectedCompanyId, searchTerm, config.empresas, filter]);
 
-  const readOnlyFieldClass = 'bg-gray-50 border border-gray-200 rounded-[12px] px-4 py-2 text-[12px] font-bold text-gray-700 truncate';
+  // Depois de escolher o colaborador, Empresa e Filial passam a ser dado dele:
+  // viram caixa cinza (padrão de leitura do app). Antes disso são seletores de
+  // verdade e ficam brancos, como todo campo editável.
+  const readOnlyFieldClass = `${READONLY_BOX} truncate`;
+  const editableFieldClass = 'bg-white border border-gray-200 rounded-[12px] px-4 py-2 text-[12px] font-bold text-gray-900 outline-none focus:ring-2 focus:ring-orange-500/20';
 
   return (
     <div className="space-y-4">
@@ -72,7 +77,7 @@ export function EmployeeZoom({ onSelect, onClear, value, selectedId, readOnly, l
               setSelectedCompanyId(e.target.value);
               setSelectedBranch('');
             }}
-            className="bg-gray-50 border border-gray-200 rounded-[12px] px-4 py-2 text-[12px] font-bold outline-none focus:ring-2 focus:ring-orange-500/20"
+            className={editableFieldClass}
           >
             <option value="">Empresa...</option>
             {config.empresas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -89,7 +94,7 @@ export function EmployeeZoom({ onSelect, onClear, value, selectedId, readOnly, l
             value={selectedBranch}
             disabled={!selectedCompanyId}
             onChange={(e) => setSelectedBranch(e.target.value)}
-            className="bg-gray-50 border border-gray-200 rounded-[12px] px-4 py-2 text-[12px] font-bold outline-none focus:ring-2 focus:ring-orange-500/20 disabled:opacity-50"
+            className={`${editableFieldClass} disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             <option value="">Filial...</option>
             {config.filiais.map(f => <option key={f} value={f}>{f}</option>)}
@@ -136,7 +141,7 @@ export function EmployeeZoom({ onSelect, onClear, value, selectedId, readOnly, l
               }}
               onFocus={() => setIsSearching(true)}
               onClick={() => setIsSearching(true)}
-              className="w-full bg-gray-50 border border-gray-200 rounded-[12px] pl-9 pr-4 py-2 text-[12px] font-bold outline-none focus:ring-2 focus:ring-orange-500/20"
+              className={`w-full ${editableFieldClass} pl-9`}
             />
 
             <AnchoredDropdown anchorRef={searchAnchorRef} open={isSearching} onClose={() => setIsSearching(false)} maxHeight={192}>

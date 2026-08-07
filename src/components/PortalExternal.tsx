@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { ToastContainer, ToastType } from './Toast';
 import Modal from './Modal';
+import { READONLY_INPUT } from './ui/ReadOnlyField';
 
 export function PortalExternalLogin({ onLogin }: { onLogin: () => void }) {
   return (
@@ -351,15 +352,15 @@ export default function PortalExternal({ view, onNavigate }: PortalExternalProps
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5">Nome</label>
-                    <input type="text" disabled defaultValue="Felipe Albuquerque" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 font-bold outline-none" />
+                    <input type="text" disabled defaultValue="Felipe Albuquerque" className={`w-full px-4 py-3 border rounded-xl font-bold outline-none ${READONLY_INPUT}`} />
                   </div>
                   <div>
                     <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5">E-mail</label>
-                    <input type="email" disabled defaultValue="felipe@email.com" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 font-bold outline-none" />
+                    <input type="email" disabled defaultValue="felipe@email.com" className={`w-full px-4 py-3 border rounded-xl font-bold outline-none ${READONLY_INPUT}`} />
                   </div>
                   <div>
                     <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5">CPF / CNPJ</label>
-                    <input type="text" disabled defaultValue="000.000.000-00" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 font-bold outline-none" />
+                    <input type="text" disabled defaultValue="000.000.000-00" className={`w-full px-4 py-3 border rounded-xl font-bold outline-none ${READONLY_INPUT}`} />
                   </div>
                 </div>
                 <button className="mt-8 bg-gray-100 text-gray-700 px-6 py-3 rounded-xl text-sm font-bold hover:bg-gray-200">

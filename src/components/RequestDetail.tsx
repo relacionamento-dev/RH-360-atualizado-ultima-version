@@ -23,6 +23,7 @@ import {
   getOptionLabel
 } from '../utils/requestFields';
 import { PROCESSO_DESLIGAMENTO, podeExecutarEncerramento } from '../utils/permissions';
+import { ReadOnlyField, READONLY_SURFACE } from './ui/ReadOnlyField';
 
 interface RequestDetailProps {
   requestId: string;
@@ -282,31 +283,15 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
                 <User size={18} className="text-brand-primary" />
                 <h2 className="text-[12px] font-black uppercase tracking-widest text-gray-900">Identificação do Solicitante</h2>
               </div>
-              <div className="p-8 grid grid-cols-2 md:grid-cols-3 gap-y-8 gap-x-8">
-                <div className="space-y-1">
-                  <span className="label-caps">Matrícula</span>
-                  <p className="text-[16px] font-black text-gray-900 tabular-nums">{requester?.registration || '—'}</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="label-caps">Cargo</span>
-                  <p className="text-[16px] font-black text-gray-900">{requester?.role || '—'}</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="label-caps">Setor / Departamento</span>
-                  <p className="text-[16px] font-black text-gray-900">{requester?.department || '—'}</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="label-caps">Centro de Custo</span>
-                  <p className="text-[16px] font-black text-gray-900">{requester?.costCenter || '—'}</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="label-caps">Filial / Unidade</span>
-                  <p className="text-[16px] font-black text-gray-900">{requester?.branch || '—'}</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="label-caps">Gestor Direto</span>
-                  <p className="text-[16px] font-black text-gray-900">{requester?.manager || '—'}</p>
-                </div>
+              {/* Tudo aqui vem da ficha do solicitante, nada foi digitado na
+                  solicitação: caixa cinza de leitura (ui/ReadOnlyField). */}
+              <div className="p-8 grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-8">
+                <ReadOnlyField label="Matrícula" value={requester?.registration} />
+                <ReadOnlyField label="Cargo" value={requester?.role} />
+                <ReadOnlyField label="Setor / Departamento" value={requester?.department} />
+                <ReadOnlyField label="Centro de Custo" value={requester?.costCenter} />
+                <ReadOnlyField label="Filial / Unidade" value={requester?.branch} />
+                <ReadOnlyField label="Gestor Direto" value={requester?.manager} />
               </div>
             </div>
 
@@ -317,27 +302,12 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
                   <Target size={18} className="text-brand-primary" />
                   <h2 className="text-[12px] font-black uppercase tracking-widest text-gray-900">Alvo da Solicitação</h2>
                 </div>
-                <div className="p-8 grid grid-cols-2 md:grid-cols-3 gap-y-8 gap-x-8">
-                  <div className="space-y-1">
-                    <span className="label-caps">Colaborador</span>
-                    <p className="text-[16px] font-black text-gray-900">{targetEmployee.name}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="label-caps">Matrícula</span>
-                    <p className="text-[16px] font-black text-gray-900 tabular-nums">{targetEmployee.registration}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="label-caps">Cargo Atual</span>
-                    <p className="text-[16px] font-black text-gray-900">{targetEmployee.role}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="label-caps">Setor</span>
-                    <p className="text-[16px] font-black text-gray-900">{targetEmployee.department}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="label-caps">Filial</span>
-                    <p className="text-[16px] font-black text-gray-900">{targetEmployee.branch}</p>
-                  </div>
+                <div className="p-8 grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-8">
+                  <ReadOnlyField label="Colaborador" value={targetEmployee.name} />
+                  <ReadOnlyField label="Matrícula" value={targetEmployee.registration} />
+                  <ReadOnlyField label="Cargo Atual" value={targetEmployee.role} />
+                  <ReadOnlyField label="Setor" value={targetEmployee.department} />
+                  <ReadOnlyField label="Filial" value={targetEmployee.branch} />
                 </div>
               </div>
             )}
@@ -366,10 +336,17 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
 
                     const isTextArea = gridCols === 3 || key === 'justificativa' || key === 'observacao' || key === 'parecer' || key === 'motivo';
 
+                    // Campo origin 'F' foi o sistema que trouxe (cargo, setor,
+                    // admissão): mesma caixa cinza do formulário, para o leitor
+                    // distinguir num relance o que o solicitante de fato digitou.
+                    if (field?.origin === 'F' && !isTextArea) {
+                      return <ReadOnlyField key={key} label={label} value={renderValue(key, value)} />;
+                    }
+
                     return (
                       <div key={key} className={`space-y-1.5 ${isTextArea ? 'md:col-span-full' : ''}`}>
                         <span className="label-caps">{label}</span>
-                        <div className={`text-[15px] ${isTextArea ? 'bg-gray-50/50 p-5 rounded-2xl border border-gray-100 font-medium text-gray-600 italic leading-relaxed' : ''}`}>
+                        <div className={`text-[15px] ${isTextArea ? `${READONLY_SURFACE} p-5 rounded-2xl border font-medium italic leading-relaxed` : ''}`}>
                           {renderValue(key, value)}
                         </div>
                       </div>

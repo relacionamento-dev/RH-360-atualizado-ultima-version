@@ -1,5 +1,6 @@
 import React from 'react';
 import { Search, ChevronRight, Info } from 'lucide-react';
+import { READONLY_SURFACE, READONLY_TEXT } from '../ui/ReadOnlyField';
 
 // Blocos de apresentação compartilhados pela Central Adm.
 //
@@ -11,6 +12,19 @@ import { Search, ChevronRight, Info } from 'lucide-react';
 // Input de texto padronizado — mesma altura, raio e tipografia do <Select>.
 export const ADMIN_FIELD_CLASS =
   'bg-white border border-gray-200 rounded-[8px] px-3 py-2 text-[13px] font-bold text-gray-700 outline-none focus:ring-2 focus:ring-orange-500/20 placeholder:text-gray-400 placeholder:font-medium';
+
+/** O mesmo campo em leitura: fundo cinza do padrão único (ui/ReadOnlyField). */
+export const ADMIN_FIELD_READONLY_CLASS =
+  `${READONLY_SURFACE} ${READONLY_TEXT} border rounded-[8px] px-3 py-2 text-[13px] font-bold cursor-not-allowed`;
+
+/**
+ * Escolhe entre as duas classes. Use sempre que o mesmo campo alterna entre
+ * editar e ler — concatenar as duas não funciona: `bg-white` e `bg-gray-50`
+ * disputam a mesma propriedade e quem vence é a ordem do CSS gerado, não a da
+ * string.
+ */
+export const adminFieldClass = (editavel: boolean) =>
+  editavel ? ADMIN_FIELD_CLASS : ADMIN_FIELD_READONLY_CLASS;
 
 /** Cabeçalho de seção: título, explicação em linguagem simples e ações. */
 export function SectionHeader({

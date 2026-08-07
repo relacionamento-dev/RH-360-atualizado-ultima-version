@@ -7,6 +7,7 @@ import { getBenefitCredit } from '../utils/benefitCredit';
 import { localDateFromString } from '../utils/dateLocal';
 import { FormField, ProcessDefinition } from '../types';
 import { Button } from './ui/Button';
+import { READONLY_INPUT, READONLY_SURFACE, READONLY_TEXT } from './ui/ReadOnlyField';
 import { 
   FileText, Plus, Trash2, Calendar, DollarSign, Percent, 
   User, Hash, Search, List, ChevronDown, Check,
@@ -432,8 +433,19 @@ export function FormRenderer({
       </p>
     ) : null;
 
-    const inputBaseClass = `w-full bg-white border ${error ? 'border-red-500' : 'border-gray-200'} rounded-[12px] px-4 py-2.5 text-[13px] font-bold text-gray-900 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all`;
-    const readOnlyClass = field.origin === 'F' ? 'bg-gray-50 border-gray-200 text-gray-700' : field.origin === 'K' ? 'bg-purple-50/20 border-purple-100 text-purple-900 font-black' : 'bg-gray-50 text-gray-500 cursor-not-allowed';
+    // A base NÃO traz fundo nem cor de texto: quem define é o par
+    // editável/leitura abaixo. Ter `bg-white` na base e `bg-gray-50` na variante
+    // deixava as duas classes no mesmo elemento, e aí quem vence é a ordem do
+    // CSS gerado pelo Tailwind — não a da string.
+    const inputBaseClass = `w-full border ${error ? 'border-red-500' : 'border-gray-200'} rounded-[12px] px-4 py-2.5 text-[13px] font-bold focus:ring-2 focus:ring-orange-500/20 outline-none transition-all`;
+    const editableClass = 'bg-white text-gray-900 group-hover:border-gray-300';
+    // Campo em leitura usa a superfície única do app (ui/ReadOnlyField). O CALC
+    // mantém só o TOM do texto em roxo — o fundo é o mesmo cinza dos demais,
+    // senão "calculado" não parece somente-leitura.
+    const readOnlyClass = field.origin === 'K'
+      ? `${READONLY_SURFACE} text-purple-800 font-black cursor-not-allowed`
+      : READONLY_INPUT;
+    const fieldStateClass = isReadOnlyField ? readOnlyClass : editableClass;
 
     const isColaborador = config.usuarioAtual.profile === 'Colaborador';
     const isCurrentUserTarget = definition.targetMode === 'CURRENT_USER';
@@ -713,7 +725,7 @@ export function FormRenderer({
                       onFocus={() => !isReadOnlyField && openCalendar(fieldId, value)}
                       disabled={isReadOnlyField}
                       placeholder={field.placeholder || 'dd/mm/aaaa'}
-                      className={`${inputBaseClass} ${isReadOnlyField ? readOnlyClass : 'group-hover:border-gray-300'}`}
+                      className={`${inputBaseClass} ${fieldStateClass}`}
                     />
                     {!isReadOnlyField && (
                       <button
@@ -793,7 +805,7 @@ export function FormRenderer({
                     onChange={(e) => handleChange(fieldId, field.type === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value)}
                     disabled={isReadOnlyField}
                     placeholder={field.placeholder}
-                    className={`${inputBaseClass} ${isReadOnlyField ? readOnlyClass : 'group-hover:border-gray-300'}`}
+                    className={`${inputBaseClass} ${fieldStateClass}`}
                   />
                   {field.type === 'datetime' && !isReadOnlyField && <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />}
                 </>
@@ -831,7 +843,7 @@ export function FormRenderer({
                 value={value !== null && value !== undefined ? String(value) : ''}
                 onChange={(e) => handleChange(fieldId, e.target.value === '' ? '' : Number(e.target.value))}
                 disabled={isReadOnlyField}
-                className={`${inputBaseClass} pl-10 ${isReadOnlyField ? readOnlyClass : 'group-hover:border-gray-300'}`}
+                className={`${inputBaseClass} pl-10 ${fieldStateClass}`}
               />
             </div>
             <ErrorMsg />
@@ -848,7 +860,7 @@ export function FormRenderer({
                 value={value !== null && value !== undefined ? String(value) : ''}
                 onChange={(e) => handleChange(fieldId, e.target.value === '' ? '' : Number(e.target.value))}
                 disabled={isReadOnlyField}
-                className={`${inputBaseClass} pr-10 ${isReadOnlyField ? readOnlyClass : 'group-hover:border-gray-300'}`}
+                className={`${inputBaseClass} pr-10 ${fieldStateClass}`}
               />
               <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-[13px]">
                 %
@@ -867,7 +879,7 @@ export function FormRenderer({
                 value={value !== null && value !== undefined ? String(value) : ''}
                 onChange={(e) => handleChange(fieldId, e.target.value)}
                 disabled={isReadOnlyField}
-                className={`${inputBaseClass} appearance-none pr-10 ${isReadOnlyField ? readOnlyClass : 'group-hover:border-gray-300'}`}
+                className={`${inputBaseClass} appearance-none pr-10 ${fieldStateClass}`}
               >
                 <option value="">Selecione...</option>
                 {field.options?.map(opt => (
@@ -886,7 +898,7 @@ export function FormRenderer({
         return (
           <div key={fieldId} id={`field-${fieldId}`} className="col-span-1 md:col-span-3">
             <Label />
-            <div className="flex flex-wrap gap-2 p-3 bg-white border border-gray-200 rounded-[12px] min-h-[46px]">
+            <div className={`flex flex-wrap gap-2 p-3 border rounded-[12px] min-h-[46px] ${isReadOnlyField ? READONLY_INPUT : 'bg-white border-gray-200'}`}>
               {(value || []).map((v: string) => (
                 <span key={v} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-orange-50 text-orange-700 text-[11px] font-black rounded-[8px] border border-orange-100">
                   {v}
@@ -933,7 +945,7 @@ export function FormRenderer({
                 rows={3}
                 maxLength={field.maxLength}
                 placeholder={field.placeholder}
-                className={`${inputBaseClass} resize-none ${field.maxLength ? 'pb-6' : ''} ${isReadOnlyField ? readOnlyClass : 'hover:border-gray-300'}`}
+                className={`${inputBaseClass} resize-none ${field.maxLength ? 'pb-6' : ''} ${fieldStateClass}`}
               />
               {field.maxLength && (
                 <span className="absolute bottom-2 right-3 text-[10px] font-bold text-gray-400 tabular-nums pointer-events-none">
@@ -972,13 +984,16 @@ export function FormRenderer({
               aria-pressed={!!value}
               onClick={() => !isReadOnlyField && handleChange(fieldId, !value)}
               className={`w-full flex items-start gap-3 p-4 rounded-[16px] border text-left transition-all ${
-                value ? 'bg-orange-50 border-orange-200 ring-2 ring-orange-500/10' : error ? 'bg-white border-red-500' : 'bg-white border-gray-100 hover:border-gray-200'
-              } ${isReadOnlyField ? 'opacity-60 cursor-not-allowed' : ''}`}
+                value ? 'bg-orange-50 border-orange-200 ring-2 ring-orange-500/10'
+                  : isReadOnlyField ? READONLY_INPUT
+                  : error ? 'bg-white border-red-500'
+                  : 'bg-white border-gray-100 hover:border-gray-200'
+              } ${isReadOnlyField ? 'cursor-not-allowed' : ''}`}
             >
-              <span className={`w-5 h-5 shrink-0 rounded-[6px] border flex items-center justify-center transition-all ${value ? 'bg-orange-500 border-orange-500' : 'bg-white border-gray-200'}`}>
+              <span className={`w-5 h-5 shrink-0 rounded-[6px] border flex items-center justify-center transition-all ${value ? 'bg-orange-500 border-orange-500' : isReadOnlyField ? 'bg-gray-100 border-gray-200' : 'bg-white border-gray-200'}`}>
                 {value && <Check size={14} className="text-white" />}
               </span>
-              <span className={`text-[13px] font-bold leading-snug ${value ? 'text-orange-800' : 'text-gray-700'}`}>
+              <span className={`text-[13px] font-bold leading-snug ${value ? 'text-orange-800' : isReadOnlyField ? READONLY_TEXT : 'text-gray-700'}`}>
                 {field.label} {field.required && <span className="text-red-500">*</span>}
               </span>
             </button>
@@ -1000,7 +1015,11 @@ export function FormRenderer({
                   name: config.usuarioAtual?.name || formData.colaborador || formData.solicitante || 'Usuário',
                   registration: formData.matricula || ''
                 })}
-                className={`w-full h-32 border-2 border-dashed rounded-[20px] flex flex-col items-center justify-center gap-3 hover:bg-gray-50 hover:border-orange-200 transition-all group ${error ? 'border-red-300' : 'border-gray-100'}`}
+                className={`w-full h-32 border-2 rounded-[20px] flex flex-col items-center justify-center gap-3 transition-all group ${
+                  isReadOnlyField
+                    ? `${READONLY_INPUT} border-solid`
+                    : `border-dashed hover:bg-gray-50 hover:border-orange-200 ${error ? 'border-red-300' : 'border-gray-100'}`
+                }`}
               >
                 <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-300 group-hover:text-orange-500 group-hover:scale-110 transition-all shadow-sm">
                   <Edit2 size={20} />
@@ -1033,10 +1052,12 @@ export function FormRenderer({
         );
 
       case 'calc':
+        // Mesmo fundo de qualquer campo em leitura — o roxo fica só no texto e
+        // no selo CALC do rótulo, que é o que identifica "o sistema calculou".
         return (
           <div key={fieldId} id={`field-${fieldId}`} className={gridClass}>
             <Label />
-            <div className="p-3 bg-purple-50/20 border border-purple-100 rounded-[12px] text-[13px] font-black text-purple-700">
+            <div className={`p-3 border rounded-[12px] text-[13px] font-black text-purple-800 ${READONLY_SURFACE}`}>
               {value}
             </div>
             <ErrorMsg />
@@ -1077,12 +1098,18 @@ export function FormRenderer({
                   </button>
                 )}
               </div>
+            ) : isReadOnlyField ? (
+              // Em leitura não há o que arrastar: a área vira a mesma caixa
+              // cinza dos outros campos, dizendo que não há anexo.
+              <div className={`flex items-center gap-3 p-4 border rounded-[16px] ${READONLY_INPUT}`}>
+                <FileText size={16} className="text-gray-400 shrink-0" />
+                <p className="text-[12px] font-bold">Nenhum arquivo anexado.</p>
+              </div>
             ) : (
               <label className="block border-2 border-dashed border-gray-100 rounded-[20px] p-8 text-center bg-gray-50/50 hover:bg-gray-50 hover:border-orange-200 transition-all cursor-pointer group">
                 <input
                   type="file"
                   accept=".pdf,.png,.jpg,.jpeg"
-                  disabled={isReadOnlyField}
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
@@ -1113,13 +1140,19 @@ export function FormRenderer({
                   <button
                     key={optLabel}
                     type="button"
-                    disabled={readOnly}
+                    // `isReadOnlyField`, não `readOnly`: um checklist com origin
+                    // 'F' também é dado que o sistema trouxe.
+                    disabled={isReadOnlyField}
                     onClick={() => {
                       const current = value || [];
                       const next = isChecked ? current.filter((i: any) => i !== optLabel) : [...current, optLabel];
                       handleChange(fieldId, next);
                     }}
-                    className={`flex items-center gap-3 p-3 rounded-[12px] border text-left transition-all ${isChecked ? 'bg-orange-50 border-orange-200 ring-2 ring-orange-500/10' : 'bg-white border-gray-100 hover:border-gray-200'}`}
+                    className={`flex items-center gap-3 p-3 rounded-[12px] border text-left transition-all ${
+                      isChecked ? 'bg-orange-50 border-orange-200 ring-2 ring-orange-500/10'
+                        : isReadOnlyField ? READONLY_INPUT
+                        : 'bg-white border-gray-100 hover:border-gray-200'
+                    }`}
                   >
                     <div className={`w-5 h-5 rounded-[6px] border flex items-center justify-center transition-all ${isChecked ? 'bg-orange-500 border-orange-500' : 'bg-gray-50 border-gray-200'}`}>
                       {isChecked && <Check size={14} className="text-white" />}
@@ -1138,7 +1171,7 @@ export function FormRenderer({
           <div key={fieldId} id={`field-${fieldId}`} className="col-span-1 md:col-span-3 space-y-4">
             <div className="flex items-center justify-between">
               <Label />
-              {!readOnly && (
+              {!isReadOnlyField && (
                 <Button variant="outline" size="sm" leftIcon={<Plus size={14} />} onClick={() => {
                   const current = value || [];
                   handleChange(fieldId, [...current, { name: '', birthDate: '', relationship: '', action: 'inclusao' }]);
@@ -1149,30 +1182,32 @@ export function FormRenderer({
             </div>
             <div className="space-y-3">
               {(value || []).map((dep: any, idx: number) => (
-                <div key={idx} className="bg-white p-4 rounded-[16px] border border-gray-100 grid grid-cols-1 md:grid-cols-4 gap-4 items-end shadow-sm">
+                <div key={idx} className={`p-4 rounded-[16px] border grid grid-cols-1 md:grid-cols-4 gap-4 items-end shadow-sm ${isReadOnlyField ? READONLY_SURFACE : 'bg-white border-gray-100'}`}>
                    <div className="col-span-1">
                       <label className="block text-[10px] font-black text-gray-300 uppercase mb-1">Nome</label>
-                      <input 
-                        type="text" 
-                        value={dep.name ?? ''} 
+                      <input
+                        type="text"
+                        value={dep.name ?? ''}
+                        disabled={isReadOnlyField}
                         onChange={(e) => {
                           const next = [...value];
                           next[idx].name = e.target.value;
                           handleChange(fieldId, next);
                         }}
-                        className="w-full border-b border-gray-100 text-[13px] font-bold outline-none py-1 focus:border-orange-500 transition-colors" 
+                        className={`w-full bg-transparent border-b border-gray-100 text-[13px] font-bold outline-none py-1 focus:border-orange-500 transition-colors ${isReadOnlyField ? `${READONLY_TEXT} cursor-not-allowed` : ''}`}
                       />
                    </div>
                    <div className="col-span-1">
                       <label className="block text-[10px] font-black text-gray-300 uppercase mb-1">Parentesco</label>
-                      <select 
-                        value={dep.relationship ?? ''} 
+                      <select
+                        value={dep.relationship ?? ''}
+                        disabled={isReadOnlyField}
                         onChange={(e) => {
                           const next = [...value];
                           next[idx].relationship = e.target.value;
                           handleChange(fieldId, next);
                         }}
-                        className="w-full border-b border-gray-100 text-[13px] font-bold outline-none py-1 focus:border-orange-500 transition-colors"
+                        className={`w-full bg-transparent border-b border-gray-100 text-[13px] font-bold outline-none py-1 focus:border-orange-500 transition-colors ${isReadOnlyField ? `${READONLY_TEXT} cursor-not-allowed` : ''}`}
                       >
                          <option value="">Selecione...</option>
                          <option>Filho(a)</option>
@@ -1182,14 +1217,17 @@ export function FormRenderer({
                    </div>
                    <div className="col-span-1">
                       <label className="block text-[10px] font-black text-gray-300 uppercase mb-1">Ação</label>
-                      <select 
-                        value={dep.action ?? ''} 
+                      <select
+                        value={dep.action ?? ''}
+                        disabled={isReadOnlyField}
                         onChange={(e) => {
                           const next = [...value];
                           next[idx].action = e.target.value;
                           handleChange(fieldId, next);
                         }}
-                        className={`w-full border-b border-gray-100 text-[11px] font-black uppercase outline-none py-1 ${dep.action === 'exclusao' ? 'text-red-500' : 'text-green-500'}`}
+                        className={`w-full bg-transparent border-b border-gray-100 text-[11px] font-black uppercase outline-none py-1 ${
+                          isReadOnlyField ? `${READONLY_TEXT} cursor-not-allowed` : dep.action === 'exclusao' ? 'text-red-500' : 'text-green-500'
+                        }`}
                       >
                          <option value="inclusao">Inclusão</option>
                          <option value="alteracao">Alteração</option>
@@ -1197,15 +1235,17 @@ export function FormRenderer({
                       </select>
                    </div>
                    <div className="flex justify-end">
-                      <button 
-                        onClick={() => {
-                          const next = value.filter((_: any, i: number) => i !== idx);
-                          handleChange(fieldId, next);
-                        }}
-                        className="p-2 text-gray-300 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {!isReadOnlyField && (
+                        <button
+                          onClick={() => {
+                            const next = value.filter((_: any, i: number) => i !== idx);
+                            handleChange(fieldId, next);
+                          }}
+                          className="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                    </div>
                 </div>
               ))}
@@ -1231,9 +1271,14 @@ export function FormRenderer({
                   <button
                     key={optLabel}
                     type="button"
-                    disabled={readOnly}
+                    // Ver checklist: origin 'F'/'K' também bloqueia a escolha.
+                    disabled={isReadOnlyField}
                     onClick={() => handleChange(fieldId, optLabel)}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-[12px] border transition-all ${isSelected ? 'bg-orange-50 border-orange-500 text-orange-700 ring-2 ring-orange-500/10' : 'bg-white border-gray-100 text-gray-600 hover:border-gray-200'}`}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-[12px] border transition-all ${
+                      isSelected ? 'bg-orange-50 border-orange-500 text-orange-700 ring-2 ring-orange-500/10'
+                        : isReadOnlyField ? READONLY_INPUT
+                        : 'bg-white border-gray-100 text-gray-600 hover:border-gray-200'
+                    }`}
                   >
                     <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-orange-500' : 'border-gray-300'}`}>
                       {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-orange-500" />}

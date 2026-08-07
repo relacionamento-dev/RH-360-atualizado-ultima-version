@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 import { AnchoredDropdown } from './AnchoredDropdown';
+import { READONLY_INPUT, READONLY_TEXT } from './ReadOnlyField';
 
 export interface SelectOption {
   value: string;
@@ -35,9 +36,13 @@ export function Select({ value, onChange, options, placeholder = 'Selecione...',
         aria-label={ariaLabel}
         disabled={disabled}
         onClick={() => setOpen(o => !o)}
-        className={`inline-flex items-center justify-between gap-2 bg-white border border-gray-200 rounded-[8px] px-3 py-2 text-[12px] font-bold outline-none focus:ring-2 focus:ring-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+        // Desabilitado = campo em leitura: ganha o fundo cinza padrão
+        // (ui/ReadOnlyField) em vez de esmaecer, que apagava o texto.
+        className={`inline-flex items-center justify-between gap-2 border rounded-[8px] px-3 py-2 text-[12px] font-bold outline-none focus:ring-2 focus:ring-orange-500/20 ${
+          disabled ? READONLY_INPUT : 'bg-white border-gray-200'
+        } ${className}`}
       >
-        <span className={`truncate ${selected ? 'text-gray-700' : 'text-gray-400'}`}>
+        <span className={`truncate ${disabled ? READONLY_TEXT : selected ? 'text-gray-700' : 'text-gray-400'}`}>
           {selected ? selected.label : placeholder}
         </span>
         <ChevronDown size={14} className="text-gray-400 shrink-0" />

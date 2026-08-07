@@ -8,7 +8,7 @@ import { AdmissaoBloco, AdmissaoCampo, AdmissaoCertificado, Dependent, Employee 
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { Select } from '../ui/Select';
-import { ADMIN_FIELD_CLASS, ExpandableRow, Field, InfoNote } from '../admin/AdminUI';
+import { ADMIN_FIELD_CLASS, ADMIN_FIELD_READONLY_CLASS, ExpandableRow, Field, InfoNote } from '../admin/AdminUI';
 import { useAppConfig } from '../../contexts/AppConfigContext';
 import { useToast } from '../ToastContext';
 import { BlocoResumo } from './BlocoResumo';
@@ -519,7 +519,8 @@ function CamposBloco({
             className={campo.largura === 2 ? 'sm:col-span-2' : ''}
           >
             {campo.somenteLeitura ? (
-              <div className="bg-gray-50 border border-gray-200 rounded-[8px] px-3 py-2 text-[13px] font-bold text-gray-500 truncate">
+              // Veio do disparo (nome, CPF): caixa cinza do padrão de leitura.
+              <div className={`${ADMIN_FIELD_READONLY_CLASS} truncate`}>
                 {valor || '—'}
               </div>
             ) : campo.tipo === 'select' ? (

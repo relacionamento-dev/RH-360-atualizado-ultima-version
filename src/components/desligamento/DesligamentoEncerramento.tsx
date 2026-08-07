@@ -16,7 +16,8 @@ import { useToast } from '../ToastContext';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
-import { ADMIN_FIELD_CLASS, ExpandableRow, Field, InfoNote, SectionHeader } from '../admin/AdminUI';
+import { ExpandableRow, Field, InfoNote, SectionHeader, adminFieldClass } from '../admin/AdminUI';
+import { ReadOnlyField, READONLY_BOX } from '../ui/ReadOnlyField';
 import { FormRenderer } from '../FormRenderer';
 import { TrilhaAprovacoes, TrilhaContainer } from '../request/TrilhaAprovacoes';
 import { PROCESS_DEFINITIONS } from '../../processDefinitions';
@@ -246,32 +247,27 @@ export default function DesligamentoEncerramento({
           --------------------------------------------------------------- */}
           <BlocoCard icone={<User size={18} />} titulo="Resumo da Solicitação" legenda="Somente leitura">
             <div className="p-6 sm:p-8 space-y-8">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-y-8 gap-x-8">
-                <Resumo label="Colaborador" valor={colaborador?.name || request.alvo} />
-                <Resumo label="Matrícula" valor={colaborador?.registration} />
-                <Resumo label="Cargo" valor={colaborador?.role || request.data?.cargo} />
-                <Resumo label="Setor" valor={colaborador?.department || request.data?.setor} />
-                <Resumo label="Centro de custo" valor={colaborador?.costCenter || request.data?.centroCusto} />
-                <Resumo label="Data de admissão" valor={admissao ? formatRequestDate(admissao) : undefined} />
-                <Resumo label="Tipo de desligamento" valor={tipoLabel} />
-                <Resumo
+              {/* Bloco inteiro em leitura: mesma caixa cinza dos campos
+                  auto-preenchidos do formulário (ui/ReadOnlyField). */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-8">
+                <ReadOnlyField label="Colaborador" value={colaborador?.name || request.alvo} />
+                <ReadOnlyField label="Matrícula" value={colaborador?.registration} />
+                <ReadOnlyField label="Cargo" value={colaborador?.role || request.data?.cargo} />
+                <ReadOnlyField label="Setor" value={colaborador?.department || request.data?.setor} />
+                <ReadOnlyField label="Centro de custo" value={colaborador?.costCenter || request.data?.centroCusto} />
+                <ReadOnlyField label="Data de admissão" value={admissao ? formatRequestDate(admissao) : undefined} />
+                <ReadOnlyField label="Tipo de desligamento" value={tipoLabel} />
+                <ReadOnlyField
                   label="Data prevista do desligamento"
-                  valor={request.data?.dataPrevistaDesligamento ? formatRequestDate(request.data.dataPrevistaDesligamento) : undefined}
+                  value={request.data?.dataPrevistaDesligamento ? formatRequestDate(request.data.dataPrevistaDesligamento) : undefined}
                 />
-                <Resumo
+                <ReadOnlyField
                   label="Último dia trabalhado"
-                  valor={request.data?.ultimoDiaTrabalhado ? formatRequestDate(request.data.ultimoDiaTrabalhado) : undefined}
+                  value={request.data?.ultimoDiaTrabalhado ? formatRequestDate(request.data.ultimoDiaTrabalhado) : undefined}
                 />
               </div>
 
-              {motivo && (
-                <div className="space-y-1.5">
-                  <span className="label-caps">Motivo</span>
-                  <p className="bg-gray-50/50 p-5 rounded-2xl border border-gray-100 text-[15px] font-medium text-gray-600 italic leading-relaxed">
-                    {motivo}
-                  </p>
-                </div>
-              )}
+              {motivo && <ReadOnlyField label="Motivo" value={motivo} multiline />}
 
               <div className="space-y-6">
                 <span className="label-caps">Trilha de aprovações</span>
@@ -398,16 +394,15 @@ export default function DesligamentoEncerramento({
                   disabled={!podeEditar}
                   onChange={e => salvar({ observacao: e.target.value })}
                   placeholder="Registre aqui qualquer particularidade da rescisão (homologação, acordo sindical, pendências)."
-                  className={`${ADMIN_FIELD_CLASS} w-full h-28 resize-none font-medium`}
+                  className={`${adminFieldClass(podeEditar)} w-full h-28 resize-none font-medium`}
                 />
               </Field>
             </div>
           )}
 
           {concluido && encerramento.observacao && (
-            <div className="bg-white rounded-[24px] border border-brand-border shadow-sm p-6 sm:p-8 space-y-1.5">
-              <span className="label-caps">Observações do encerramento</span>
-              <p className="text-[15px] font-medium text-gray-600 italic leading-relaxed">{encerramento.observacao}</p>
+            <div className="bg-white rounded-[24px] border border-brand-border shadow-sm p-6 sm:p-8">
+              <ReadOnlyField label="Observações do encerramento" value={encerramento.observacao} multiline />
             </div>
           )}
         </div>
@@ -473,15 +468,6 @@ function BlocoCard({
   );
 }
 
-function Resumo({ label, valor }: { label: string; valor?: string }) {
-  return (
-    <div className="space-y-1">
-      <span className="label-caps">{label}</span>
-      <p className="text-[16px] font-black text-gray-900">{valor || '—'}</p>
-    </div>
-  );
-}
-
 /** Campo de moeda: string vazia = não lançado (diferente de R$ 0,00). */
 function CampoValor({
   valor,
@@ -494,9 +480,10 @@ function CampoValor({
   ariaLabel: string;
   onChange: (valor?: number) => void;
 }) {
+  // Em leitura vira a mesma caixa cinza dos demais campos, não texto solto.
   if (!editavel) {
     return (
-      <span className="text-[15px] font-black text-gray-900 tabular-nums">
+      <span className={`${READONLY_BOX} inline-block w-full sm:w-[180px] text-right tabular-nums`}>
         {valor === undefined ? '—' : formatCurrencyBR(valor)}
       </span>
     );
@@ -513,7 +500,7 @@ function CampoValor({
         value={valor === undefined ? '' : valor}
         placeholder="0,00"
         onChange={e => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
-        className={`${ADMIN_FIELD_CLASS} w-full pl-9 text-right tabular-nums min-h-[42px]`}
+        className={`${adminFieldClass(true)} w-full pl-9 text-right tabular-nums min-h-[42px]`}
       />
     </div>
   );
@@ -635,7 +622,7 @@ function LinhaChecklist({
                 disabled={!editavel}
                 aria-label={`${item.labelData} — ${item.label}`}
                 onChange={e => onChange({ data: e.target.value })}
-                className={`${ADMIN_FIELD_CLASS} w-full min-h-[42px]`}
+                className={`${adminFieldClass(editavel)} w-full min-h-[42px]`}
               />
             </Field>
           )}
