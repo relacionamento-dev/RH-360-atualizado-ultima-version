@@ -1,10 +1,13 @@
 import {
   ApprovalResponsibilityType,
   ApprovalStep,
+  Group,
   RHProcess,
   RHRequest,
-  RequestApprovalLevel
+  RequestApprovalLevel,
+  User
 } from '../types';
+import { podeAprovarPropriaSolicitacao } from './permissions';
 
 // CASCATA DE APROVAÇÃO
 //
@@ -183,3 +186,73 @@ export const slaToMs = (level: Pick<RequestApprovalLevel, 'sla' | 'slaUnit'>): n
 // Rótulo "Nível 2 de 3 — Diretoria" usado no histórico e nas tarefas.
 export const levelLabel = (chain: RequestApprovalLevel[], index: number): string =>
   `Nível ${index + 1} de ${chain.length} — ${chain[index]?.name || 'Aprovação'}`;
+
+// QUEM APROVA O NÍVEL ATUAL
+//
+// É o que separa "Minhas Aprovações" de "Consulta Global": a primeira lista só
+// o que está parado NA MÃO de quem está logado. Antes a tela decidia isso por
+// conta própria (e o Administrador Geral caía num `return true` que devolvia a
+// base inteira, deixando as duas abas idênticas).
+
+/**
+ * Status em que ainda existe alçada esperando decisão. 'Devolvida' e
+ * 'Rascunho' voltaram para o solicitante; 'Aguardando Encerramento' já passou
+ * por todas as alçadas e espera o RH/DP — nenhum dos três é aprovação pendente.
+ */
+export const AWAITING_APPROVAL_STATUSES = [
+  'Pendente de Aprovação',
+  'Em Análise',
+  'Em Aprovação',
+  'Enviada'
+] as const;
+
+export const isAwaitingApproval = (status?: string): boolean =>
+  !!status && (AWAITING_APPROVAL_STATUSES as readonly string[]).includes(status);
+
+/**
+ * Perfil que responde por cada tipo de alçada. A base de demonstração não tem
+ * hierarquia real (o gestor do colaborador não é um usuário do sistema), então
+ * quando o nível não aponta para uma pessoa específica quem identifica o
+ * responsável é o perfil — é assim que a Diretoria vê as alçadas de diretoria.
+ */
+const PERFIS_POR_ALCADA: Partial<Record<ApprovalResponsibilityType, User['profile'][]>> = {
+  'gestor-direto': ['Gestor'],
+  'gestor-setor': ['Gestor'],
+  'responsavel-cc': ['RH/DP'],
+  'rh-filial': ['RH/DP'],
+  'diretoria': ['Diretoria'],
+  'presidencia': ['Diretoria']
+};
+
+/** O usuário é o responsável pela alçada que está pendente agora? */
+export function isPendingApprover(
+  req: RHRequest,
+  process: RHProcess | undefined,
+  user: Pick<User, 'id' | 'name' | 'profile' | 'groups'>,
+  grupos: Group[] = []
+): boolean {
+  if (!isAwaitingApproval(req.status)) return false;
+
+  // Pedido do próprio usuário: o botão Aprovar recusa (só Administrador Geral e
+  // a conta de demonstração passam), então listar aqui seria oferecer uma ação
+  // que trava no clique seguinte.
+  const ehMeuPedido = req.requesterId === user.id || req.solicitante === user.name;
+  if (ehMeuPedido && !podeAprovarPropriaSolicitacao(user)) return false;
+
+  const nivel = getCurrentLevel(ensureApprovalChain(req, process));
+  if (!nivel) return false;
+
+  // 1. Pessoa específica configurada no nível.
+  if (nivel.responsibleUserId && nivel.responsibleUserId === user.id) return true;
+
+  // 2. Grupo responsável — por id do grupo ou pelo nome que o usuário carrega.
+  if (nivel.responsibleGroupId) {
+    const grupo = grupos.find(g => g.id === nivel.responsibleGroupId || g.nome === nivel.responsibleGroupId);
+    const nomesDoUsuario = user.groups || [];
+    if (grupo && (grupo.membros.includes(user.id) || nomesDoUsuario.includes(grupo.nome))) return true;
+    if (nomesDoUsuario.includes(nivel.responsibleGroupId)) return true;
+  }
+
+  // 3. Perfil que responde pelo tipo de alçada.
+  return (PERFIS_POR_ALCADA[nivel.responsibilityType] || []).includes(user.profile);
+}

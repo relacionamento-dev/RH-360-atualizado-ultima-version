@@ -10,21 +10,32 @@ import { Select } from './ui/Select';
 import { getStatusVariant } from '../utils/requestStatus';
 import { RHRequest } from '../types';
 
+const FILTROS_VAZIOS = {
+  processo: 'all',
+  status: 'all',
+  origem: 'all',
+  empresa: 'all',
+  filial: 'all',
+  setor: 'all',
+  centroCusto: 'all',
+  periodo: 'all'
+};
+
 export default function GlobalQuery() {
   const { config, updateConfig } = useAppConfig();
-  const [searchTerm, setSearchTerm] = useState(config.highlightedRequestNumber || '');
-  
-  // Filters
-  const [filters, setFilters] = useState({
-    processo: 'all',
-    status: 'all',
-    origem: 'all',
-    empresa: 'all',
-    filial: 'all',
-    setor: 'all',
-    centroCusto: 'all',
-    periodo: 'all'
-  });
+  // A tela abre SEM busca. Antes ela nascia com o número da última solicitação
+  // destacada (`highlightedRequestNumber`, gravado ao aprovar/concluir): quem
+  // vinha de uma aprovação encontrava a Consulta Global já filtrada em um único
+  // pedido — ou vazia, se aquele número não estivesse mais na lista. O destaque
+  // da linha continua valendo; o que saiu foi o filtro automático.
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState(FILTROS_VAZIOS);
+
+  const temFiltro = searchTerm.trim() !== '' || Object.values(filters).some(v => v !== 'all');
+  const limparFiltros = () => {
+    setSearchTerm('');
+    setFilters(FILTROS_VAZIOS);
+  };
 
   const filteredRequests = config.solicitacoes.filter(req => {
     const matchesSearch = 
@@ -61,6 +72,14 @@ export default function GlobalQuery() {
       />
 
       <Card className="p-6 bg-gray-50/30 border-dashed">
+        {temFiltro && (
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <p className="text-[12px] font-bold text-gray-500">
+              {filteredRequests.length} de {config.solicitacoes.length} solicitações após os filtros
+            </p>
+            <Button variant="ghost" size="sm" onClick={limparFiltros}>Limpar filtros</Button>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="space-y-1.5">
             <label className="text-[11px] font-bold text-gray-500 uppercase ml-1">Busca Geral</label>
@@ -203,10 +222,15 @@ export default function GlobalQuery() {
             data={filteredRequests}
           />
         ) : (
-          <EmptyState 
+          <EmptyState
             icon={<Search size={48} />}
             title="Nenhum processo encontrado"
-            description="Tente ajustar os filtros ou o termo de busca para encontrar o que procura."
+            description={
+              temFiltro
+                ? 'Os filtros aplicados não retornaram nenhuma solicitação. Limpe os filtros para ver a base completa.'
+                : 'Ainda não há solicitações registradas no sistema.'
+            }
+            action={temFiltro ? <Button variant="outline" onClick={limparFiltros}>Limpar filtros</Button> : undefined}
           />
         )}
       </Card>

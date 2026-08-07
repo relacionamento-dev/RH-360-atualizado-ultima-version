@@ -64,6 +64,20 @@ export const podeAbrirPeloFluxoGenerico = (processId: string): boolean =>
 
 export const PROCESSO_DESLIGAMENTO = '15';
 
+/**
+ * Ninguém aprova a própria solicitação — exceto o Administrador Geral e a conta
+ * de demonstração ADMIN-001, que precisam conseguir percorrer o fluxo inteiro
+ * sozinhos numa apresentação.
+ *
+ * A regra vale em dois lugares e precisa ser a MESMA: o botão Aprovar
+ * (`approveRequest`) e a lista "Minhas Aprovações" (`isPendingApprover`).
+ * Quando divergiam, a aba oferecia solicitações que o botão depois recusava.
+ */
+export const CONTA_DEMO_APROVA_TUDO = 'ADMIN-001';
+
+export const podeAprovarPropriaSolicitacao = (user?: Pick<User, 'id' | 'profile'> | null): boolean =>
+  !!user && (isSuperAdmin(user) || user.id === CONTA_DEMO_APROVA_TUDO);
+
 // Etapa "Benefícios e Encerramento" do desligamento: quem executa é o RH/DP.
 // Gestor e Diretoria aprovam a cascata, mas não lançam verba nem dão baixa em
 // documento — por isso a checagem não usa a permissão genérica 'executar', que

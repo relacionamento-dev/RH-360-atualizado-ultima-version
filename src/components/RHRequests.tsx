@@ -19,7 +19,8 @@ import RHRequestForm from './RHRequestForm';
 import { Modal } from './ui/Misc';
 import { Select } from './ui/Select';
 import { getStatusVariant, isPendingStatus } from '../utils/requestStatus';
-import { isSuperAdmin, podeAbrirPeloFluxoGenerico } from '../utils/permissions';
+import { isPendingApprover } from '../utils/approvalFlow';
+import { podeAbrirPeloFluxoGenerico } from '../utils/permissions';
 import { useAppConfig } from '../contexts/AppConfigContext';
 import { useToast } from './ToastContext';
 import { FormRenderer } from './FormRenderer';
@@ -66,14 +67,25 @@ export default function RHRequests({
   const setIsNewRequestOpen = (open: boolean) => updateConfig({ isNewRequestModalOpen: open });
   const [isRequestFormOpen, setIsRequestFormOpen] = useState(false);
 
+  // A ROTA é a fonte da verdade da aba.
+  //
+  // 'requests', 'approvals' e 'hr-processes' renderizam o MESMO <RHRequests> na
+  // mesma posição da árvore. O React então reaproveita o componente em vez de
+  // remontá-lo, e o `useState(initialTab)` da montagem nunca mais é lido: o
+  // clique no menu lateral acendia o item e trocava a prop, mas a tela
+  // continuava na aba anterior. Este efeito é o que faz a navegação valer.
+  //
+  // As dependências são SÓ as props de rota, de propósito: incluir
+  // `config.processos` faria o efeito rodar a cada `updateConfig` (abrir o modal
+  // de nova solicitação, por exemplo) e desfazer a navegação que o usuário
+  // acabou de fazer dentro da própria tela.
   React.useEffect(() => {
-    if (initialProcessId) {
-      const process = config.processos.find(p => p.id === initialProcessId);
-      if (process) {
-        setSelectedProcess(process);
-      }
-    }
-  }, [initialProcessId]);
+    setActiveTab(initialTab);
+    // Sair para uma lista fecha o processo aberto no Hub — senão a tela
+    // continuaria no gerenciador do processo em vez da lista pedida. Voltar
+    // para 'hr-processes' sem processo na rota também limpa.
+    setSelectedProcess(initialProcessId ? config.processos.find(p => p.id === initialProcessId) || null : null);
+  }, [initialTab, initialProcessId]);
 
   const openDetail = (request: RHRequest) => {
     updateConfig({ activeView: 'request-detail', currentRequestId: request.id });
@@ -155,7 +167,9 @@ export default function RHRequests({
         {activeTab === 'hub' && <ProcessHub onOpen={openProcess} />}
         {activeTab === 'mine' && <ConsultationPanel type="mine" onOpenDetail={openDetail} />}
         {activeTab === 'approvals' && <ConsultationPanel type="approvals" onOpenDetail={openDetail} />}
-        {activeTab === 'consultation' && <ConsultationPanel type="global" onOpenDetail={openDetail} initialProcessId={selectedProcess?.id} />}
+        {/* A Consulta Global NÃO herda o processo aberto no Hub: ela é a visão
+            ampla, e abrir já filtrada por um processo escondia o resto. */}
+        {activeTab === 'consultation' && <ConsultationPanel type="global" onOpenDetail={openDetail} />}
       </div>
 
       {/* New Request Modal */}
@@ -254,57 +268,21 @@ function ConsultationPanel({ type, onOpenDetail, initialProcessId }: { type: 'mi
     // Status filter
     if (selectedStatus !== 'all' && req.status !== selectedStatus) return false;
 
-    // Type filter
+    // Cada aba é um recorte diferente da MESMA base — é o filtro por usuário
+    // que as separa. Sem ele, "Minhas Aprovações" e "Consulta Global" mostravam
+    // exatamente a mesma lista para quem tem escopo global.
     if (type === 'mine') {
+      // Abertas PELO usuário. O nome também conta porque a demo tem contas
+      // duplicadas da mesma pessoa (Marcos GEST-001 e GEST-002).
       return req.requesterId === config.usuarioAtual.id || req.solicitante === config.usuarioAtual.name;
     }
     if (type === 'approvals') {
-      // Administrador Geral tem escopo global: aprova qualquer solicitação,
-      // independente de a tarefa estar atribuída a ele.
-      if (isSuperAdmin(config.usuarioAtual)) return true;
-
-      // Find pending tasks linked to this request
-      const pendingTasksForRequest = config.tarefas.filter(t => t.relatedRequestId === req.id && t.status === 'Pendente');
-
-      // If no tasks found, fallback to old logic for compatibility with any un-tasked legacy items
-      if (pendingTasksForRequest.length === 0) {
-        const isUserAdminDemo = config.usuarioAtual.name === 'Administrador Demo' || config.usuarioAtual.id === 'ADMIN-001';
-        if (isUserAdminDemo) return req.status === 'Em Análise' || req.status === 'Devolvida';
-        
-        const isResponsible = 
-          (req.responsavelAtual === 'Ricardo Silva' && config.usuarioAtual.profile === 'Diretoria') ||
-          (req.responsavelAtual === 'Ana Paula Lima' && config.usuarioAtual.profile === 'RH/DP') ||
-          (req.responsavelAtual === 'Gestor Direto' && config.usuarioAtual.profile === 'Gestor') ||
-          (req.responsavelAtual === config.usuarioAtual.name);
-        
-        return (req.status === 'Em Análise' || req.status === 'Devolvida') && isResponsible;
-      }
-
-      // Check if user is Administrador Demo (who sees all)
-      const isUserAdminDemo = config.usuarioAtual.name === 'Administrador Demo' || config.usuarioAtual.id === 'ADMIN-001';
-      if (isUserAdminDemo) return true;
-
-      // Check if any of the pending tasks match the current user
-      const userGroups = config.usuarioAtual.groups || [];
-      const matchesUser = pendingTasksForRequest.some(task => {
-        // Current user is responsibleUserId or assignedTo
-        const isUserResponsible = task.responsibleUserId === config.usuarioAtual.id || task.assignedTo === config.usuarioAtual.id;
-        
-        // Current user belongs to responsibleGroupId
-        const isGroupResponsible = task.responsibleGroupId ? userGroups.includes(task.responsibleGroupId) : false;
-
-        // Fallbacks for profile/role-based initial data
-        const roleBasedCheck = 
-          (task.assignedTo === 'RH-001' && config.usuarioAtual.profile === 'RH/DP') ||
-          (task.assignedTo === 'DIR-001' && config.usuarioAtual.profile === 'Diretoria') ||
-          (task.assignedTo === config.usuarioAtual.id);
-
-        return isUserResponsible || isGroupResponsible || roleBasedCheck;
-      });
-
-      return matchesUser;
+      // Paradas NA MÃO do usuário: ele responde pela alçada pendente agora.
+      // Mesmo motor usado pelo botão Aprovar (utils/approvalFlow).
+      const processo = config.processos.find(p => p.id === (req.tipoProcesso || req.processId));
+      return isPendingApprover(req, processo, config.usuarioAtual, config.grupos);
     }
-    return true; // global
+    return true; // global: a visão ampla, sem recorte de usuário
   });
 
   // Contadores derivados do MESMO array já filtrado que popula a lista, usando o

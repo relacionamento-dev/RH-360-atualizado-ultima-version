@@ -27,7 +27,7 @@ import {
 } from '../data';
 import { PROCESS_DEFINITIONS } from '../processDefinitions';
 import { blocosComDadosDoDisparo, criarBlocosAdmissao, fotoDePerfilDaAdmissao } from '../utils/admissaoDigital';
-import { isSuperAdmin, isJynxEmail, asSuperAdmin, podeGerenciarComunicado, FULL_PROCESS_PERMISSIONS, FULL_SENSITIVE_PERMISSIONS, PROCESSO_DESLIGAMENTO } from '../utils/permissions';
+import { isSuperAdmin, isJynxEmail, asSuperAdmin, podeGerenciarComunicado, podeAprovarPropriaSolicitacao, FULL_PROCESS_PERMISSIONS, FULL_SENSITIVE_PERMISSIONS, PROCESSO_DESLIGAMENTO } from '../utils/permissions';
 import { ETAPA_ENCERRAMENTO } from '../utils/desligamento';
 import {
   buildApprovalChain,
@@ -94,7 +94,10 @@ const INITIAL_STATE: AppConfig = {
   // 1.7.0 — Perfil 360: ficha completa derivada por colaborador (documentos,
   // exames, férias, benefícios, movimentações, treinamentos e auditoria), para
   // as abas não abrirem vazias.
-  version: '1.7.0',
+  // 1.8.0 — Hub: solicitações próprias e aprovações pendentes para as contas
+  // @jynx (RH-2026-0054 a 0069), para "Minhas Solicitações" e "Minhas
+  // Aprovações" não abrirem zeradas na demonstração.
+  version: '1.8.0',
   empresaAtual: COMPANIES[0],
   usuarioAtual: DEMO_USERS[0], // Admin by default
   usuariosDemo: DEMO_USERS,
@@ -729,9 +732,9 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
     const req = config.solicitacoes.find(r => r.id === requestId);
     if (!req) return;
 
-    // Rule: Cannot approve own request except Admin Demo / Administrador Geral
-    // (que tem bypass total e precisa conseguir percorrer o fluxo inteiro).
-    if (req.solicitante === config.usuarioAtual.name && config.usuarioAtual.id !== 'ADMIN-001' && !isSuperAdmin(config.usuarioAtual)) {
+    // Ninguém aprova o próprio pedido. Mesma regra que a aba "Minhas
+    // Aprovações" usa para decidir o que listar (utils/permissions).
+    if (req.solicitante === config.usuarioAtual.name && !podeAprovarPropriaSolicitacao(config.usuarioAtual)) {
       addNotification('Erro na Aprovação', 'Você não pode aprovar sua própria solicitação.', 'sistema');
       return;
     }

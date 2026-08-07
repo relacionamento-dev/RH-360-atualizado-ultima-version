@@ -1793,6 +1793,255 @@ const generateOnboardingRequests = () => {
 generateOnboardingRequests();
 
 // -----------------------------------------------------------------------
+// Solicitações das contas usadas na demonstração
+//
+// "Minhas Solicitações" e "Minhas Aprovações" filtram por quem está logado. O
+// seed antigo só produzia pedidos de Marcos (GEST-001), Ana (RH-001) e do
+// Administrador Demo — quem entrava com uma conta @jynx (Administrador Geral,
+// o caminho normal da demonstração) via as duas abas zeradas.
+//
+// Para cada conta abaixo entram DOIS lotes:
+//  - abertas por ela, em estados variados (concluída, devolvida, em análise);
+//  - paradas na mão dela, com a alçada atual apontando para o seu id — é o que
+//    `isPendingApprover` (utils/approvalFlow) procura.
+// -----------------------------------------------------------------------
+const CONTAS_DA_DEMO = [
+  { id: 'ADMIN-GERAL-001', nome: 'Administrador Geral', employeeId: 'EMP-029', email: 'admin@jynx.com.br', cargo: 'Administrador Geral' },
+  { id: 'JYNX-001', nome: 'Ítalo Silva', employeeId: 'EMP-024', email: 'italo@jynx.com.br', cargo: 'Administrador Geral' },
+  // A Diretoria também abria "Minhas Solicitações" zerada: ela só aparecia como
+  // aprovadora. RH/DP, Gestor e Colaborador já têm pedidos no seed antigo.
+  { id: 'DIR-002', nome: 'Ricardo Silva', employeeId: 'EMP-003', email: 'ricardo.silva@rh360.demo', cargo: 'Diretor Geral' }
+];
+
+/** Processos usados nos lotes, com um `data` plausível para cada um. */
+const MODELOS_DE_PEDIDO: { processId: string; data: Record<string, any> }[] = [
+  { processId: '9', data: { periodoAquisitivo: '2024/2025 (30 dias)', dataInicio: '2026-09-15', diasGozo: 15, abonoPecuniario: false, adianta13: false } },
+  { processId: '8', data: { competencia: 'Julho/2026', tipoDespesa: 'Hospedagem', fornecedor: 'Hotel Ibis Paulista', data: '2026-07-18', valor: 620.5, justificativa: 'Viagem para acompanhamento da implantação na Filial PR.' } },
+  { processId: '14', data: { curso: 'Governança de Dados e LGPD', instituicao: 'FGV', modalidade: 'EAD', dataInicial: '2026-09-01', dataFinal: '2026-11-30', cargaHoraria: 60, custo: 3200, justificativa: 'Atualização exigida pela política de privacidade.' } },
+  { processId: '12', data: { data: '2026-07-30', horaInicio: '18:00', horaFim: '21:00', motivo: 'Fechamento Mensal', destino: 'Banco de Horas', observacao: 'Apoio ao fechamento da folha.' } },
+  { processId: '6', data: { operacao: 'Inclusão', nomeDependente: 'Laura Martins', parentesco: 'Filho(a)', cpf: '321.654.987-00', dataNascimento: '2024-02-11', beneficioRelacionado: 'Plano de Saúde' } },
+  { processId: '7', data: { tipoAlteracao: 'Mérito', novoCargo: 'Analista de Sistemas', novoSalario: 9800, vigencia: '2026-10-01', justificativa: 'Reconhecimento por desempenho no ciclo anual.' } },
+  { processId: '11', data: { tipoMovimentacao: 'Troca de Setor', filialDestino: 'Matriz', setorDestino: 'TI', ccDestino: '2020 - TI', vigencia: '2026-09-01', justificativa: 'Realocação para a squad de integrações.' } },
+  { processId: '1', data: { tipoRequisicao: 'aumento_quadro', empresa: 'RH360 Holding', filial: 'Matriz', setor: 'TI', centroCusto: '2020 - TI', cargo: 'Desenvolvedor', quantidadeVagas: 1, dataDesejada: '2026-10-01', tipoContrato: 'CLT', modalidade: 'Híbrido', prioridade: 'Alta', justificativa: 'Ampliação da equipe de integrações.' } }
+];
+
+/** Estados de "abertas por mim": conclui, devolve e deixa uma em análise. */
+const ESTADOS_PROPRIOS: { status: RHRequest['status']; etapa: string; sla: RHRequest['slaStatus'] }[] = [
+  { status: 'Concluída', etapa: 'Conclusão', sla: 'normal' },
+  { status: 'Concluída', etapa: 'Conclusão', sla: 'normal' },
+  { status: 'Devolvida', etapa: 'Solicitação', sla: 'warning' },
+  { status: 'Em Análise', etapa: 'Aprovação', sla: 'normal' }
+];
+
+/** Estados de "esperando minha aprovação". */
+const ESTADOS_PARA_APROVAR: { status: RHRequest['status']; sla: RHRequest['slaStatus'] }[] = [
+  { status: 'Pendente de Aprovação', sla: 'normal' },
+  { status: 'Pendente de Aprovação', sla: 'warning' },
+  { status: 'Em Aprovação', sla: 'critical' },
+  { status: 'Em Análise', sla: 'normal' }
+];
+
+const SOLICITANTES_TERCEIROS = [
+  { id: 'GEST-001', nome: 'Marcos Vinicius', registro: '00003', cargo: 'Gerente de TI', setor: 'Tecnologia', cc: 'TI-001' },
+  { id: 'RH-001', nome: 'Ana Paula Lima', registro: '00002', cargo: 'Gerente de RH', setor: 'Recursos Humanos', cc: 'RH-001' },
+  { id: 'COLAB-001', nome: 'Carlos Eduardo', registro: '10001', cargo: 'Analista de Sistemas', setor: 'Desenvolvimento', cc: 'TI-001' },
+  { id: 'GEST-001', nome: 'Marcos Vinicius', registro: '00003', cargo: 'Gerente de TI', setor: 'Tecnologia', cc: 'TI-001' }
+];
+
+const generateDemoAccountRequests = () => {
+  // Continua a numeração de onde o seed parou, para não colidir com o contador.
+  let sequencia = INITIAL_RH_REQUESTS.length + 1;
+
+  const proximoNumero = () => `RH-2026-${String(sequencia++).padStart(4, '0')}`;
+
+  CONTAS_DA_DEMO.forEach((conta, contaIdx) => {
+    const emp = INITIAL_EMPLOYEES.find(e => e.id === conta.employeeId);
+    const snapshotDaConta = {
+      name: conta.nome,
+      registration: emp?.registration || '00000',
+      email: conta.email,
+      role: conta.cargo,
+      department: emp?.department || 'Tecnologia',
+      costCenter: emp?.costCenter || 'TI-001',
+      branch: emp?.branch || 'Matriz SP'
+    };
+
+    // --- Lote 1: abertas pela conta ---
+    ESTADOS_PROPRIOS.forEach((estado, i) => {
+      const modelo = MODELOS_DE_PEDIDO[(contaIdx * 4 + i) % MODELOS_DE_PEDIDO.length];
+      const processo = INITIAL_RH_PROCESSES.find(p => p.id === modelo.processId)!;
+      const aberto = new Date(Date.now() - (6 + i * 3) * 24 * 3600000).toISOString();
+      const concluida = estado.status === 'Concluída';
+      const numero = proximoNumero();
+
+      INITIAL_RH_REQUESTS.push({
+        id: `req-demo-${conta.id}-own-${i}`,
+        numero,
+        tipoProcesso: processo.id,
+        processId: processo.id,
+        processName: processo.name,
+        category: processo.category,
+        origem: 'manual',
+        solicitante: conta.nome,
+        requesterId: conta.id,
+        requesterSnapshot: snapshotDaConta,
+        alvo: conta.nome,
+        employeeId: conta.employeeId,
+        empresa: emp?.company || 'RH360 Corporate',
+        filial: emp?.branch || 'Matriz SP',
+        centroCusto: emp?.costCenter || 'TI-001',
+        status: estado.status,
+        etapaAtual: estado.etapa,
+        responsavelAtual: concluida ? '' : estado.status === 'Devolvida' ? conta.nome : 'RH da Filial',
+        slaVencimento: new Date(Date.now() + (concluida ? -3 : 2) * 24 * 3600000).toISOString(),
+        slaStatus: estado.sla,
+        trail: ['Solicitação', 'Aprovação', 'Conclusão'],
+        approvalChain: [
+          {
+            id: `app-demo-${conta.id}-own-${i}`,
+            name: 'Aprovação',
+            order: 1,
+            responsibilityType: 'rh-filial',
+            responsibleLabel: 'RH da Filial',
+            responsibleUserId: 'RH-001',
+            sla: 24,
+            slaUnit: 'h',
+            isMandatory: true,
+            status: concluida ? 'aprovado' : 'pendente',
+            decidedBy: concluida ? 'Ana Paula Lima' : undefined,
+            decidedAt: concluida ? new Date(Date.now() - 2 * 24 * 3600000).toISOString() : undefined
+          }
+        ],
+        data: modelo.data,
+        attachments: [],
+        createdAt: aberto,
+        updatedAt: new Date(Date.now() - i * 24 * 3600000).toISOString(),
+        historico: [
+          {
+            id: `h-${numero}-1`,
+            autor: conta.nome,
+            userName: conta.nome,
+            userId: conta.id,
+            etapa: 'Solicitação',
+            de: 'Novo',
+            para: 'Aprovação',
+            action: 'Envio',
+            dataHora: aberto,
+            timestamp: aberto,
+            comentario: 'Solicitação enviada. Fluxo com 1 nível(is) de aprovação: Aprovação.'
+          },
+          ...(estado.status === 'Devolvida' ? [{
+            id: `h-${numero}-2`,
+            autor: 'Ana Paula Lima',
+            userName: 'Ana Paula Lima',
+            etapa: 'Aprovação',
+            de: 'Pendente de Aprovação',
+            para: 'Devolvida',
+            action: 'Devolução',
+            dataHora: new Date(Date.now() - 24 * 3600000).toISOString(),
+            timestamp: new Date(Date.now() - 24 * 3600000).toISOString(),
+            comentario: 'Anexar o comprovante legível antes de reenviar.',
+            motivo: 'Anexar o comprovante legível antes de reenviar.'
+          }] : []),
+          ...(concluida ? [{
+            id: `h-${numero}-2`,
+            autor: 'Ana Paula Lima',
+            userName: 'Ana Paula Lima',
+            etapa: 'Aprovação',
+            de: 'Pendente de Aprovação',
+            para: 'Concluída',
+            action: 'Aprovação Final',
+            dataHora: new Date(Date.now() - 2 * 24 * 3600000).toISOString(),
+            timestamp: new Date(Date.now() - 2 * 24 * 3600000).toISOString(),
+            comentario: 'Aprovado conforme política vigente.'
+          }] : [])
+        ]
+      });
+    });
+
+    // --- Lote 2: esperando a aprovação da conta ---
+    ESTADOS_PARA_APROVAR.forEach((estado, i) => {
+      const modelo = MODELOS_DE_PEDIDO[(contaIdx * 4 + i + 4) % MODELOS_DE_PEDIDO.length];
+      const processo = INITIAL_RH_PROCESSES.find(p => p.id === modelo.processId)!;
+      const solicitante = SOLICITANTES_TERCEIROS[i % SOLICITANTES_TERCEIROS.length];
+      const alvoEmp = INITIAL_EMPLOYEES[(contaIdx * 4 + i) % 20];
+      const aberto = new Date(Date.now() - (1 + i) * 24 * 3600000).toISOString();
+      const numero = proximoNumero();
+
+      INITIAL_RH_REQUESTS.push({
+        id: `req-demo-${conta.id}-appr-${i}`,
+        numero,
+        tipoProcesso: processo.id,
+        processId: processo.id,
+        processName: processo.name,
+        category: processo.category,
+        origem: 'manual',
+        solicitante: solicitante.nome,
+        requesterId: solicitante.id,
+        requesterSnapshot: {
+          name: solicitante.nome,
+          registration: solicitante.registro,
+          email: `${solicitante.nome.toLowerCase().replace(/\s+/g, '.')}@rh360.demo`,
+          role: solicitante.cargo,
+          department: solicitante.setor,
+          costCenter: solicitante.cc,
+          branch: 'Matriz SP'
+        },
+        alvo: alvoEmp.name,
+        employeeId: alvoEmp.id,
+        empresa: alvoEmp.company,
+        filial: alvoEmp.branch,
+        centroCusto: alvoEmp.costCenter,
+        status: estado.status,
+        // A alçada pendente aponta para a conta: é isso que faz a solicitação
+        // aparecer em "Minhas Aprovações" dela e em nenhuma outra.
+        etapaAtual: 'Aprovação Administrativa',
+        responsavelAtual: conta.nome,
+        slaVencimento: new Date(Date.now() + (estado.sla === 'critical' ? -1 : 1) * 24 * 3600000).toISOString(),
+        slaStatus: estado.sla,
+        trail: ['Solicitação', 'Aprovação Administrativa', 'Conclusão'],
+        approvalChain: [
+          {
+            id: `app-demo-${conta.id}-appr-${i}`,
+            name: 'Aprovação Administrativa',
+            order: 1,
+            responsibilityType: 'pessoa',
+            responsibleLabel: conta.nome,
+            responsibleUserId: conta.id,
+            sla: 24,
+            slaUnit: 'h',
+            isMandatory: true,
+            status: 'pendente'
+          }
+        ],
+        data: modelo.data,
+        attachments: [],
+        createdAt: aberto,
+        updatedAt: aberto,
+        historico: [
+          {
+            id: `h-${numero}-1`,
+            autor: solicitante.nome,
+            userName: solicitante.nome,
+            userId: solicitante.id,
+            etapa: 'Solicitação',
+            de: 'Novo',
+            para: 'Aprovação Administrativa',
+            action: 'Envio',
+            dataHora: aberto,
+            timestamp: aberto,
+            comentario: `Solicitação enviada. Aguardando aprovação de ${conta.nome}.`
+          }
+        ]
+      });
+    });
+  });
+};
+
+// A chamada fica DEPOIS do seed de desligamento (fim do arquivo): ele fixa o
+// número RH-2026-0053 à mão, e este gerador numera a partir do fim da lista.
+
+// -----------------------------------------------------------------------
 // Desligamento aprovado aguardando a etapa "Benefícios e Encerramento"
 //
 // É o ponto de entrada da demonstração da etapa: a cascata (Diretoria) já
@@ -1905,6 +2154,9 @@ const reqDesligamentoEncerramento: RHRequest = {
   ]
 };
 INITIAL_RH_REQUESTS.push(reqDesligamentoEncerramento);
+
+// Numera a partir daqui (RH-2026-0054 em diante), depois do último número fixo.
+generateDemoAccountRequests();
 
 // Update total counter for persistence
 export const INITIAL_REQUEST_COUNTER = INITIAL_RH_REQUESTS.length;
