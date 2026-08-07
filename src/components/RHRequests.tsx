@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { 
-  ClipboardList, FileText, CheckCircle2, Search, Filter, 
+  ClipboardList, CheckCircle2, Search, Filter, 
   Plus, Eye, Clock, AlertCircle, ArrowRight, User, Users,
   Briefcase, TrendingUp, UserMinus, Move, Scale, UserPlus,
   Palmtree, FileCheck, DollarSign, Shield, GraduationCap,
@@ -9,21 +9,17 @@ import {
   MoreHorizontal, Flag, Activity, Target
 } from 'lucide-react';
 import { RHProcess, RHRequest, RequestStatus, SlaStatus, ProcessPermission, HistoryEntry, Job, Task } from '../types';
-import { INITIAL_RH_PROCESSES, INITIAL_RH_REQUESTS } from '../data';
 import { Button } from './ui/Button';
 import { Card, Table } from './ui/CardAndTable';
 import { Badge } from './ui/Badge';
 import { PageHeader } from './ui/FormAndHeader';
 import { Avatar, SLABar, EmptyState } from './ui/Misc';
-import RHRequestForm from './RHRequestForm';
 import { Modal } from './ui/Misc';
 import { Select } from './ui/Select';
 import { getStatusVariant, isPendingStatus } from '../utils/requestStatus';
 import { isPendingApprover } from '../utils/approvalFlow';
 import { podeAbrirPeloFluxoGenerico } from '../utils/permissions';
 import { useAppConfig } from '../contexts/AppConfigContext';
-import { useToast } from './ToastContext';
-import { FormRenderer } from './FormRenderer';
 import OnboardingManager from './process-managers/OnboardingManager';
 import AdmissionManager from './process-managers/AdmissionManager';
 import RecruitmentKanban from './process-managers/RecruitmentKanban';
@@ -49,41 +45,62 @@ const iconMap: Record<string, any> = {
   'Clock': <Clock />,
 };
 
-export default function RHRequests({ 
+export type VisaoDoHub = 'hub' | 'mine' | 'approvals';
+
+/**
+ * Cabeçalho de cada visão. A tela não tem mais barra de abas — a navegação é o
+ * menu lateral, que está sempre visível —, então é o título que precisa dizer
+ * onde o usuário está. O genérico "Hub de Processos RH" servia para as quatro
+ * abas e não dizia nada sobre a lista exibida.
+ */
+const VISOES: Record<VisaoDoHub, { titulo: string; subtitulo: string }> = {
+  hub: {
+    titulo: 'Hub de Processos RH',
+    subtitulo: 'Escolha um processo para abrir a fila e acompanhar as solicitações'
+  },
+  mine: {
+    titulo: 'Minhas Solicitações',
+    subtitulo: 'Solicitações que você abriu, em qualquer etapa do fluxo'
+  },
+  approvals: {
+    titulo: 'Minhas Aprovações',
+    subtitulo: 'Solicitações aguardando a sua aprovação'
+  }
+};
+
+export default function RHRequests({
   initialTab = 'hub',
   initialProcessId
-}: { 
-  initialTab?: 'hub' | 'mine' | 'approvals',
+}: {
+  initialTab?: VisaoDoHub,
   initialProcessId?: string
 }) {
-  const { config, updateConfig, createRequest, isAuthorized } = useAppConfig();
-  const { addToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'hub' | 'mine' | 'approvals' | 'consultation'>(initialTab);
+  const { config, updateConfig, isAuthorized } = useAppConfig();
+
+  // A visão vem DIRETO da rota, sem estado intermediário: com as abas fora, não
+  // há mais nenhuma forma de trocar de visão sem trocar de rota. Isso mata de
+  // vez o bug em que o menu lateral acendia o item mas a tela ficava na visão
+  // anterior — 'requests', 'approvals' e 'hr-processes' renderizam o MESMO
+  // componente na mesma posição da árvore, então o React o reaproveita e um
+  // `useState(initialTab)` só valeria na primeira montagem.
+  const visao = initialTab;
+  const { titulo, subtitulo } = VISOES[visao];
 
   const [selectedProcess, setSelectedProcess] = useState<RHProcess | null>(
     initialProcessId ? config.processos.find(p => p.id === initialProcessId) || null : null
   );
   const isNewRequestOpen = config.isNewRequestModalOpen || false;
   const setIsNewRequestOpen = (open: boolean) => updateConfig({ isNewRequestModalOpen: open });
-  const [isRequestFormOpen, setIsRequestFormOpen] = useState(false);
 
-  // A ROTA é a fonte da verdade da aba.
-  //
-  // 'requests', 'approvals' e 'hr-processes' renderizam o MESMO <RHRequests> na
-  // mesma posição da árvore. O React então reaproveita o componente em vez de
-  // remontá-lo, e o `useState(initialTab)` da montagem nunca mais é lido: o
-  // clique no menu lateral acendia o item e trocava a prop, mas a tela
-  // continuava na aba anterior. Este efeito é o que faz a navegação valer.
+  // O processo aberto pelo Hub também acompanha a rota: sair para uma lista (ou
+  // voltar para 'hr-processes' sem processo na URL) fecha o gerenciador, senão
+  // a tela continuaria nele em vez de mostrar o que o menu pediu.
   //
   // As dependências são SÓ as props de rota, de propósito: incluir
   // `config.processos` faria o efeito rodar a cada `updateConfig` (abrir o modal
   // de nova solicitação, por exemplo) e desfazer a navegação que o usuário
   // acabou de fazer dentro da própria tela.
   React.useEffect(() => {
-    setActiveTab(initialTab);
-    // Sair para uma lista fecha o processo aberto no Hub — senão a tela
-    // continuaria no gerenciador do processo em vez da lista pedida. Voltar
-    // para 'hr-processes' sem processo na rota também limpa.
     setSelectedProcess(initialProcessId ? config.processos.find(p => p.id === initialProcessId) || null : null);
   }, [initialTab, initialProcessId]);
 
@@ -133,43 +150,21 @@ export default function RHRequests({
 
   return (
     <div className="space-y-8">
-      <PageHeader 
-        title="Hub de Processos RH" 
-        subtitle="Gerencie solicitações, admissões e movimentações de pessoal"
+      <PageHeader
+        title={titulo}
+        subtitle={subtitulo}
         actions={
           <Button leftIcon={<Plus size={18} />} onClick={() => setIsNewRequestOpen(true)}>Nova Solicitação</Button>
         }
       />
 
-      <div className="flex gap-2 p-1 bg-gray-100/50 rounded-[12px] w-fit border border-[var(--color-brand-border)]">
-        {[
-          { id: 'hub', label: 'Hub de Processos', icon: <ClipboardList size={16} /> },
-          { id: 'mine', label: 'Minhas Solicitações', icon: <FileText size={16} /> },
-          { id: 'approvals', label: 'Minhas Aprovações', icon: <CheckCircle2 size={16} /> },
-          { id: 'consultation', label: 'Consulta Global', icon: <Search size={16} /> },
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-[8px] text-[13px] font-bold transition-all ${
-              activeTab === tab.id 
-                ? 'bg-white text-[var(--color-brand-primary)] shadow-sm' 
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
+      {/* Sem barra de abas: cada visão tem seu item no menu lateral, que é a
+          navegação primária e fica sempre visível. A visão ampla de todas as
+          solicitações é a tela "Consulta Global" do próprio menu. */}
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-        {activeTab === 'hub' && <ProcessHub onOpen={openProcess} />}
-        {activeTab === 'mine' && <ConsultationPanel type="mine" onOpenDetail={openDetail} />}
-        {activeTab === 'approvals' && <ConsultationPanel type="approvals" onOpenDetail={openDetail} />}
-        {/* A Consulta Global NÃO herda o processo aberto no Hub: ela é a visão
-            ampla, e abrir já filtrada por um processo escondia o resto. */}
-        {activeTab === 'consultation' && <ConsultationPanel type="global" onOpenDetail={openDetail} />}
+        {visao === 'hub' && <ProcessHub onOpen={openProcess} />}
+        {visao === 'mine' && <ConsultationPanel type="mine" onOpenDetail={openDetail} />}
+        {visao === 'approvals' && <ConsultationPanel type="approvals" onOpenDetail={openDetail} />}
       </div>
 
       {/* New Request Modal */}
@@ -247,10 +242,15 @@ function ProcessHub({ onOpen }: { onOpen: (p: RHProcess) => void }) {
   );
 }
 
-function ConsultationPanel({ type, onOpenDetail, initialProcessId }: { type: 'mine' | 'approvals' | 'global', onOpenDetail: (req: RHRequest) => void, initialProcessId?: string }) {
+/**
+ * Lista de solicitações recortada por usuário. A visão ampla (todas, sem
+ * recorte) não mora mais aqui: é a tela "Consulta Global" do menu lateral,
+ * que tem filtros próprios e exportação.
+ */
+function ConsultationPanel({ type, onOpenDetail }: { type: 'mine' | 'approvals', onOpenDetail: (req: RHRequest) => void }) {
   const { config } = useAppConfig();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedProcessId, setSelectedProcessId] = useState(initialProcessId || 'all');
+  const [selectedProcessId, setSelectedProcessId] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
 
   const requests = config.solicitacoes.filter(req => {
@@ -268,21 +268,17 @@ function ConsultationPanel({ type, onOpenDetail, initialProcessId }: { type: 'mi
     // Status filter
     if (selectedStatus !== 'all' && req.status !== selectedStatus) return false;
 
-    // Cada aba é um recorte diferente da MESMA base — é o filtro por usuário
-    // que as separa. Sem ele, "Minhas Aprovações" e "Consulta Global" mostravam
-    // exatamente a mesma lista para quem tem escopo global.
+    // Cada visão é um recorte diferente da MESMA base — é o filtro por usuário
+    // que as separa.
     if (type === 'mine') {
       // Abertas PELO usuário. O nome também conta porque a demo tem contas
       // duplicadas da mesma pessoa (Marcos GEST-001 e GEST-002).
       return req.requesterId === config.usuarioAtual.id || req.solicitante === config.usuarioAtual.name;
     }
-    if (type === 'approvals') {
-      // Paradas NA MÃO do usuário: ele responde pela alçada pendente agora.
-      // Mesmo motor usado pelo botão Aprovar (utils/approvalFlow).
-      const processo = config.processos.find(p => p.id === (req.tipoProcesso || req.processId));
-      return isPendingApprover(req, processo, config.usuarioAtual, config.grupos);
-    }
-    return true; // global: a visão ampla, sem recorte de usuário
+    // Paradas NA MÃO do usuário: ele responde pela alçada pendente agora.
+    // Mesmo motor usado pelo botão Aprovar (utils/approvalFlow).
+    const processo = config.processos.find(p => p.id === (req.tipoProcesso || req.processId));
+    return isPendingApprover(req, processo, config.usuarioAtual, config.grupos);
   });
 
   // Contadores derivados do MESMO array já filtrado que popula a lista, usando o
@@ -399,10 +395,22 @@ function ConsultationPanel({ type, onOpenDetail, initialProcessId }: { type: 'mi
             data={requests}
           />
         ) : (
-          <EmptyState 
-            icon={<Search size={40} />}
-            title="Nada encontrado aqui ainda"
-            description={searchTerm ? `Nenhuma solicitação corresponde aos termos "${searchTerm}".` : "Parece que não há solicitações registradas nesta visualização."}
+          <EmptyState
+            icon={type === 'approvals' ? <CheckCircle2 size={40} /> : <Search size={40} />}
+            title={
+              searchTerm || selectedProcessId !== 'all' || selectedStatus !== 'all'
+                ? 'Nada encontrado com esses filtros'
+                : type === 'mine' ? 'Você ainda não abriu solicitações' : 'Nenhuma aprovação pendente'
+            }
+            description={
+              searchTerm
+                ? `Nenhuma solicitação corresponde aos termos "${searchTerm}".`
+                : selectedProcessId !== 'all' || selectedStatus !== 'all'
+                  ? 'Ajuste o processo ou o status para ver outras solicitações.'
+                  : type === 'mine'
+                    ? 'As solicitações que você abrir aparecem aqui, em qualquer etapa do fluxo.'
+                    : 'Nada está parado esperando a sua decisão no momento.'
+            }
             className="border-none bg-white rounded-none"
           />
         )}

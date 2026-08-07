@@ -21,11 +21,29 @@ import RHRequestForm from './components/RHRequestForm';
 import DesligamentoEncerramento from './components/desligamento/DesligamentoEncerramento';
 import { AppConfigProvider, useAppConfig } from './contexts/AppConfigContext';
 
+/**
+ * Apelidos de rota antigos → rota canônica.
+ *
+ * Vários pontos do app navegam pelo nome em português ('solicitacoes') enquanto
+ * o menu lateral registra o item pelo nome canônico ('requests'). Como o
+ * destaque do menu é uma comparação direta com `activeView`, voltar de um
+ * detalhe de solicitação deixava a tela certa na frente e NENHUM item aceso no
+ * menu. Normalizar aqui resolve para todos os chamadores de uma vez.
+ */
+const ROTAS_CANONICAS: Record<string, string> = {
+  solicitacoes: 'requests',
+  processos: 'hr-processes',
+  consultation: 'global-query',
+  colaboradores: 'employees',
+  relatorios: 'reports'
+};
+
 function AppContent() {
   const { config, updateConfig, login } = useAppConfig();
   const currentView = config.activeView;
 
-  const handleNavigate = (view: string, id?: string) => {
+  const handleNavigate = (viewSolicitada: string, id?: string) => {
+    const view = ROTAS_CANONICAS[viewSolicitada] || viewSolicitada;
     if (view === 'new-request' || view === 'solicitacoes/nova') {
       updateConfig({ activeView: 'request-form', currentRequestId: id || null });
       return;
