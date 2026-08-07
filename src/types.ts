@@ -943,6 +943,12 @@ export interface AppConfig {
   requestCounter: number;
   isNewRequestModalOpen?: boolean;
   currentRequestId?: string | null;
+  /**
+   * Dados que a próxima abertura de formulário deve carregar já preenchidos —
+   * é como o "Iniciar desligamento" do Perfil 360 leva o colaborador para o
+   * processo 15. O RHRequestForm consome e limpa na montagem.
+   */
+  prefillSolicitacao?: Record<string, any> | null;
   highlightedRequestNumber?: string | null;
   selectedEmployeeId?: string | null;
   appName?: string;

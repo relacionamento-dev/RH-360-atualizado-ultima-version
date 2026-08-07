@@ -51,8 +51,8 @@ V01, V02, V03, V04 e V06 — mais V09, aberto e fechado na mesma rodada.
 
 1. ~~**O toast bloqueia o botão APROVAR por 5 segundos**~~ — ✅ corrigido.
 2. ~~**As barras de SLA da Central de Tarefas são `Math.random()`**~~ — ✅ corrigido.
-3. **Perfil 360 tem 6 ações mortas**, entre elas "Iniciar Desligamento" e
-   "Baixar Tudo" (Funcional, CORE).
+3. ~~**Perfil 360 tem 6 ações mortas**, entre elas "Iniciar Desligamento" e
+   "Baixar Tudo"~~ — ✅ corrigido (todas as ações do Perfil 360; ver Anexo C).
 4. **Central Adm > Auditoria: os três botões da tela não fazem nada** (Funcional,
    CORE).
 5. **Excluir acesso/usuário não pede confirmação** (Fluxo, CORE).
@@ -78,6 +78,9 @@ V01, V02, V03, V04 e V06 — mais V09, aberto e fechado na mesma rodada.
 ---
 
 ## 1. FUNCIONAL — clicável que não faz nada
+
+> **Já corrigidos** (detalhe no Anexo C): todos os do Perfil 360 —
+> **F02, F03, F04, F05, F06, F26, F27, F28**.
 
 ### 1.1 Confirmados no browser (clicados, estado inalterado)
 
@@ -177,6 +180,22 @@ com a medida que sustenta o veredito.
 | **V04** | Pilha limitada a 3 toasts simultâneos. | `src/components/ToastContext.tsx` | — |
 | **V06** | Novo token `--color-brand-primary-text: #C2511B` (o mesmo laranja 20% mais escuro, **4.68:1** sobre branco), aplicado só em texto pequeno: item ativo do menu e submenu, "ADMINISTRADOR GERAL" e rótulos pequenos da Intranet. Botões e CTAs seguem com `#F26522`, que já cumpre os 3:1 exigidos deles. | `src/index.css` · `AppShell.tsx` · `IntranetModule.tsx` | 0 textos pequenos em laranja abaixo de 4.5:1; "Intranet" no menu ativo mede **4.68:1**. |
 | **V09** | O `Avatar` ganhou `onError`: se a imagem falhar, cai nas mesmas iniciais já usadas para quem não tem foto. O estado reinicia quando o `src` muda. | `src/components/ui/Misc.tsx` | Karina Lopes (URL morta no seed) passou a exibir "KL" no Calendário de Gente e na lista de Colaboradores; nenhuma `<img>` quebrada na página. |
+| **F06** | **Anexar** abre o seletor de arquivo e grava o documento na aba Documentos da ficha (`anexarDocumentoColaborador`), com registro na auditoria. Só o nome é guardado — mesma regra do Portal do Colaborador, porque o estado vai inteiro para o localStorage. | `Profile360Module.tsx` · `AppConfigContext.tsx` | Renderização do cabeçalho traz `<input type="file">` e o botão ligado a ele. |
+| **F02** | **Baixar Tudo** gera um CSV com o índice dos documentos da ficha; o download por linha gera a ficha daquele documento em texto. Os dois dizem, no conteúdo, que a demonstração não guarda o arquivo original. | `Profile360Module.tsx` · `utils/download.ts` | `montarCSV` e `nomeSeguro` cobertos por asserção (inclusive acentuação: "Comprovante de Residência" → `comprovante-de-residencia`). |
+| **F03** | **Ver Política** abre as faixas salariais cadastradas (`config.faixasSalariais`), destacando em qual o colaborador está enquadrado — deixou de ser link morto e passou a mostrar dado que já existia no app. | `Profile360Module.tsx` | Aba Cargo e Salário renderiza sem erro para 4 colaboradores. |
+| **F04** | **Simular Rescisão** abre a projeção de verbas por tipo de desligamento, reaproveitando `calcularVerbas` da etapa de Benefícios e Encerramento — sem duplicar regra. | `Profile360Module.tsx` · `utils/desligamento.ts` | Mesmo módulo já coberto por `auditoria/simular-verbas-desligamento.ts` (40 verificações). |
+| **F05** | **Iniciar Desligamento** abre o formulário do processo 15 já preenchido com o colaborador (`prefillSolicitacao`). | `Profile360Module.tsx` · `RHRequestForm.tsx` | Asserção de que as chaves do prefill existem entre os campos de `PROCESS_DEFINITIONS['15']`. |
+| **F26** | A aba Desligamento passou a ler a solicitação real do colaborador (tipo, motivo, aviso prévio, datas) em vez de texto fixo; **TRCT** e **Chave FGTS** deram lugar à lista de documentos anexados na etapa de encerramento, cada um com download. | `Profile360Module.tsx` | Renderização da aba para colaborador com e sem desligamento. |
+| **F27** | **Baixar** (certificado) gera a ficha do treinamento; curso em andamento mostra "Em andamento" no lugar do botão. | `Profile360Module.tsx` | Aba Treinamentos renderizada para 4 colaboradores. |
+| **F28** | Os botões só-ícone sem ação saíram das tabelas de documentos, exames, dependentes, benefícios, férias e movimentações. Sobraram apenas os que fazem algo (download e abrir solicitação). | `Profile360Module.tsx` | Varredura no fonte: nenhum `<Button>` das ações auditadas sem `onClick`. |
+
+Junto foram fechados dois problemas de apresentação do Perfil 360 que a auditoria
+não tinha catalogado:
+
+| O que mudou | Onde | Como foi confirmado |
+|---|---|---|
+| A barra de rolagem das abas era a nativa, cinza e grossa. Virou navegação própria: barra escondida (`.scrollbar-hide`), rolagem por gesto preservada, setas que só aparecem do lado em que há aba escondida e aba ativa trazida para a área visível. | `ui/ScrollableTabs.tsx` · `index.css` · `Profile360Module.tsx` | HTML renderizado traz `scrollbar-hide` e `role="tablist"`; CSS cobre Firefox (`scrollbar-width`) e WebKit (`::-webkit-scrollbar`). |
+| Abas abriam com tabela de cabeçalho e nenhuma linha. Agora o seed deriva a ficha inteira de cada colaborador (documentos, exames, benefícios, férias, movimentações, treinamentos, auditoria) e, onde o vazio é legítimo, entra um `<EmptyState>` explicativo. O `<Table>` também ganhou mensagem padrão para vazio, valendo em todo o app. | `utils/fichaColaborador.ts` · `data.ts` · `ui/CardAndTable.tsx` | 4 colaboradores × 15 abas renderizados: nenhuma `<tbody>` sem `<tr>` e nenhuma aba sem conteúdo ou explicação. |
 
 Seguem abertos os demais achados das seções 1, 2 e 3.
 

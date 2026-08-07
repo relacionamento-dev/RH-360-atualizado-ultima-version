@@ -44,9 +44,22 @@ interface TableProps {
   data: any[];
   className?: string;
   rowClassName?: (row: any) => string;
+  /**
+   * Texto exibido quando não há linha nenhuma. Existe porque a tabela vazia
+   * renderizava só o cabeçalho — na tela parecia dado que não carregou. Quem
+   * tem uma explicação melhor (ou uma ação) troca a tabela inteira por um
+   * <EmptyState>; isto aqui é a rede de segurança para todo o resto.
+   */
+  emptyMessage?: string;
 }
 
-export const Table: React.FC<TableProps> = ({ columns, data, className = '', rowClassName }) => {
+export const Table: React.FC<TableProps> = ({
+  columns,
+  data,
+  className = '',
+  rowClassName,
+  emptyMessage = 'Nenhum registro encontrado.'
+}) => {
   return (
     <div className={`overflow-x-auto ${className}`}>
       <table className="w-full text-left border-collapse">
@@ -60,7 +73,13 @@ export const Table: React.FC<TableProps> = ({ columns, data, className = '', row
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--color-brand-border)]">
-          {data.map((row, i) => (
+          {data.length === 0 ? (
+            <tr>
+              <td colSpan={columns.length} className="px-6 py-10 text-center text-[13px] font-medium text-gray-400">
+                {emptyMessage}
+              </td>
+            </tr>
+          ) : data.map((row, i) => (
             <tr key={i} className={`hover:bg-gray-50/50 transition-colors ${rowClassName ? rowClassName(row) : ''}`}>
               {columns.map((col, j) => (
                 <td key={j} className="px-6 py-4 text-[13px]">

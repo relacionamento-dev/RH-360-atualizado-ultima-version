@@ -65,6 +65,7 @@ interface AppConfigContextType {
   updateOnboardingTask: (requestId: string, section: keyof import('../types').OnboardingData, taskId: string, updates: Partial<import('../types').OnboardingTask>) => void;
   atualizarEncerramentoDesligamento: (requestId: string, encerramento: EncerramentoDesligamento) => void;
   concluirEncerramentoDesligamento: (requestId: string, encerramento: EncerramentoDesligamento) => void;
+  anexarDocumentoColaborador: (employeeId: string, arquivo: { nome: string; tipo?: string }) => void;
   dispararAdmissaoDigital: (dados: Omit<AdmissaoDisparo, 'enviadoEm'>) => void;
   atualizarAdmissaoDigital: (employeeId: string, updates: Partial<AdmissaoDigital>) => void;
   enviarAdmissaoDigital: (employeeId: string) => void;
@@ -90,7 +91,10 @@ const INITIAL_STATE: AppConfig = {
   // 1.6.0 — Desligamento: etapa "Benefícios e Encerramento" (status
   // 'Aguardando Encerramento' + campo `encerramento` na solicitação) e o seed
   // RH-2026-0053, já aprovado, aguardando essa etapa.
-  version: '1.6.0',
+  // 1.7.0 — Perfil 360: ficha completa derivada por colaborador (documentos,
+  // exames, férias, benefícios, movimentações, treinamentos e auditoria), para
+  // as abas não abrirem vazias.
+  version: '1.7.0',
   empresaAtual: COMPANIES[0],
   usuarioAtual: DEMO_USERS[0], // Admin by default
   usuariosDemo: DEMO_USERS,
@@ -1429,6 +1433,48 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  /**
+   * "Anexar" do Perfil 360: o arquivo entra na aba Documentos da ficha. Só o
+   * nome é guardado — o config inteiro vai para o localStorage e o conteúdo
+   * binário estouraria a cota, mesma regra do Portal do Colaborador.
+   */
+  const anexarDocumentoColaborador = (employeeId: string, arquivo: { nome: string; tipo?: string }) => {
+    const emp = config.colaboradores.find(e => e.id === employeeId);
+    if (!emp) return;
+
+    const agora = new Date();
+    const novoDocumento: EmployeeDocument = {
+      id: `doc-${employeeId}-${agora.getTime()}`,
+      // Sem tipo declarado, o nome do arquivo (sem extensão) vira o rótulo.
+      type: arquivo.tipo || arquivo.nome.replace(/\.[^.]+$/, ''),
+      number: '—',
+      issueDate: agora.toISOString().slice(0, 10),
+      status: 'Em validação',
+      attachmentUrl: arquivo.nome,
+      origin: 'Upload'
+    };
+
+    setConfig(prev => ({
+      ...prev,
+      colaboradores: prev.colaboradores.map(e =>
+        e.id === employeeId ? { ...e, documents: [novoDocumento, ...(e.documents || [])] } : e
+      ),
+      auditTrail: [
+        {
+          id: `audit-${agora.getTime()}`,
+          userId: prev.usuarioAtual.id,
+          userName: prev.usuarioAtual.name,
+          action: 'Anexo de Documento',
+          module: 'Colaboradores',
+          targetId: employeeId,
+          details: `"${arquivo.nome}" anexado à ficha de ${emp.name}.`,
+          timestamp: agora.toISOString()
+        },
+        ...prev.auditTrail
+      ]
+    }));
+  };
+
   // -------------------------------------------------------------------------
   // Admissão Digital (demonstração)
   // -------------------------------------------------------------------------
@@ -1708,6 +1754,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       updateOnboardingTask,
       atualizarEncerramentoDesligamento,
       concluirEncerramentoDesligamento,
+      anexarDocumentoColaborador,
       dispararAdmissaoDigital,
       atualizarAdmissaoDigital,
       enviarAdmissaoDigital,

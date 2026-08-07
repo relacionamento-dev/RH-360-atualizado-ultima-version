@@ -88,6 +88,20 @@
     background: #d1d5db;
   }
 
+  /*
+   * Rola por gesto/touch/trackpad, mas sem barra desenhada. Usado onde a barra
+   * nativa vira ruído visual — caso das abas do Perfil 360, que ganham setas
+   * próprias no lugar (ui/ScrollableTabs).
+   */
+  .scrollbar-hide {
+    scrollbar-width: none;          /* Firefox */
+    -ms-overflow-style: none;       /* Edge legado */
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;                  /* Chrome, Safari */
+  }
+
   .hairline-border {
     border: 1px solid var(--color-brand-border);
   }

@@ -1,6 +1,7 @@
 import { Employee, RHProcess, RHRequest, Group, Job, Application, Task, Announcement, BenefitConfig, Company, CostCenter, Sector, User, HistoryEntry, Accesso, TargetMode, AdmissaoBloco, DocumentoStatusRevisao } from './types';
 import { criarBlocosAdmissao } from './utils/admissaoDigital';
 import { ETAPA_ENCERRAMENTO } from './utils/desligamento';
+import { comFichaCompleta } from './utils/fichaColaborador';
 
 /**
  * Blocos de demonstração da Admissão Digital derivados da definição canônica
@@ -350,8 +351,14 @@ export const INITIAL_ACCESSOS: Accesso[] = [
   }
 ];
 
-// EMPLOYEES (20)
-export const INITIAL_EMPLOYEES: Employee[] = [
+// EMPLOYEES
+//
+// A lista abaixo declara só o que identifica cada pessoa. Documentos, exames,
+// férias, benefícios, movimentações, treinamentos e auditoria são derivados
+// desses dados por `comFichaCompleta` (ver a exportação logo após o array): as
+// abas do Perfil 360 nascem preenchidas e coerentes com a data de admissão de
+// cada um, sem 29 blocos escritos à mão.
+const EMPLOYEES_BASE: Employee[] = [
   {
     id: 'EMP-001',
     name: 'Carlos Eduardo',
@@ -374,11 +381,10 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     registration: '10001',
     cpf: '123.456.789-00',
     avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=200&h=200&fit=crop',
+    // Dependente nomeado à mão; o resto da ficha (inclusive o histórico de
+    // férias, que aqui era um período sem nenhuma concessão) vem derivado.
     dependents: [
-      { id: 'dep-1', name: 'Arthur Eduardo', relationship: 'Filho(a)', birthDate: '2015-08-20', cpf: '111.111.111-11', status: 'Ativo' }
-    ],
-    vacationRecords: [
-      { id: 'v1', acquisitivePeriod: '2023/2024', daysEntitled: 30, daysTaken: 0, balance: 30, history: [] }
+      { id: 'dep-1', name: 'Arthur Eduardo', relationship: 'Filho(a)', birthDate: '2015-08-20', cpf: '111.111.111-11', benefits: ['Plano de Saúde', 'Plano Odontológico'], status: 'Ativo' }
     ]
   },
   {
@@ -1243,6 +1249,14 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     }
   }
 ];
+
+/**
+ * Ficha completa de cada colaborador, derivada dos próprios dados dele
+ * (utils/fichaColaborador). Pré-admitidos passam intactos: sem vínculo não há
+ * exame periódico, férias nem movimentação — e as abas deles mostram o estado
+ * vazio, que é a informação certa.
+ */
+export const INITIAL_EMPLOYEES: Employee[] = EMPLOYEES_BASE.map(emp => comFichaCompleta(emp));
 
 // Helper for default permissions
 const defaultPerms = () => {

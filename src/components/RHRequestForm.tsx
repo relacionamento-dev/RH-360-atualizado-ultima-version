@@ -52,7 +52,12 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
   const process = config.processos.find(p => p.id === processId);
   const definition = config.processDefinitions[processId || ''];
 
-  const [currentFormData, setCurrentFormData] = useState<any>(existingRequest?.data || {});
+  // Abertura nova pode chegar com campos já preenchidos (ver `prefillSolicitacao`
+  // em types.ts): é assim que o Perfil 360 abre o desligamento com o
+  // colaborador escolhido.
+  const [currentFormData, setCurrentFormData] = useState<any>(
+    existingRequest?.data || config.prefillSolicitacao || {}
+  );
   const [isFormValid, setIsFormValid] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [visibleMandatoryCount, setVisibleMandatoryCount] = useState(0);
@@ -128,6 +133,14 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
       setCurrentFormData(existingRequest.data || {});
     }
   }, [isEditing, existingRequest, config.colaboradores]);
+
+  // O prefill é de uso único: consumido no estado inicial acima, é apagado aqui
+  // para não reaparecer na próxima solicitação aberta do zero.
+  useEffect(() => {
+    if (config.prefillSolicitacao) updateConfig({ prefillSolicitacao: null });
+    // Só na montagem: o estado inicial já leu o valor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Requester snapshot (current or from request)
   const requesterData = useMemo(() => {
