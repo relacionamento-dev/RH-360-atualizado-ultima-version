@@ -158,7 +158,10 @@ export function ensureApprovalChain(req: RHRequest, process?: RHProcess): Reques
   if (req.approvalChain?.length) return req.approvalChain;
 
   const chain = buildApprovalChain(process, req.data || {});
-  const concluded = req.status === 'Concluída' || req.status === 'Concluído' || req.status === 'Aprovada';
+  // 'Aguardando Encerramento' (desligamento) já passou por TODAS as alçadas: o
+  // que falta é a etapa de Benefícios e Encerramento, não uma aprovação.
+  const concluded = req.status === 'Concluída' || req.status === 'Concluído' ||
+    req.status === 'Aprovada' || req.status === 'Aguardando Encerramento';
   if (concluded) return chain.map(level => ({ ...level, status: 'aprovado' as const }));
   if (req.status === 'Reprovada') {
     return chain.map((level, i) => ({ ...level, status: i === 0 ? ('reprovado' as const) : ('pendente' as const) }));

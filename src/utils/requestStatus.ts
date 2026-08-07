@@ -11,6 +11,9 @@ export const PENDING_STATUSES = [
   'Em Análise',
   'Em Aprovação',
   'Enviada',
+  // Desligamento: cascata aprovada, esperando o RH/DP executar a etapa de
+  // Benefícios e Encerramento. Ainda é trabalho em aberto.
+  'Aguardando Encerramento',
 ] as const;
 
 export const isPendingStatus = (status?: string): boolean =>
@@ -36,6 +39,7 @@ export function getStatusVariant(status?: string): BadgeVariant {
     case 'Pendente de Aprovação':
     case 'Em Análise':
     case 'Em Aprovação':
+    case 'Aguardando Encerramento':
     case 'Expirando':
       return 'amber';
     case 'Devolvido':

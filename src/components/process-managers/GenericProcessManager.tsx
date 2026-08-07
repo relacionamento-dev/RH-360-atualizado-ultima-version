@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { 
-  Search, Filter, Plus, Eye, List, Activity, Target, Clock, ChevronRight
+import {
+  Search, Filter, Plus, Eye, List, Activity, Target, Clock, ChevronRight, ClipboardCheck
 } from 'lucide-react';
 import { RHProcess, RHRequest } from '../../types';
 import { useAppConfig } from '../../contexts/AppConfigContext';
@@ -9,6 +9,7 @@ import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { SLABar } from '../ui/Misc';
 import { getStatusVariant } from '../../utils/requestStatus';
+import { podeExecutarEncerramento } from '../../utils/permissions';
 
 interface GenericProcessManagerProps {
   process: RHProcess;
@@ -18,6 +19,7 @@ interface GenericProcessManagerProps {
 export default function GenericProcessManager({ process, onNewRequest }: GenericProcessManagerProps) {
   const { config, updateConfig } = useAppConfig();
   const [searchTerm, setSearchTerm] = useState('');
+  const podeEncerrar = podeExecutarEncerramento(config.usuarioAtual);
 
   const requests = config.solicitacoes.filter(r => 
     r.processId === process.id && 
@@ -91,9 +93,24 @@ export default function GenericProcessManager({ process, onNewRequest }: Generic
               </div>
             )},
             { header: 'AÇÕES', accessor: 'id', render: (_, row) => (
-              <Button variant="ghost" size="icon" title="Ver detalhes" aria-label="Ver detalhes" onClick={() => updateConfig({ activeView: 'request-detail', currentRequestId: row.id })}>
-                <Eye className="w-5 h-5 text-gray-500 hover:text-orange-500" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" title="Ver detalhes" aria-label="Ver detalhes" onClick={() => updateConfig({ activeView: 'request-detail', currentRequestId: row.id })}>
+                  <Eye className="w-5 h-5 text-gray-500 hover:text-orange-500" />
+                </Button>
+                {/* Desligamento aprovado: atalho direto para a etapa do RH/DP,
+                    sem passar pela tela de leitura. */}
+                {row.status === 'Aguardando Encerramento' && podeEncerrar && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title="Benefícios e Encerramento"
+                    aria-label="Abrir Benefícios e Encerramento"
+                    onClick={() => updateConfig({ activeView: 'desligamento-encerramento', currentRequestId: row.id })}
+                  >
+                    <ClipboardCheck className="w-5 h-5 text-gray-500 hover:text-orange-500" />
+                  </Button>
+                )}
+              </div>
             )}
           ]}
           data={requests}

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { AppConfig, RHRequest, Task, Announcement, HistoryEntry, Job, User, AuditLog, EmployeeMovement, Employee, AdmissaoDigital, AdmissaoDisparo, EmployeeDocument } from '../types';
+import { AppConfig, RHRequest, Task, Announcement, HistoryEntry, Job, User, AuditLog, EmployeeMovement, Employee, AdmissaoDigital, AdmissaoDisparo, EmployeeDocument, EncerramentoDesligamento } from '../types';
 import { 
   INITIAL_RH_PROCESSES, 
   INITIAL_RH_REQUESTS, 
@@ -27,7 +27,8 @@ import {
 } from '../data';
 import { PROCESS_DEFINITIONS } from '../processDefinitions';
 import { blocosComDadosDoDisparo, criarBlocosAdmissao, fotoDePerfilDaAdmissao } from '../utils/admissaoDigital';
-import { isSuperAdmin, isJynxEmail, asSuperAdmin, podeGerenciarComunicado, FULL_PROCESS_PERMISSIONS, FULL_SENSITIVE_PERMISSIONS } from '../utils/permissions';
+import { isSuperAdmin, isJynxEmail, asSuperAdmin, podeGerenciarComunicado, FULL_PROCESS_PERMISSIONS, FULL_SENSITIVE_PERMISSIONS, PROCESSO_DESLIGAMENTO } from '../utils/permissions';
+import { ETAPA_ENCERRAMENTO } from '../utils/desligamento';
 import {
   buildApprovalChain,
   ensureApprovalChain,
@@ -62,6 +63,8 @@ interface AppConfigContextType {
   getEffectivePermissions: (userId: string, processId: string) => import('../types').ProcessPermission;
   getSensitiveDataPermissions: (userId: string) => import('../types').SensitiveDataPermission;
   updateOnboardingTask: (requestId: string, section: keyof import('../types').OnboardingData, taskId: string, updates: Partial<import('../types').OnboardingTask>) => void;
+  atualizarEncerramentoDesligamento: (requestId: string, encerramento: EncerramentoDesligamento) => void;
+  concluirEncerramentoDesligamento: (requestId: string, encerramento: EncerramentoDesligamento) => void;
   dispararAdmissaoDigital: (dados: Omit<AdmissaoDisparo, 'enviadoEm'>) => void;
   atualizarAdmissaoDigital: (employeeId: string, updates: Partial<AdmissaoDigital>) => void;
   enviarAdmissaoDigital: (employeeId: string) => void;
@@ -84,7 +87,10 @@ const INITIAL_STATE: AppConfig = {
   // e condicionais Sim/Não.
   // 1.5.0 — Intranet: comunicados com banner, anexo e comentários (o carrossel
   // passou a ter 4 itens de exemplo em vez de 1).
-  version: '1.5.0',
+  // 1.6.0 — Desligamento: etapa "Benefícios e Encerramento" (status
+  // 'Aguardando Encerramento' + campo `encerramento` na solicitação) e o seed
+  // RH-2026-0053, já aprovado, aguardando essa etapa.
+  version: '1.6.0',
   empresaAtual: COMPANIES[0],
   usuarioAtual: DEMO_USERS[0], // Admin by default
   usuariosDemo: DEMO_USERS,
@@ -130,13 +136,15 @@ const AppConfigContext = createContext<AppConfigContextType | undefined>(undefin
 
 /**
  * Handoff de cadastro: o que a CONCLUSÃO de uma solicitação muda na ficha do
- * colaborador. Mora fora do provider porque existem dois caminhos que concluem
- * uma solicitação e os dois precisam aplicar a mesma regra:
+ * colaborador. Mora fora do provider porque existem três caminhos que concluem
+ * uma solicitação e os três precisam aplicar a mesma regra:
  *
  * - `approveRequest` — aprovação da última alçada da cascata (o caminho normal,
  *   pelo botão "Aprovar");
  * - `updateRequest`  — mudança direta de status (protocolo/acknowledgement e
- *   ajustes feitos pela tela de detalhe).
+ *   ajustes feitos pela tela de detalhe);
+ * - `concluirEncerramentoDesligamento` — desligamento (15), que não conclui na
+ *   aprovação: só na etapa de Benefícios e Encerramento do RH/DP.
  *
  * Puro de propósito: recebe a lista de colaboradores e devolve a nova lista com
  * as notificações a disparar, sem tocar em estado. Quem chama decide quando
@@ -750,12 +758,23 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
 
     const nextLevel = newChain[levelIndex + 1];
     const isFinal = !nextLevel;
-    const nextStatus: RHRequest['status'] = isFinal ? 'Concluída' : 'Em Aprovação';
+    // Desligamento: a última alçada NÃO conclui. Falta a etapa de Benefícios e
+    // Encerramento (verbas, checklist e documentos), executada pelo RH/DP — é
+    // ela que encerra o vínculo. Ver concluirEncerramentoDesligamento.
+    const aprovacaoAbreEncerramento = isFinal && (req.tipoProcesso || req.processId) === PROCESSO_DESLIGAMENTO;
+    const nextStatus: RHRequest['status'] = aprovacaoAbreEncerramento
+      ? 'Aguardando Encerramento'
+      : isFinal ? 'Concluída' : 'Em Aprovação';
     const currentLabel = levelLabel(newChain, levelIndex);
     const actionLabel = isFinal ? 'Aprovação Final' : `Aprovação — ${currentLabel}`;
-    const notificationMessage = isFinal
-      ? `Última alçada aprovada (${approvedLevel.name}). Solicitação concluída.`
-      : `${currentLabel} aprovado. Encaminhado para ${nextLevel.name} (${nextLevel.responsibleLabel}).`;
+    const proximaEtapa = aprovacaoAbreEncerramento
+      ? ETAPA_ENCERRAMENTO
+      : isFinal ? 'Conclusão' : nextLevel.name;
+    const notificationMessage = aprovacaoAbreEncerramento
+      ? `Última alçada aprovada (${approvedLevel.name}). Encaminhado ao RH/DP para ${ETAPA_ENCERRAMENTO}.`
+      : isFinal
+        ? `Última alçada aprovada (${approvedLevel.name}). Solicitação concluída.`
+        : `${currentLabel} aprovado. Encaminhado para ${nextLevel.name} (${nextLevel.responsibleLabel}).`;
 
     const historyEntry: HistoryEntry = {
       id: `h-${Date.now()}`,
@@ -763,7 +782,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       userName: config.usuarioAtual.name,
       etapa: approvedLevel.name,
       de: req.status,
-      para: isFinal ? 'Concluída' : nextLevel.name,
+      para: aprovacaoAbreEncerramento ? ETAPA_ENCERRAMENTO : isFinal ? 'Concluída' : nextLevel.name,
       comentario: comment || notificationMessage,
       action: actionLabel,
       timestamp: decidedAt,
@@ -772,12 +791,17 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
 
     const updatedRequest: Partial<RHRequest> = {
       status: nextStatus,
-      etapaAtual: isFinal ? 'Conclusão' : nextLevel.name,
+      etapaAtual: proximaEtapa,
       approvalChain: newChain,
       historico: [...req.historico, historyEntry],
-      responsavelAtual: isFinal ? '' : nextLevel.responsibleLabel,
+      responsavelAtual: aprovacaoAbreEncerramento ? 'RH / DP' : isFinal ? '' : nextLevel.responsibleLabel,
       slaVencimento: isFinal ? req.slaVencimento : new Date(Date.now() + slaToMs(nextLevel)).toISOString(),
-      trail: ['Solicitação', ...newChain.map(l => l.name), 'Conclusão'],
+      trail: [
+        'Solicitação',
+        ...newChain.map(l => l.name),
+        ...((req.tipoProcesso || req.processId) === PROCESSO_DESLIGAMENTO ? [ETAPA_ENCERRAMENTO] : []),
+        'Conclusão'
+      ],
       updatedAt: decidedAt
     };
 
@@ -785,11 +809,17 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       id: `audit-${Date.now()}`,
       userId: config.usuarioAtual.id,
       userName: config.usuarioAtual.name,
-      action: isFinal ? 'Aprovação e Conclusão' : 'Aprovação de Alçada',
+      action: aprovacaoAbreEncerramento
+        ? 'Aprovação Final — Encerramento Pendente'
+        : isFinal ? 'Aprovação e Conclusão' : 'Aprovação de Alçada',
       module: 'Solicitações',
       targetId: requestId,
       details: `Solicitação ${req.numero}: ${currentLabel} aprovado por ${config.usuarioAtual.name}. ${
-        isFinal ? 'Todas as alçadas aprovadas — solicitação concluída.' : `Aguardando ${nextLevel.name} (${nextLevel.responsibleLabel}).`
+        aprovacaoAbreEncerramento
+          ? `Todas as alçadas aprovadas — aguardando ${ETAPA_ENCERRAMENTO} (RH/DP).`
+          : isFinal
+            ? 'Todas as alçadas aprovadas — solicitação concluída.'
+            : `Aguardando ${nextLevel.name} (${nextLevel.responsibleLabel}).`
       }`,
       timestamp: decidedAt
     };
@@ -834,11 +864,47 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
 
       if (isFinal) {
         // Última alçada aprovada = solicitação concluída: é AQUI que a ficha do
-        // colaborador é reescrita (promoção, transferência, desligamento).
+        // colaborador é reescrita (promoção, transferência).
         // Mesma regra usada pela conclusão via updateRequest.
-        const handoff = aplicarHandoffCadastro(newColaboradores, req, processId);
-        newColaboradores = handoff.colaboradores;
-        handoff.notificacoes.forEach(n => addNotification(n.titulo, n.mensagem));
+        //
+        // Exceção: o desligamento não encerra o vínculo na aprovação. A ficha só
+        // vira 'Desligado' quando o RH/DP conclui a etapa de Benefícios e
+        // Encerramento (concluirEncerramentoDesligamento), que reaproveita este
+        // mesmo handoff.
+        if (!aprovacaoAbreEncerramento) {
+          const handoff = aplicarHandoffCadastro(newColaboradores, req, processId);
+          newColaboradores = handoff.colaboradores;
+          handoff.notificacoes.forEach(n => addNotification(n.titulo, n.mensagem));
+        } else {
+          // A etapa do RH/DP vira tarefa — é o que a coloca na Central de
+          // Tarefas e em "Minhas Aprovações" de quem responde pelo DP.
+          const encerramentoDue = new Date(Date.now() + 48 * 3600000).toISOString();
+          const encerramentoTask: Task = {
+            id: `task-${Date.now() + 5}`,
+            title: `${ETAPA_ENCERRAMENTO} - ${req.colaborador || req.alvo || 'Colaborador'}`,
+            description: `Desligamento aprovado. Lançar verbas rescisórias, executar o checklist e anexar os documentos da rescisão (${req.numero}).`,
+            assignedTo: 'RH-001',
+            dueDate: encerramentoDue,
+            status: 'Pendente',
+            priority: 'Alta',
+            relatedRequestId: req.id,
+            createdAt: new Date().toISOString(),
+            requestId: req.id,
+            requestNumber: req.numero,
+            processId: PROCESSO_DESLIGAMENTO,
+            process: req.processName,
+            solicitante: req.solicitante,
+            type: 'Encerramento',
+            responsible: 'RH/DP',
+            responsibleUserId: 'RH-001',
+            prazo: encerramentoDue
+          };
+          newTarefas = [encerramentoTask, ...newTarefas];
+          addNotification(
+            'Desligamento aprovado',
+            `${req.numero} liberado para a etapa de ${ETAPA_ENCERRAMENTO} pelo RH/DP.`
+          );
+        }
 
         if (processId === '1') {
           const jobTitle = req.data.cargo || req.data.cargoRep || 'Nova Vaga';
@@ -1255,6 +1321,115 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
   };
 
   // -------------------------------------------------------------------------
+  // Desligamento — etapa "Benefícios e Encerramento"
+  // -------------------------------------------------------------------------
+
+  /** Rascunho da etapa: verbas, checklist, documentos e observação do DP. */
+  const atualizarEncerramentoDesligamento = (requestId: string, encerramento: EncerramentoDesligamento) => {
+    setConfig(prev => ({
+      ...prev,
+      solicitacoes: prev.solicitacoes.map(r =>
+        // Depois de concluída a etapa é histórico: não se reescreve verba nem
+        // checklist de um vínculo já encerrado.
+        r.id === requestId && !r.encerramento?.concluidoEm
+          ? { ...r, encerramento, updatedAt: new Date().toISOString() }
+          : r
+      )
+    }));
+  };
+
+  /**
+   * "Concluir desligamento": fecha a solicitação e encerra o vínculo. É o ponto
+   * em que o handoff de cadastro roda para o processo 15 — o mesmo
+   * `aplicarHandoffCadastro` usado pelos demais processos na aprovação final,
+   * só que adiado até aqui.
+   */
+  const concluirEncerramentoDesligamento = (requestId: string, encerramento: EncerramentoDesligamento) => {
+    const req = config.solicitacoes.find(r => r.id === requestId);
+    if (!req || req.encerramento?.concluidoEm) return;
+
+    const agora = new Date().toISOString();
+    const finalizado: EncerramentoDesligamento = {
+      ...encerramento,
+      concluidoEm: agora,
+      concluidoPor: config.usuarioAtual.name
+    };
+    const total = finalizado.verbas.reduce(
+      (soma, v) => (v.devida && !v.semValor ? soma + (Number(v.valor) || 0) : soma),
+      0
+    );
+    const totalLabel = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total);
+    const documentosAnexados = finalizado.documentos.filter(d => !!d.anexo).length;
+    const resumo =
+      `Verbas rescisórias: ${totalLabel}. ` +
+      `Checklist: ${finalizado.checklist.filter(i => i.concluido).length}/${finalizado.checklist.length}. ` +
+      `Documentos: ${documentosAnexados}/${finalizado.documentos.length}.`;
+
+    const historyEntry: HistoryEntry = {
+      id: `h-${Date.now()}`,
+      autor: config.usuarioAtual.name,
+      userName: config.usuarioAtual.name,
+      userId: config.usuarioAtual.id,
+      etapa: ETAPA_ENCERRAMENTO,
+      de: req.status,
+      para: 'Concluída',
+      action: 'Conclusão do Desligamento',
+      comentario: finalizado.observacao ? `${resumo} ${finalizado.observacao}` : resumo,
+      timestamp: agora,
+      dataHora: agora
+    };
+
+    const auditEntry: AuditLog = {
+      id: `audit-${Date.now()}`,
+      userId: config.usuarioAtual.id,
+      userName: config.usuarioAtual.name,
+      action: 'Conclusão de Desligamento',
+      module: 'Solicitações',
+      targetId: requestId,
+      details: `Solicitação ${req.numero}: etapa de ${ETAPA_ENCERRAMENTO} concluída por ${config.usuarioAtual.name}. ${resumo}`,
+      timestamp: agora
+    };
+
+    // O aviso sai FORA do setConfig: sob StrictMode o updater roda duas vezes, e
+    // notificar lá dentro duplicaria o item na lista.
+    aplicarHandoffCadastro(config.colaboradores, req, req.tipoProcesso || req.processId)
+      .notificacoes.forEach(n => addNotification(n.titulo, n.mensagem));
+
+    setConfig(prev => {
+      // O handoff roda de novo sobre `prev` — é ele que reescreve a ficha, e a
+      // base tem de ser o estado mais recente, não o do fechamento.
+      const handoff = aplicarHandoffCadastro(
+        prev.colaboradores,
+        req,
+        req.tipoProcesso || req.processId
+      );
+
+      return {
+        ...prev,
+        solicitacoes: prev.solicitacoes.map(r => r.id === requestId
+          ? {
+              ...r,
+              status: 'Concluída' as const,
+              etapaAtual: 'Conclusão',
+              responsavelAtual: '',
+              encerramento: finalizado,
+              historico: [...r.historico, historyEntry],
+              updatedAt: agora
+            }
+          : r),
+        tarefas: prev.tarefas.map(t =>
+          t.relatedRequestId === requestId && t.status !== 'Concluída'
+            ? { ...t, status: 'Concluída' as const }
+            : t
+        ),
+        colaboradores: handoff.colaboradores,
+        auditTrail: [auditEntry, ...prev.auditTrail],
+        highlightedRequestNumber: req.numero
+      };
+    });
+  };
+
+  // -------------------------------------------------------------------------
   // Admissão Digital (demonstração)
   // -------------------------------------------------------------------------
 
@@ -1531,6 +1706,8 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       getEffectivePermissions,
       getSensitiveDataPermissions,
       updateOnboardingTask,
+      atualizarEncerramentoDesligamento,
+      concluirEncerramentoDesligamento,
       dispararAdmissaoDigital,
       atualizarAdmissaoDigital,
       enviarAdmissaoDigital,

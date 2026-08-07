@@ -15,6 +15,7 @@ import { FormRenderer } from './FormRenderer';
 import { computeDerivedFields } from '../utils/computedFields';
 import { isEmptyFieldValue } from '../utils/formValues';
 import { buildApprovalChain } from '../utils/approvalFlow';
+import { ETAPA_ENCERRAMENTO } from '../utils/desligamento';
 import { Button } from './ui/Button';
 import RequesterCard from './RequesterCard';
 
@@ -270,7 +271,9 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
         { label: 'Solicitação', desc: 'Preenchimento do formulário' },
         ...(isJustaCausa ? [{ label: 'Análise Jurídica', desc: 'Validação da justa causa' }] : []),
         ...approvalSteps,
-        { label: 'Cálculo de Benefícios', desc: 'Rescisão e verbas', group: 'Benefícios' },
+        // Etapa do RH/DP que só abre depois da aprovação final: verbas
+        // rescisórias, checklist de encerramento e documentos da rescisão.
+        { label: ETAPA_ENCERRAMENTO, desc: 'Verbas, checklist e documentos (RH/DP)', group: 'Benefícios' },
         { label: 'Conclusão', desc: 'Finalização do processo' },
       ];
     }

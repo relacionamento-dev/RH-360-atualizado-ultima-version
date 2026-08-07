@@ -39,6 +39,8 @@ import {
   slaToMs
 } from '../src/utils/approvalFlow';
 import { ApprovalStep, FormField, RHProcess, RequestApprovalLevel } from '../src/types';
+import { PROCESSO_DESLIGAMENTO } from '../src/utils/permissions';
+import { ETAPA_ENCERRAMENTO } from '../src/utils/desligamento';
 
 // ---------------------------------------------------------------------------
 // Espelho das transições de estado do AppConfigContext
@@ -115,25 +117,43 @@ function aprovarUmNivel(req: SolicitacaoSimulada, process: RHProcess, aprovador 
   const nextLevel = newChain[levelIndex + 1]; // :742
   const isFinal = !nextLevel; // :743
   const currentLabel = levelLabel(newChain, levelIndex); // :745
+  // Desligamento: a última alçada NÃO conclui — abre a etapa de Benefícios e
+  // Encerramento (RH/DP), que é quem encerra o vínculo.
+  const abreEncerramento = isFinal && process.id === PROCESSO_DESLIGAMENTO;
+  const proximaEtapa = abreEncerramento ? ETAPA_ENCERRAMENTO : isFinal ? 'Conclusão' : nextLevel.name;
 
   req.historico.push({
     etapa: approvedLevel.name, // :755
     de: req.status,
-    para: isFinal ? 'Concluída' : nextLevel.name, // :757
+    para: abreEncerramento ? ETAPA_ENCERRAMENTO : isFinal ? 'Concluída' : nextLevel.name, // :757
     action: isFinal ? 'Aprovação Final' : `Aprovação — ${currentLabel}` // :746
   });
 
-  req.status = isFinal ? 'Concluída' : 'Em Aprovação'; // :744
-  req.etapaAtual = isFinal ? 'Conclusão' : nextLevel.name; // :766
+  req.status = abreEncerramento ? 'Aguardando Encerramento' : isFinal ? 'Concluída' : 'Em Aprovação'; // :744
+  req.etapaAtual = proximaEtapa; // :766
   req.approvalChain = newChain; // :767
-  req.responsavelAtual = isFinal ? '' : nextLevel.responsibleLabel; // :769
-  req.trail = ['Solicitação', ...newChain.map(l => l.name), 'Conclusão']; // :771
+  req.responsavelAtual = abreEncerramento ? 'RH / DP' : isFinal ? '' : nextLevel.responsibleLabel; // :769
+  req.trail = [
+    'Solicitação',
+    ...newChain.map(l => l.name),
+    ...(process.id === PROCESSO_DESLIGAMENTO ? [ETAPA_ENCERRAMENTO] : []),
+    'Conclusão'
+  ]; // :771
 
   if (!isFinal) {
     // :800-823 — abre a tarefa do PRÓXIMO nível.
     req.tarefas.push({
       title: `Aprovar ${process.name} — ${nextLevel.name}`,
       assignedTo: nextLevel.responsibleUserId || 'ADMIN-001'
+    });
+  }
+
+  if (abreEncerramento) {
+    // A etapa do RH/DP nasce como tarefa, e é ela — não esta aprovação — que
+    // conclui a solicitação (concluirEncerramentoDesligamento).
+    req.tarefas.push({
+      title: `${ETAPA_ENCERRAMENTO} - ${process.name}`,
+      assignedTo: 'RH-001'
     });
   }
   // Fora do espelho: no nível final o approveRequest real também aplica o
@@ -385,21 +405,29 @@ function simularProcesso(process: RHProcess, cenario: string, valorMonetario: nu
 
   // --- Percorre a cascata até o fim ---
   const totalNiveis = req.approvalChain.length;
+  // Desligamento não conclui na aprovação: para em 'Aguardando Encerramento',
+  // esperando a etapa de Benefícios e Encerramento do RH/DP.
+  const statusEsperado = process.id === PROCESSO_DESLIGAMENTO ? 'Aguardando Encerramento' : 'Concluída';
+  const etapaEsperada = process.id === PROCESSO_DESLIGAMENTO ? ETAPA_ENCERRAMENTO : 'Conclusão';
   let passos = 0;
   while (aprovarUmNivel(req, process)) {
     passos++;
     if (passos > 10) break; // trava contra laço infinito
-    if (req.status === 'Concluída') break;
+    if (req.status === statusEsperado) break;
   }
 
   const todosAprovados = req.approvalChain.every(l => l.status === 'aprovado');
   registrar(
     process.id,
     cenario,
-    passos === totalNiveis && req.status === 'Concluída' && todosAprovados ? 'OK' : 'FALHA',
-    'cascata percorrida até a conclusão',
-    `${passos}/${totalNiveis} aprovações · status final "${req.status}" · etapaAtual "${req.etapaAtual}" · ` +
-      `todos os níveis aprovados: ${todosAprovados ? 'sim' : 'não'}`
+    passos === totalNiveis && req.status === statusEsperado && req.etapaAtual === etapaEsperada && todosAprovados
+      ? 'OK'
+      : 'FALHA',
+    process.id === PROCESSO_DESLIGAMENTO
+      ? 'cascata percorrida até a etapa de encerramento'
+      : 'cascata percorrida até a conclusão',
+    `${passos}/${totalNiveis} aprovações · status final "${req.status}" (esperado "${statusEsperado}") · ` +
+      `etapaAtual "${req.etapaAtual}" · todos os níveis aprovados: ${todosAprovados ? 'sim' : 'não'}`
   );
 
   // --- Histórico: 1 entrada de abertura + 1 por nível ---
@@ -414,13 +442,16 @@ function simularProcesso(process: RHProcess, cenario: string, valorMonetario: nu
       .join(' | ')}`
   );
 
-  // --- Tarefas: 1 por nível ---
+  // --- Tarefas: 1 por nível (+ a do RH/DP, no desligamento) ---
+  const tarefasEsperadas = totalNiveis + (process.id === PROCESSO_DESLIGAMENTO ? 1 : 0);
   registrar(
     process.id,
     cenario,
-    req.tarefas.length === totalNiveis ? 'OK' : 'FALHA',
-    'uma tarefa por nível da cascata',
-    `${req.tarefas.length}/${totalNiveis}: ${req.tarefas.map(t => t.assignedTo).join(', ')}`
+    req.tarefas.length === tarefasEsperadas ? 'OK' : 'FALHA',
+    process.id === PROCESSO_DESLIGAMENTO
+      ? 'uma tarefa por nível + a etapa de encerramento'
+      : 'uma tarefa por nível da cascata',
+    `${req.tarefas.length}/${tarefasEsperadas}: ${req.tarefas.map(t => t.assignedTo).join(', ')}`
   );
 }
 

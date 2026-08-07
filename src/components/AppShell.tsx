@@ -342,7 +342,7 @@ export default function AppShell({
   const showAccessWarning = currentAccess && !currentAccess.blocked && currentAccessExpiration && currentAccessExpiration > new Date() && daysRemaining !== null && daysRemaining <= 2;
   const accessWarningMessage = showAccessWarning ? `Seu acesso expira em ${daysRemaining} dia${daysRemaining === 1 ? '' : 's'}.` : null;
 
-  const isFullScreen = currentView === 'request-form' || currentView === 'request-detail';
+  const isFullScreen = currentView === 'request-form' || currentView === 'request-detail' || currentView === 'desligamento-encerramento';
 
   if (isFullScreen) {
     return <div className="h-screen bg-[var(--color-brand-bg)]">{children}</div>;

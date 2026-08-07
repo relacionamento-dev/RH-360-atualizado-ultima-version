@@ -18,6 +18,7 @@ import AccessManagement from './components/AccessManagement';
 import PortalColaboradorModule from './components/admissao-digital/PortalColaboradorModule';
 import RequestDetail from './components/RequestDetail';
 import RHRequestForm from './components/RHRequestForm';
+import DesligamentoEncerramento from './components/desligamento/DesligamentoEncerramento';
 import { AppConfigProvider, useAppConfig } from './contexts/AppConfigContext';
 
 function AppContent() {
@@ -66,6 +67,17 @@ function AppContent() {
 
     if (currentView === 'request-detail') {
       return <RequestDetail requestId={config.currentRequestId || ''} onBack={() => handleNavigate('solicitacoes')} />;
+    }
+
+    // Desligamento: etapa do RH/DP depois da aprovação final. Volta para o
+    // detalhe da própria solicitação, que é de onde ela é aberta.
+    if (currentView === 'desligamento-encerramento') {
+      return (
+        <DesligamentoEncerramento
+          requestId={config.currentRequestId || ''}
+          onBack={() => handleNavigate('request-detail', config.currentRequestId || undefined)}
+        />
+      );
     }
 
     switch (currentView) {

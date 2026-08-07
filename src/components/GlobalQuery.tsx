@@ -130,6 +130,7 @@ export default function GlobalQuery() {
                   { value: 'Em Análise', label: 'Em Análise' },
                   { value: 'Em Aprovação', label: 'Em Aprovação' },
                   { value: 'Devolvida', label: 'Devolvida' },
+                  { value: 'Aguardando Encerramento', label: 'Aguardando Encerramento' },
                   { value: 'Concluída', label: 'Concluída' },
                   { value: 'Reprovada', label: 'Reprovada' },
                   { value: 'Cancelada', label: 'Cancelada' },

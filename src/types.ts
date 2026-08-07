@@ -428,17 +428,20 @@ export interface VacationRecord {
   history: { period: string; days: number; status: string }[];
 }
 
-export type RequestStatus = 
-  | 'Rascunho' 
+export type RequestStatus =
+  | 'Rascunho'
   | 'Aberto'
-  | 'Enviada' 
-  | 'Em Aprovação' 
+  | 'Enviada'
+  | 'Em Aprovação'
   | 'Em Análise'
   | 'Pendente de Aprovação'
-  | 'Devolvido' 
+  | 'Devolvido'
   | 'Devolvida'
-  | 'Aprovada' 
-  | 'Reprovada' 
+  | 'Aprovada'
+  // Desligamento: cascata aprovada, mas o vínculo só encerra depois da etapa
+  // "Benefícios e Encerramento" executada pelo RH/DP (ver EncerramentoDesligamento).
+  | 'Aguardando Encerramento'
+  | 'Reprovada'
   | 'Concluído'
   | 'Concluída'
   | 'Recebimento Confirmado'
@@ -545,6 +548,79 @@ export interface HistoryEntry {
   motivo?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Desligamento — etapa "Benefícios e Encerramento"
+//
+// Executada pelo RH/DP DEPOIS que a cascata de aprovação inteira já aprovou.
+// Enquanto ela não é concluída, a solicitação fica em 'Aguardando Encerramento'
+// e o colaborador continua ativo — é o "Concluir desligamento" que dispara o
+// handoff de cadastro (colaborador → 'Desligado').
+// ---------------------------------------------------------------------------
+
+export type TipoDesligamento =
+  | 'pedido_demissao'
+  | 'sem_justa_causa'
+  | 'justa_causa'
+  | 'fim_contrato'
+  | 'acordo';
+
+/** Pedido de demissão: o aviso prévio é cumprido ou descontado da rescisão. */
+export type AvisoPrevioModo = 'trabalhado' | 'descontado';
+
+/**
+ * Uma linha da lista de verbas rescisórias. A lista é sempre a mesma (mesma
+ * ordem, mesmos ids); o que muda por tipo de desligamento é o `devida` e o
+ * `detalhe` — é assim que a tela mostra o que o colaborador perde ou ganha.
+ */
+export interface VerbaRescisoria {
+  id: string;
+  label: string;
+  devida: boolean;
+  /** Regra aplicada, em linguagem de DP ("Multa de 40% sobre o saldo do FGTS"). */
+  detalhe: string;
+  /** Valor lançado pelo DP. Só existe em verba devida. */
+  valor?: number;
+  /**
+   * Direito sem valor a lançar (seguro-desemprego): entra na lista como
+   * devido/não devido, mas não tem campo de R$ nem soma no total.
+   */
+  semValor?: boolean;
+}
+
+export interface ItemChecklistEncerramento {
+  id: string;
+  label: string;
+  /** Explicação curta do que o item significa. */
+  descricao?: string;
+  concluido: boolean;
+  /** Rótulo do campo de data; ausente = item sem data. */
+  labelData?: string;
+  data?: string;
+  /** VR/VA: desconto proporcional dos dias não trabalhados (opcional). */
+  labelValor?: string;
+  valor?: number;
+}
+
+export interface DocumentoEncerramento {
+  id: string;
+  label: string;
+  descricao?: string;
+  anexo?: { nome: string; enviadoEm: string };
+}
+
+export interface EncerramentoDesligamento {
+  /** Tipo congelado no início da etapa — é ele que define a lista de verbas. */
+  tipo: TipoDesligamento;
+  verbas: VerbaRescisoria[];
+  /** Pedido de demissão: aviso prévio trabalhado ou descontado. */
+  avisoPrevioModo?: AvisoPrevioModo;
+  checklist: ItemChecklistEncerramento[];
+  documentos: DocumentoEncerramento[];
+  observacao?: string;
+  concluidoEm?: string;
+  concluidoPor?: string;
+}
+
 export interface RHRequest {
   id: string;
   numero: string;
@@ -595,6 +671,10 @@ export interface RHRequest {
   // processo que passaram na condição de acionamento. Cada um precisa aprovar,
   // na ordem, antes de a solicitação concluir.
   approvalChain?: RequestApprovalLevel[];
+  // Desligamento (processo '15'): verbas, checklist e documentos da etapa
+  // "Benefícios e Encerramento". Nasce vazio na aprovação final e é preenchido
+  // pelo RH/DP até o "Concluir desligamento".
+  encerramento?: EncerramentoDesligamento;
 }
 
 export type ApprovalLevelStatus = 'pendente' | 'aprovado' | 'reprovado';

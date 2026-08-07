@@ -1,5 +1,6 @@
 import { Employee, RHProcess, RHRequest, Group, Job, Application, Task, Announcement, BenefitConfig, Company, CostCenter, Sector, User, HistoryEntry, Accesso, TargetMode, AdmissaoBloco, DocumentoStatusRevisao } from './types';
 import { criarBlocosAdmissao } from './utils/admissaoDigital';
+import { ETAPA_ENCERRAMENTO } from './utils/desligamento';
 
 /**
  * Blocos de demonstração da Admissão Digital derivados da definição canônica
@@ -1412,11 +1413,13 @@ export const INITIAL_RH_PROCESSES: RHProcess[] = [
     icon: 'UserMinus', 
     pendingCount: 3, 
     ativo: true, 
-    category: 'Desligamento', 
-    viewType: 'generic', 
+    category: 'Desligamento',
+    viewType: 'generic',
     targetMode: TargetMode.EMPLOYEE_ZOOM,
-    roles: { employee: false, manager: true, hr: true, director: true }, 
-    etapas: ['Solicitado', 'Aprovação Diretor', 'Entrevista Desligamento', 'Rescisão'], 
+    roles: { employee: false, manager: true, hr: true, director: true },
+    // A rescisão não é o último passo do fluxo: depois da aprovação vem a etapa
+    // de Benefícios e Encerramento (RH/DP), que é o que conclui o processo.
+    etapas: ['Solicitado', 'Aprovação Diretor', ETAPA_ENCERRAMENTO, 'Conclusão'],
     version: 1, 
     isSensitive: true, 
     allowDraft: true, 
@@ -1775,6 +1778,120 @@ const generateOnboardingRequests = () => {
 
 generateOnboardingRequests();
 
+// -----------------------------------------------------------------------
+// Desligamento aprovado aguardando a etapa "Benefícios e Encerramento"
+//
+// É o ponto de entrada da demonstração da etapa: a cascata (Diretoria) já
+// aprovou, então não há mais nada a aprovar — o que falta é o RH/DP lançar as
+// verbas, executar o checklist e anexar os documentos. Sem justa causa de
+// propósito: é o tipo com a lista de verbas completa (multa de 40%, saque
+// integral do FGTS e seguro-desemprego).
+// -----------------------------------------------------------------------
+const desligadoDemo = INITIAL_EMPLOYEES.find(e => e.id === 'EMP-007')!;
+const aprovadoEm = new Date(Date.now() - 3 * 24 * 3600000).toISOString();
+const abertoEm = new Date(Date.now() - 6 * 24 * 3600000).toISOString();
+
+const reqDesligamentoEncerramento: RHRequest = {
+  id: 'req-desligamento-encerramento',
+  numero: 'RH-2026-0053',
+  tipoProcesso: '15',
+  processId: '15',
+  processName: 'Solicitação de Desligamento',
+  category: 'Desligamento',
+  origem: 'manual',
+  solicitante: 'Marcos Vinicius',
+  requesterId: 'GEST-001',
+  requesterSnapshot: {
+    name: 'Marcos Vinicius',
+    registration: '00003',
+    email: 'marcos.vinicius@rh360.demo',
+    role: 'Gerente de TI',
+    department: 'Tecnologia',
+    costCenter: 'TI-001',
+    branch: 'Matriz'
+  },
+  alvo: desligadoDemo.name,
+  alvoId: desligadoDemo.id,
+  employeeId: desligadoDemo.id,
+  empresa: desligadoDemo.company,
+  filial: desligadoDemo.branch,
+  centroCusto: desligadoDemo.costCenter,
+  status: 'Aguardando Encerramento',
+  etapaAtual: ETAPA_ENCERRAMENTO,
+  responsavelAtual: 'RH / DP',
+  slaVencimento: new Date(Date.now() + 2 * 24 * 3600000).toISOString(),
+  slaStatus: 'warning',
+  trail: ['Solicitação', 'Diretoria', ETAPA_ENCERRAMENTO, 'Conclusão'],
+  approvalChain: [
+    {
+      id: 'app-15-1',
+      name: 'Diretoria',
+      order: 1,
+      responsibilityType: 'diretoria',
+      responsibleLabel: 'Diretoria',
+      responsibleUserId: 'DIR-001',
+      sla: 24,
+      slaUnit: 'h',
+      isMandatory: true,
+      status: 'aprovado',
+      decidedBy: 'Ricardo Silva',
+      decidedAt: aprovadoEm,
+      comment: 'Reestruturação aprovada. Encaminhar ao DP para as verbas rescisórias.'
+    }
+  ],
+  data: {
+    // O zoom grava o NOME em `colaboradorId` e o id real em `colaboradorIdId`.
+    colaboradorId: desligadoDemo.name,
+    colaboradorIdId: desligadoDemo.id,
+    cargo: desligadoDemo.role,
+    setor: desligadoDemo.department,
+    centroCusto: desligadoDemo.costCenter,
+    admissao: desligadoDemo.admissionDate,
+    gestor: desligadoDemo.manager,
+    tipoDesligamento: 'sem_justa_causa',
+    motivo: 'Reestruturação',
+    motivoComplementar: 'Encerramento da célula de sustentação da Filial Goiânia, com absorção das atividades pela Matriz.',
+    avisoPrevio: 'Indenizado',
+    dataAvisoPrevio: '2026-07-31',
+    ultimoDiaTrabalhado: '2026-07-31',
+    dataPrevistaDesligamento: '2026-09-14',
+    reposicao: 'Não',
+    observacao: 'Colaborador ciente do desligamento em reunião com o gestor e o RH.'
+  },
+  attachments: [],
+  createdAt: abertoEm,
+  updatedAt: aprovadoEm,
+  historico: [
+    {
+      id: 'h-desl-1',
+      autor: 'Marcos Vinicius',
+      userName: 'Marcos Vinicius',
+      userId: 'GEST-001',
+      etapa: 'Solicitação',
+      de: 'Novo',
+      para: 'Diretoria',
+      action: 'Envio',
+      dataHora: abertoEm,
+      timestamp: abertoEm,
+      comentario: 'Solicitação enviada. Fluxo com 1 nível(is) de aprovação: Diretoria.'
+    },
+    {
+      id: 'h-desl-2',
+      autor: 'Ricardo Silva',
+      userName: 'Ricardo Silva',
+      userId: 'DIR-001',
+      etapa: 'Diretoria',
+      de: 'Pendente de Aprovação',
+      para: ETAPA_ENCERRAMENTO,
+      action: 'Aprovação Final',
+      dataHora: aprovadoEm,
+      timestamp: aprovadoEm,
+      comentario: `Última alçada aprovada (Diretoria). Encaminhado ao RH/DP para ${ETAPA_ENCERRAMENTO}.`
+    }
+  ]
+};
+INITIAL_RH_REQUESTS.push(reqDesligamentoEncerramento);
+
 // Update total counter for persistence
 export const INITIAL_REQUEST_COUNTER = INITIAL_RH_REQUESTS.length;
 
@@ -1810,6 +1927,30 @@ export const INITIAL_TASKS: Task[] = INITIAL_RH_REQUESTS
       prazo: r.slaVencimento
     };
   });
+
+// A etapa de Benefícios e Encerramento entra na Central de Tarefas como
+// qualquer outra pendência — é por ela que o RH/DP chega ao desligamento
+// aprovado do seed.
+INITIAL_TASKS.unshift({
+  id: `task-${reqDesligamentoEncerramento.id}`,
+  title: `${ETAPA_ENCERRAMENTO} - ${reqDesligamentoEncerramento.alvo}`,
+  description: `Desligamento aprovado. Lançar verbas rescisórias, executar o checklist e anexar os documentos da rescisão (${reqDesligamentoEncerramento.numero}).`,
+  assignedTo: 'RH-001',
+  dueDate: reqDesligamentoEncerramento.slaVencimento!,
+  status: 'Pendente',
+  priority: 'Alta',
+  relatedRequestId: reqDesligamentoEncerramento.id,
+  createdAt: reqDesligamentoEncerramento.updatedAt!,
+  requestId: reqDesligamentoEncerramento.id,
+  requestNumber: reqDesligamentoEncerramento.numero,
+  processId: '15',
+  process: reqDesligamentoEncerramento.processName,
+  solicitante: reqDesligamentoEncerramento.solicitante,
+  type: 'Encerramento',
+  responsible: 'RH/DP',
+  responsibleUserId: 'RH-001',
+  prazo: reqDesligamentoEncerramento.slaVencimento
+});
 
 // JOBS
 export const INITIAL_JOBS: Job[] = [

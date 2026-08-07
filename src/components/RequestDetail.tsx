@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { 
+import {
   X, Check, CornerUpLeft, AlertCircle, FileText,
-  CheckCircle2, Target, Activity, Users, Clock, Download, 
+  CheckCircle2, Target, Activity, Users, Clock, Download,
   User, List, Save, ChevronRight, Plus, Info, AlertTriangle, ArrowLeft,
-  Building, MapPin, Briefcase, Hash, History, MessageSquare, DollarSign
+  Building, MapPin, Briefcase, Hash, History, MessageSquare, DollarSign,
+  ClipboardCheck
 } from 'lucide-react';
 import { RHRequest, HistoryEntry } from '../types';
 import { useAppConfig } from '../contexts/AppConfigContext';
@@ -14,7 +15,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import { PROCESS_DEFINITIONS } from '../processDefinitions';
 import { getStatusVariant } from '../utils/requestStatus';
 import { ensureApprovalChain, getCurrentLevelIndex } from '../utils/approvalFlow';
-import { isDateOnlyString, localDateFromString } from '../utils/dateLocal';
+import { TrilhaAprovacoes, TrilhaContainer } from './request/TrilhaAprovacoes';
+import {
+  findFieldDef as findFieldDefinition,
+  formatCurrencyBR,
+  formatRequestDate,
+  getOptionLabel
+} from '../utils/requestFields';
+import { PROCESSO_DESLIGAMENTO, podeExecutarEncerramento } from '../utils/permissions';
 
 interface RequestDetailProps {
   requestId: string;
@@ -63,9 +71,19 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
   const processDef = PROCESS_DEFINITIONS[processId];
 
   // 'Recebimento Confirmado' encerra o protocolo de VR/VA: não há o que aprovar.
-  const finalStatuses = ['Concluída', 'Concluído', 'Recebimento Confirmado', 'Reprovada', 'Cancelada', 'Cancelado'] as const;
+  // 'Aguardando Encerramento' entra aqui porque a cascata já aprovou tudo — o
+  // que falta é a etapa de Benefícios e Encerramento, não uma nova aprovação.
+  const finalStatuses = ['Concluída', 'Concluído', 'Recebimento Confirmado', 'Reprovada', 'Cancelada', 'Cancelado', 'Aguardando Encerramento'] as const;
   const isFinalStatus = finalStatuses.includes(request.status as typeof finalStatuses[number]);
   const canTakeAction = !isFinalStatus;
+
+  // Desligamento aprovado esperando o RH/DP: a tela ganha o acesso à etapa.
+  const aguardandoEncerramento =
+    (request.tipoProcesso || request.processId) === PROCESSO_DESLIGAMENTO &&
+    request.status === 'Aguardando Encerramento';
+  const podeEncerrar = podeExecutarEncerramento(config.usuarioAtual);
+  const abrirEncerramento = () =>
+    updateConfig({ activeView: 'desligamento-encerramento', currentRequestId: request.id });
 
   // Cascata de aprovação desta solicitação (reconstruída para pedidos antigos).
   const approvalProcess = config.processos.find(p => p.id === (request.tipoProcesso || request.processId));
@@ -95,53 +113,11 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
     }
   };
 
-  const parseDateString = (dateString: string) => {
-    if (!dateString) return null;
-    const str = dateString.trim();
-    // Data sem hora ('2026-07-14' / '14/07/2026'): o resultado local é final,
-    // inclusive quando é null (31/02) — deixar cair no parse nativo faria o
-    // Date rolar em silêncio para 03/03.
-    if (isDateOnlyString(str)) return localDateFromString(str);
-    // Timestamp completo (createdAt, decidedAt, histórico): já traz fuso, então
-    // o parse nativo é o correto aqui.
-    const parsed = new Date(str);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  };
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '—';
-    const date = parseDateString(dateString);
-    if (!date) return dateString;
-    return date.toLocaleDateString('pt-BR');
-  };
-
-  const formatCurrency = (value: any) => {
-    if (value === undefined || value === null) return '—';
-    const num = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(num)) return value;
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
-  };
-
-  // A chave em `request.data` é `id || name`. Vários campos podem compartilhar o
-  // mesmo `id` (cargo ↔ cargoRep ↔ cargoNovo), então desempata pela `condition`
-  // avaliada sobre os próprios dados salvos — é o campo que estava visível.
-  const findFieldDef = (key: string) => {
-    if (!processDef) return null;
-    const matches = processDef.steps
-      .flatMap(step => step.fields)
-      .filter(f => ((f as any).id || f.name) === key);
-    if (matches.length === 0) return null;
-    return matches.find(f => !f.condition || f.condition(request.data)) || matches[0];
-  };
-
-  // options aceita string[] ou { label, value }[] — exibe sempre o rótulo
-  const getOptionLabel = (fieldDef: any, value: any): string => {
-    const options = fieldDef?.options;
-    if (!Array.isArray(options)) return String(value);
-    const match = options.find((opt: any) => (opt && typeof opt === 'object' ? opt.value : opt) === value);
-    if (match === undefined) return String(value);
-    return typeof match === 'object' ? String(match.label ?? value) : String(match);
-  };
+  // Leitura dos dados salvos: rótulo, tipo e opções vêm da definição do
+  // processo (utils/requestFields, compartilhado com a etapa de encerramento).
+  const formatDate = formatRequestDate;
+  const formatCurrency = formatCurrencyBR;
+  const findFieldDef = (key: string) => findFieldDefinition(processDef, key, request.data);
 
   const renderValue = (key: string, value: any) => {
     if (value === undefined || value === null || value === '') return <span className="text-gray-300">—</span>;
@@ -268,7 +244,38 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
       <main className="flex-1 xl:overflow-hidden overflow-y-auto flex flex-col xl:flex-row">
         <div className="flex-1 xl:overflow-y-auto custom-scrollbar p-8 pb-24 xl:pb-12">
           <div className="max-w-5xl mx-auto space-y-8 pb-12">
-            
+
+            {/* 0. ETAPA PENDENTE DO RH/DP (desligamento aprovado) */}
+            {aguardandoEncerramento && (
+              <div className="bg-white rounded-[24px] border border-blue-200 shadow-sm overflow-hidden">
+                <div className="p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center gap-6">
+                  <div className="w-12 h-12 shrink-0 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 border border-blue-100">
+                    <ClipboardCheck size={24} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h2 className="text-[15px] font-black text-gray-900 tracking-tight">Etapa pendente: Benefícios e Encerramento</h2>
+                    <p className="text-[13px] text-gray-500 font-medium leading-relaxed mt-1">
+                      Todas as alçadas aprovaram. O RH/DP precisa lançar as verbas rescisórias, executar o
+                      checklist de encerramento e anexar os documentos para concluir o desligamento.
+                    </p>
+                  </div>
+                  <Button
+                    className="shrink-0"
+                    leftIcon={<ClipboardCheck size={16} />}
+                    disabled={!podeEncerrar}
+                    onClick={abrirEncerramento}
+                  >
+                    Abrir etapa
+                  </Button>
+                </div>
+                {!podeEncerrar && (
+                  <p className="px-6 sm:px-8 pb-6 -mt-2 text-[12px] font-medium text-gray-400">
+                    Etapa restrita ao RH/DP — você pode acompanhar, mas não executar.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* 1. IDENTIFICAÇÃO DO SOLICITANTE */}
             <div className="bg-white rounded-[24px] border border-brand-border overflow-hidden shadow-sm">
               <div className="px-8 py-4 bg-gray-50 border-b border-brand-border flex items-center gap-3">
@@ -410,7 +417,7 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
                 <History size={16} className="text-gray-400" />
               </div>
 
-              <div className="relative space-y-10 before:absolute before:inset-0 before:ml-2.5 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-100 before:to-transparent">
+              <TrilhaContainer>
                 {/* Initial Creation */}
                 <div className="relative flex items-start gap-4">
                   <div className="absolute left-0 mt-1.5 w-5 h-5 rounded-full border-4 border-white bg-green-500 shadow-sm ring-4 ring-white z-10"></div>
@@ -423,41 +430,23 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
 
                 {/* Cascata de alçadas: um item por nível configurado que se aplica
                     a esta solicitação, na ordem em que precisam aprovar. */}
-                {approvalChain.map((level, idx) => {
-                  const isCurrent = idx === currentLevelIndex && !isFinalStatus;
-                  const dotColor = level.status === 'aprovado' ? 'bg-green-500'
-                    : level.status === 'reprovado' ? 'bg-red-500'
-                    : isCurrent ? 'bg-blue-500' : 'bg-gray-200';
-                  return (
-                    <div key={`${level.id}-${idx}`} className="relative flex items-start gap-4">
-                      <div className={`absolute left-0 mt-1.5 w-5 h-5 rounded-full border-4 border-white shadow-sm ring-4 ring-white z-10 ${dotColor}`}></div>
-                      <div className="pl-8">
-                        <p className="text-[13px] font-black text-gray-900">
-                          Nível {idx + 1} de {approvalChain.length} — {level.name}
-                        </p>
-                        <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5">
-                          {level.responsibleLabel}
-                          {level.decidedAt ? ` • ${formatDate(level.decidedAt)} • ${level.decidedBy}` : ` • SLA ${level.sla}${level.slaUnit}`}
-                        </p>
-                        {level.conditionLabel && (
-                          <p className="text-[10px] text-amber-600 mt-1 font-bold">Acionado por condição: {level.conditionLabel}</p>
-                        )}
-                        <p className={`text-[10px] mt-2 font-bold uppercase tracking-widest ${
-                          level.status === 'aprovado' ? 'text-green-600'
-                          : level.status === 'reprovado' ? 'text-red-500'
-                          : isCurrent ? 'text-blue-500' : 'text-gray-300'
-                        }`}>
-                          {level.status === 'aprovado' ? 'Aprovado'
-                            : level.status === 'reprovado' ? 'Reprovado'
-                            : isCurrent ? 'Aguardando aprovação' : 'Não iniciado'}
-                        </p>
-                        {level.comment && (
-                          <p className="text-[10px] text-gray-400 mt-1 italic leading-relaxed">"{level.comment}"</p>
-                        )}
-                      </div>
+                <TrilhaAprovacoes
+                  chain={approvalChain}
+                  currentLevelIndex={currentLevelIndex}
+                  encerrada={isFinalStatus}
+                />
+
+                {/* Desligamento: a etapa do RH/DP entra na trilha depois das alçadas. */}
+                {aguardandoEncerramento && (
+                  <div className="relative flex items-start gap-4">
+                    <div className="absolute left-0 mt-1.5 w-5 h-5 rounded-full border-4 border-white bg-blue-500 shadow-sm ring-4 ring-white z-10"></div>
+                    <div className="pl-8">
+                      <p className="text-[13px] font-black text-gray-900">Benefícios e Encerramento</p>
+                      <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5">RH / DP</p>
+                      <p className="text-[10px] mt-2 font-bold uppercase tracking-widest text-blue-500">Aguardando execução</p>
                     </div>
-                  );
-                })}
+                  </div>
+                )}
 
                 {/* History entries if any */}
                 {request.historico?.map((h, i) => (
@@ -475,7 +464,7 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
                     </div>
                   </div>
                 ))}
-              </div>
+              </TrilhaContainer>
             </div>
 
             {/* SLA / INFO */}
@@ -510,6 +499,13 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
               <Button variant="outline" className="w-full sm:w-auto text-purple-600 border-purple-100 hover:bg-purple-50 font-black text-[10px] tracking-widest uppercase h-12 rounded-xl" onClick={() => setIsReturnModalOpen(true)}>Devolver</Button>
               <Button variant="outline" className="w-full sm:w-auto text-red-500 border-red-100 hover:bg-red-50 font-black text-[10px] tracking-widest uppercase h-12 rounded-xl" onClick={() => setIsRejectModalOpen(true)}>Reprovar</Button>
               <Button className="w-full sm:w-auto bg-green-600 hover:bg-green-700 font-black text-[10px] tracking-widest uppercase h-12 rounded-xl shadow-lg shadow-green-600/20" onClick={() => handleAction('approve')}>Aprovar</Button>
+            </>
+          ) : aguardandoEncerramento && podeEncerrar ? (
+            <>
+              <Button variant="outline" className="w-full sm:w-auto h-12 rounded-xl text-[11px] font-black uppercase tracking-widest" onClick={onBack}>Fechar</Button>
+              <Button className="w-full sm:w-auto h-12 rounded-xl text-[10px] font-black uppercase tracking-widest" leftIcon={<ClipboardCheck size={16} />} onClick={abrirEncerramento}>
+                Benefícios e Encerramento
+              </Button>
             </>
           ) : (
             <Button variant="outline" fullWidth className="h-12 rounded-xl text-[11px] font-black uppercase tracking-widest" onClick={onBack}>

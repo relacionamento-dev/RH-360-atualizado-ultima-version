@@ -62,6 +62,21 @@ export const PROCESSOS_SEM_ABERTURA_GENERICA = ['3'];
 export const podeAbrirPeloFluxoGenerico = (processId: string): boolean =>
   !PROCESSOS_SEM_ABERTURA_GENERICA.includes(processId);
 
+export const PROCESSO_DESLIGAMENTO = '15';
+
+// Etapa "Benefícios e Encerramento" do desligamento: quem executa é o RH/DP.
+// Gestor e Diretoria aprovam a cascata, mas não lançam verba nem dão baixa em
+// documento — por isso a checagem não usa a permissão genérica 'executar', que
+// vale para os dois. Administradores entram porque tocam qualquer processo.
+export const PERFIS_ENCERRAMENTO_DESLIGAMENTO: User['profile'][] = [
+  'RH/DP',
+  'Administrador',
+  'Administrador Geral'
+];
+
+export const podeExecutarEncerramento = (user?: Pick<User, 'profile'> | null): boolean =>
+  !!user && (isSuperAdmin(user) || PERFIS_ENCERRAMENTO_DESLIGAMENTO.includes(user.profile));
+
 export const FULL_PROCESS_PERMISSIONS: ProcessPermission = {
   ver: true,
   solicitar: true,
