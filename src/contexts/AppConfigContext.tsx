@@ -29,6 +29,7 @@ import { PROCESS_DEFINITIONS } from '../processDefinitions';
 import { blocosComDadosDoDisparo, criarBlocosAdmissao, fotoDePerfilDaAdmissao } from '../utils/admissaoDigital';
 import { isSuperAdmin, isJynxEmail, asSuperAdmin, podeGerenciarComunicado, podeAprovarPropriaSolicitacao, FULL_PROCESS_PERMISSIONS, FULL_SENSITIVE_PERMISSIONS, PROCESSO_DESLIGAMENTO } from '../utils/permissions';
 import { ETAPA_ENCERRAMENTO } from '../utils/desligamento';
+import { matriculaDoCadastro } from '../utils/identidade';
 import {
   buildApprovalChain,
   ensureApprovalChain,
@@ -97,7 +98,11 @@ const INITIAL_STATE: AppConfig = {
   // 1.8.0 — Hub: solicitações próprias e aprovações pendentes para as contas
   // @jynx (RH-2026-0054 a 0069), para "Minhas Solicitações" e "Minhas
   // Aprovações" não abrirem zeradas na demonstração.
-  version: '1.8.0',
+  // 1.9.0 — Matrícula derivada do id do cadastro (EMP-007 → 00007), snapshots
+  // das solicitações montados a partir da ficha e vínculos usuário→colaborador
+  // corrigidos. TODAS as matrículas do seed mudaram: sem o bump, o
+  // localStorage antigo devolveria as duplicadas.
+  version: '1.9.0',
   empresaAtual: COMPANIES[0],
   usuarioAtual: DEMO_USERS[0], // Admin by default
   usuariosDemo: DEMO_USERS,
@@ -498,15 +503,18 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       origem: 'manual',
       solicitante: config.usuarioAtual.name,
       requesterId: config.usuarioAtual.id,
+      // Cópia do que a ficha dizia na abertura — histórico, não fonte: quem
+      // exibe resolve pelo cadastro (utils/identidade). Sem sentinela: conta de
+      // sistema não tem matrícula, e '00000' já foi confundido com uma.
       requesterSnapshot: {
-        avatar: config.usuarioAtual.avatar,
-        name: config.usuarioAtual.name,
-        registration: employee?.registration || '00000',
+        avatar: employee?.avatar || config.usuarioAtual.avatar,
+        name: employee?.name || config.usuarioAtual.name,
+        registration: employee?.registration,
         email: config.usuarioAtual.email,
-        role: config.usuarioAtual.role,
-        department: employee?.department || 'N/A',
-        costCenter: employee?.costCenter || 'N/A',
-        branch: employee?.branch || 'N/A',
+        role: employee?.role || config.usuarioAtual.role,
+        department: employee?.department,
+        costCenter: employee?.costCenter,
+        branch: employee?.branch,
       },
       requestedAt: new Date().toISOString(),
       alvo: alvo,
@@ -1506,8 +1514,9 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
     const previsaoAdmissao =
       dados.dataAdmissao || new Date(agora.getTime() + dados.prazoDias * 86400000).toISOString().slice(0, 10);
 
+    const idDoCadastro = `EMP-AD-${agora.getTime()}`;
     const novo: Employee = {
-      id: `EMP-AD-${agora.getTime()}`,
+      id: idDoCadastro,
       name: dados.nome,
       email: dados.email,
       phone: dados.telefone || '',
@@ -1525,7 +1534,9 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       salary: dados.salario || 0,
       manager: 'A definir',
       costCenter: vaga?.costCenter || 'A definir',
-      registration: `AD-${String(agora.getTime()).slice(-5)}`,
+      // Mesma regra do seed: a matrícula sai do id (utils/identidade), aqui
+      // ainda com o prefixo AD- de quem não foi efetivado.
+      registration: matriculaDoCadastro(idDoCadastro),
       cpf: dados.cpf,
       documents: [],
       admissaoDigital: {

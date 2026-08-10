@@ -5,12 +5,14 @@ interface RequesterCardProps {
   data: {
     avatar?: string;
     name: string;
-    registration: string;
-    email: string;
-    role: string;
-    department: string;
-    costCenter: string;
-    branch: string;
+    // Opcionais: conta de sistema não tem ficha no cadastro, e o campo mostra
+    // "—" em vez de um valor emprestado de outra pessoa.
+    registration?: string;
+    email?: string;
+    role?: string;
+    department?: string;
+    costCenter?: string;
+    branch?: string;
     requestedAt?: string;
   };
 }

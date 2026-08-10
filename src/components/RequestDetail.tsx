@@ -23,6 +23,7 @@ import {
   getOptionLabel
 } from '../utils/requestFields';
 import { PROCESSO_DESLIGAMENTO, podeExecutarEncerramento } from '../utils/permissions';
+import { resolverSolicitante } from '../utils/identidade';
 import { ReadOnlyField, READONLY_SURFACE } from './ui/ReadOnlyField';
 
 interface RequestDetailProps {
@@ -47,26 +48,11 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
     );
   }
 
-  // `requesterId` guarda o id do USUÁRIO, mas os dados cadastrais (matrícula,
-  // setor, CC, filial) vivem em Employee — comparar direto com `colaboradores`
-  // nunca casava, pois os namespaces são disjuntos (JYNX-00x vs EMP-0xx).
-  const requesterUser = config.usuariosDemo.find(u => u.id === request.requesterId);
-  const requesterEmployee =
-    config.colaboradores.find(e => e.id === requesterUser?.employeeId) ||
-    config.colaboradores.find(e => e.id === request.requesterId);
-
-  // Snapshots antigos gravaram sentinelas quando não havia colaborador vinculado
-  const fromSnapshot = (v?: string) => (v && v !== 'N/A' && v !== '00000' ? v : undefined);
-  const snap = request.requesterSnapshot;
-  const requester = {
-    name: snap?.name || requesterUser?.name || requesterEmployee?.name || request.solicitante,
-    registration: fromSnapshot(snap?.registration) || requesterEmployee?.registration,
-    role: fromSnapshot(snap?.role) || requesterEmployee?.role || requesterUser?.role,
-    department: fromSnapshot(snap?.department) || requesterEmployee?.department,
-    costCenter: fromSnapshot(snap?.costCenter) || requesterEmployee?.costCenter,
-    branch: fromSnapshot(snap?.branch) || requesterEmployee?.branch,
-    manager: requesterEmployee?.manager,
-  };
+  // Identidade de quem abriu: fonte única em utils/identidade, com o CADASTRO
+  // na frente do snapshot. `requesterId` guarda o id do USUÁRIO e os dados
+  // cadastrais vivem em Employee — namespaces disjuntos (GEST-001 vs EMP-005),
+  // e é o resolver que faz a ponte.
+  const requester = resolverSolicitante(request, config.usuariosDemo, config.colaboradores);
   const targetEmployee = config.colaboradores.find(e => e.id === request.employeeId);
   const processId = request.processId || '';
   const processDef = PROCESS_DEFINITIONS[processId];

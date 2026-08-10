@@ -11,6 +11,7 @@ import { PageHeader } from './ui/FormAndHeader';
 
 import { useAppConfig } from '../contexts/AppConfigContext';
 import { Task } from '../types';
+import { listarTarefasDaCentral } from '../utils/tarefas';
 
 /**
  * Quanto da janela de SLA já foi consumido, de 0 a 100.
@@ -38,7 +39,7 @@ export default function TaskCenterModule() {
   const { config, updateConfig } = useAppConfig();
   const [activeTab, setActiveTab] = useState('all');
 
-  const tasks = config.tarefas.map(t => {
+  const tasks = listarTarefasDaCentral(config.tarefas).map(t => {
     const relatedReq = config.solicitacoes.find(r => r.id === t.relatedRequestId);
     
     // Tipo derivado do próprio conteúdo da tarefa (não do assignedTo casar com o

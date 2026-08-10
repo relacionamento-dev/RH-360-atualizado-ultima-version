@@ -16,6 +16,8 @@ import { useAppConfig } from '../contexts/AppConfigContext';
 import { useToast } from './ToastContext';
 import { AnexoComunicado, Announcement, Employee } from '../types';
 import { podeGerenciarComunicado } from '../utils/permissions';
+import { listarMinhasAprovacoes } from '../utils/approvalFlow';
+import { listarTarefasDaCentral } from '../utils/tarefas';
 
 interface IntranetModuleProps {
   onNavigate?: (view: string) => void;
@@ -273,12 +275,16 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
   }, [config.notificacoes]);
   const naoLidas = notificacoes.filter(n => !n.lida).length;
 
-  // Mesmos status que o Hub conta como "aguardando" (RHRequests.tsx:206), para
-  // o painel não divergir do resto da tela.
-  const EM_ABERTO = ['Pendente de Aprovação', 'Em Aprovação', 'Enviada', 'Em Análise'];
-  const aprovacoesPendentes = useMemo(
-    () => config.solicitacoes.filter(r => EM_ABERTO.includes(r.status)).length,
-    [config.solicitacoes]
+  // Os atalhos anunciam exatamente o que a tela que eles abrem lista — mesma
+  // função, mesmo recorte. Contar "tudo em aberto" mostrava a base inteira a
+  // quem, em Minhas Aprovações, só vê as alçadas que são dele.
+  const minhasAprovacoes = useMemo(
+    () => listarMinhasAprovacoes(config.solicitacoes, config.processos, config.usuarioAtual, config.grupos).length,
+    [config.solicitacoes, config.processos, config.usuarioAtual, config.grupos]
+  );
+  const tarefasPendentes = useMemo(
+    () => listarTarefasDaCentral(config.tarefas).length,
+    [config.tarefas]
   );
 
   const enviarPauta = () => {
@@ -419,7 +425,7 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
                       <Badge variant="blue" size="sm">{naoLidas} NOVAS</Badge>
                     </div>
 
-                    {aprovacoesPendentes > 0 && (
+                    {minhasAprovacoes > 0 && (
                       <button
                         onClick={() => { setNotificacoesAbertas(false); onNavigate?.('approvals'); }}
                         className="w-full p-4 border-b border-gray-50 hover:bg-orange-50/40 transition-colors text-left flex items-center gap-3"
@@ -429,7 +435,7 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
                         </div>
                         <div className="min-w-0">
                           <p className="text-[13px] font-black text-gray-900 leading-tight">
-                            {aprovacoesPendentes} solicitaç{aprovacoesPendentes === 1 ? 'ão' : 'ões'} aguardando aprovação
+                            {minhasAprovacoes} solicitaç{minhasAprovacoes === 1 ? 'ão' : 'ões'} aguardando a sua aprovação
                           </p>
                           <p className="text-[12px] text-gray-500">Abrir Minhas Aprovações</p>
                         </div>
@@ -453,7 +459,7 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
                           </div>
                         ))
                       ) : (
-                        aprovacoesPendentes === 0 && (
+                        minhasAprovacoes === 0 && (
                           <div className="p-8 text-center">
                             <Bell size={24} className="mx-auto text-gray-200 mb-2" />
                             <p className="text-[13px] font-bold text-gray-400">Nenhuma notificação</p>
@@ -583,7 +589,9 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
                 </div>
                 <div>
                   <h4 className="text-[14px] font-bold text-gray-900">Central de Tarefas</h4>
-                  <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">12 Ações pendentes</p>
+                  <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">
+                    {tarefasPendentes} {tarefasPendentes === 1 ? 'Ação pendente' : 'Ações pendentes'}
+                  </p>
                 </div>
                 <ChevronRight className="ml-auto text-orange-400 group-hover:translate-x-1 transition-transform" size={20} />
               </div>
@@ -595,7 +603,9 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
                 </div>
                 <div>
                   <h4 className="text-[14px] font-bold text-gray-900">Minhas Aprovações</h4>
-                  <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">4 Solicitações</p>
+                  <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">
+                    {minhasAprovacoes} {minhasAprovacoes === 1 ? 'Solicitação' : 'Solicitações'}
+                  </p>
                 </div>
                 <ChevronRight className="ml-auto text-blue-400 group-hover:translate-x-1 transition-transform" size={20} />
               </div>

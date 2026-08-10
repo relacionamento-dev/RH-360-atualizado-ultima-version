@@ -256,3 +256,33 @@ export function isPendingApprover(
   // 3. Perfil que responde pelo tipo de alçada.
   return (PERFIS_POR_ALCADA[nivel.responsibilityType] || []).includes(user.profile);
 }
+
+/**
+ * Mesma pergunta de `isPendingApprover`, mas resolvendo o processo a partir da
+ * lista — `tipoProcesso` com fallback em `processId`. Sem isso é fácil chamar a
+ * função com `undefined` e cair sempre na cascata padrão.
+ */
+export function ehMinhaAprovacao(
+  req: RHRequest,
+  processos: RHProcess[],
+  user: Pick<User, 'id' | 'name' | 'profile' | 'groups'>,
+  grupos: Group[] = []
+): boolean {
+  const processo = processos.find(p => p.id === (req.tipoProcesso || req.processId));
+  return isPendingApprover(req, processo, user, grupos);
+}
+
+/**
+ * O recorte exato da tela "Minhas Aprovações". Todo contador de aprovações
+ * pendentes (atalho da Intranet, sino de notificações) sai daqui: o número do
+ * atalho e o número de linhas da tela que ele abre têm que ser o mesmo — contar
+ * "tudo em aberto" mostrava a base inteira para quem só aprova uma alçada.
+ */
+export function listarMinhasAprovacoes(
+  solicitacoes: RHRequest[],
+  processos: RHProcess[],
+  user: Pick<User, 'id' | 'name' | 'profile' | 'groups'>,
+  grupos: Group[] = []
+): RHRequest[] {
+  return solicitacoes.filter(req => ehMinhaAprovacao(req, processos, user, grupos));
+}

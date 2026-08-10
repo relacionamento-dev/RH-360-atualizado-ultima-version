@@ -630,15 +630,23 @@ export interface RHRequest {
   status: RequestStatus;
   solicitante: string;
   requesterId?: string;
+  /**
+   * Dados de quem abriu, copiados na abertura. É FALLBACK, não fonte: quem
+   * exibe resolve pelo cadastro (`utils/identidade`), porque a ficha muda
+   * (promoção, transferência) e o snapshot não. Os campos cadastrais são
+   * opcionais justamente porque conta de sistema não tem ficha — antes eram
+   * obrigatórios e o seed preenchia com matrícula de outra pessoa para
+   * satisfazer o tipo.
+   */
   requesterSnapshot?: {
     avatar?: string;
     name: string;
-    registration: string;
-    email: string;
-    role: string;
-    department: string;
-    costCenter: string;
-    branch: string;
+    registration?: string;
+    email?: string;
+    role?: string;
+    department?: string;
+    costCenter?: string;
+    branch?: string;
     requestedAt?: string;
   };
   requestedAt?: string;

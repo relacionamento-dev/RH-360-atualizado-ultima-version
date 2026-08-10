@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, Building2, ShieldCheck, 
   Users, ClipboardList, AlertCircle, TrendingDown,
@@ -6,18 +6,30 @@ import {
   Search, ChevronDown, Plus
 } from 'lucide-react';
 import { Button } from './ui/Button';
+import { useAppConfig } from '../contexts/AppConfigContext';
+import { resumoDaOperacao, formatarPercentual } from '../utils/visaoGeral';
+import { MiniBarrasMensais } from './ui/MiniBarrasMensais';
 
 interface LoginProps {
   onLogin: (email: string, password: string) => { success: boolean; message?: string };
 }
 
 export default function Login({ onLogin }: LoginProps) {
+  const { config } = useAppConfig();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberAccess, setRememberAccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // O painel ao lado do formulário mostra a operação REAL da base (a tela de
+  // login já roda dentro do AppConfigProvider). Antes eram números decorativos
+  // — headcount 184 — que o primeiro acesso ao Dashboard desmentia.
+  const resumo = useMemo(
+    () => resumoDaOperacao(config.colaboradores, config.solicitacoes, config.processos),
+    [config.colaboradores, config.solicitacoes, config.processos]
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,7 +54,8 @@ export default function Login({ onLogin }: LoginProps) {
         </div>
         <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-gray-200 shadow-sm">
           <Building2 size={16} className="text-gray-400" />
-          <span className="text-[13px] font-bold text-gray-600">Empresa: <span className="text-gray-900">RH360 Corporate</span></span>
+          {/* Nome da empresa vem do cadastro (Central Adm), não do texto fixo. */}
+          <span className="text-[13px] font-bold text-gray-600">Empresa: <span className="text-gray-900">{config.empresas[0]?.name || config.appName || 'RH360'}</span></span>
           <ChevronDown size={14} className="text-gray-400 ml-1" />
         </div>
       </header>
@@ -65,77 +78,73 @@ export default function Login({ onLogin }: LoginProps) {
           <div className="bg-white rounded-[24px] border border-gray-100 shadow-[0_12px_40px_rgba(0,0,0,0.04)] p-8 space-y-8">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-gray-900">Visão geral da operação</h3>
+              {/* "Este mês" dava a entender um recorte que o painel não faz: os
+                  números são a base inteira, no estado em que ela está agora. */}
               <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200 text-[12px] font-bold text-gray-500">
-                Este mês <ChevronDown size={14} />
+                Base completa
               </div>
             </div>
 
             {/* KPI Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <KPICard 
+              <KPICard
                 icon={<Users className="text-blue-500" />}
                 label="Headcount Ativo"
-                value="184"
-                subline="+3 no mês / Total colaboradores"
+                value={String(resumo.headcount)}
+                subline={`+${resumo.admitidosNoMes} no mês / ${resumo.totalColaboradores} cadastrados`}
               />
-              <KPICard 
+              <KPICard
                 icon={<ClipboardList className="text-orange-500" />}
                 label="Solicitações"
-                value="14"
-                subline="14 processos / Em andamento"
+                value={String(resumo.emAndamento)}
+                subline={`${resumo.processosEmAndamento} processos / Em andamento`}
               />
-              <KPICard 
+              <KPICard
                 icon={<AlertCircle className="text-red-500" />}
                 label="SLA Estourado"
-                value="2"
+                value={String(resumo.slaEstourado)}
                 valueColor="text-red-500"
-                subline="Processos / Atrasados"
+                subline="Solicitações / SLA crítico"
               />
-              <KPICard 
+              <KPICard
                 icon={<TrendingDown className="text-green-500" />}
                 label="Turnover"
-                value="2,4%"
-                subline="Meta: 2,0% / Mês atual"
+                value={`${formatarPercentual(resumo.turnover)}%`}
+                subline={`${resumo.desligados} de ${resumo.totalColaboradores} / Vínculos encerrados`}
               />
             </div>
 
             {/* Bottom Blocks */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
-              {/* Mini Chart */}
+              {/* Mini Chart — barras com o volume real de aberturas por mês */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h4 className="text-[12px] font-bold text-gray-400 uppercase tracking-wider">Solicitações por mês</h4>
+                  <span className="text-[10px] font-bold text-gray-400 tabular-nums">
+                    Pico: {resumo.pico.total} em {resumo.pico.labelCompleto}
+                  </span>
                 </div>
-                <div className="h-24 w-full relative flex items-end gap-1">
-                  {/* Simple Mock Chart */}
-                  <div className="absolute inset-x-0 bottom-0 h-[1px] bg-gray-100"></div>
-                  <svg className="w-full h-full" viewBox="0 0 200 60">
-                    <path 
-                      d="M0 50 Q25 45 50 30 T100 40 T150 20 T200 35" 
-                      fill="none" 
-                      stroke="#F26522" 
-                      strokeWidth="2"
-                    />
-                    <circle cx="150" cy="20" r="3" fill="#F26522" />
-                    <rect x="140" y="5" width="20" height="10" rx="2" fill="#F26522" opacity="0.1" />
-                    <text x="142" y="13" fontSize="6" fontWeight="bold" fill="#F26522">MAIO/25</text>
-                  </svg>
-                  <div className="flex justify-between w-full mt-2 text-[8px] font-bold text-gray-300">
-                    <span>JAN</span><span>FEV</span><span>MAR</span><span>ABR</span><span>MAI</span><span>JUN</span><span>JUL</span><span>AGO</span>
-                  </div>
-                </div>
+                <MiniBarrasMensais meses={resumo.porMes} pico={resumo.pico.total} />
               </div>
 
               {/* Pending List */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h4 className="text-[12px] font-bold text-gray-400 uppercase tracking-wider">Pendências por processo</h4>
-                  <button className="text-[10px] font-bold text-orange-500 uppercase">Ver todas</button>
+                  <span className="text-[10px] font-bold text-gray-400 tabular-nums">{resumo.emAndamento} em aberto</span>
                 </div>
                 <div className="space-y-3">
-                  <PendingItem label="Admissão" date="Hoje" dotColor="bg-red-500" />
-                  <PendingItem label="Férias" date="Hoje" dotColor="bg-red-500" />
-                  <PendingItem label="Reembolso" date="Amanhã" dotColor="bg-amber-500" />
+                  {resumo.pendenciasPorProcesso.slice(0, 3).map(p => (
+                    <PendingItem
+                      key={p.nome}
+                      label={p.nome}
+                      detail={`${p.total} em aberto`}
+                      dotColor={p.criticos > 0 ? 'bg-red-500' : 'bg-amber-500'}
+                    />
+                  ))}
+                  {resumo.pendenciasPorProcesso.length === 0 && (
+                    <p className="text-[12px] font-medium text-gray-400">Nenhuma solicitação em aberto.</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -273,17 +282,17 @@ function KPICard({ icon, label, value, subline, valueColor = "text-gray-900" }: 
   );
 }
 
-function PendingItem({ label, date, dotColor }: { label: string, date: string, dotColor: string }) {
+function PendingItem({ label, detail, dotColor }: { label: string, detail: string, dotColor: string }) {
   return (
     <div className="flex items-center justify-between p-3 bg-gray-50/50 rounded-xl border border-gray-100/50">
-      <div className="flex items-center gap-3">
-        <div className="p-1.5 bg-white rounded-lg shadow-sm">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="p-1.5 bg-white rounded-lg shadow-sm shrink-0">
           <Search size={14} className="text-gray-400" />
         </div>
-        <span className="text-[13px] font-bold text-gray-700">{label}</span>
+        <span className="text-[13px] font-bold text-gray-700 truncate" title={label}>{label}</span>
       </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[11px] font-bold text-gray-400">{date}</span>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-[11px] font-bold text-gray-400 tabular-nums">{detail}</span>
         <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`}></div>
       </div>
     </div>

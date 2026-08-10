@@ -2,6 +2,7 @@ import { Employee, RHProcess, RHRequest, Group, Job, Application, Task, Announce
 import { criarBlocosAdmissao } from './utils/admissaoDigital';
 import { ETAPA_ENCERRAMENTO } from './utils/desligamento';
 import { comFichaCompleta } from './utils/fichaColaborador';
+import { matriculaDoCadastro } from './utils/identidade';
 
 /**
  * Blocos de demonstração da Admissão Digital derivados da definição canônica
@@ -218,7 +219,10 @@ export const DEMO_USERS: User[] = [
     scope: 'global',
     email: 'admin@rh360.demo',
     password: '123',
-    employeeId: 'EMP-006',
+    // Conta de sistema, sem ficha no cadastro (o `EMP-006` que estava aqui é a
+    // Juliana Costa, que tem a própria conta em COLAB-002). Sem vínculo ela não
+    // tem matrícula — e é melhor a tela mostrar "—" do que emprestar o número
+    // de outra pessoa, que era o que o snapshot fazia com o '00001'.
     status: 'Ativo'
   },
   {
@@ -270,7 +274,7 @@ export const DEMO_USERS: User[] = [
     scope: 'proprio',
     email: 'colaborador@rh360.demo',
     password: '123',
-    employeeId: 'EMP-001',
+    employeeId: 'EMP-006', // Juliana Costa (o EMP-001 daqui era o Carlos Eduardo)
     status: 'Ativo'
   },
   {
@@ -283,6 +287,7 @@ export const DEMO_USERS: User[] = [
     scope: 'empresa',
     email: 'ana.paula@rh360.demo',
     password: 'RHdp123!',
+    employeeId: 'EMP-004',
     status: 'Ativo'
   },
   {
@@ -295,6 +300,7 @@ export const DEMO_USERS: User[] = [
     scope: 'equipe',
     email: 'marcos.vinicius@rh360.demo',
     password: 'Gestor123!',
+    employeeId: 'EMP-005',
     status: 'Ativo'
   },
   {
@@ -358,7 +364,12 @@ export const INITIAL_ACCESSOS: Accesso[] = [
 // desses dados por `comFichaCompleta` (ver a exportação logo após o array): as
 // abas do Perfil 360 nascem preenchidas e coerentes com a data de admissão de
 // cada um, sem 29 blocos escritos à mão.
-const EMPLOYEES_BASE: Employee[] = [
+//
+// A MATRÍCULA NÃO É DECLARADA AQUI. Ela sai do id (`matriculaDoCadastro`), e é
+// por isso que o tipo é `Omit<..., 'registration'>`: enquanto era digitada, a
+// numeração misturava faixas sem critério (000xx, 100xx, 200xx) e o mesmo
+// número reaparecia nos snapshots das solicitações apontando para outra pessoa.
+const EMPLOYEES_BASE: Omit<Employee, 'registration'>[] = [
   {
     id: 'EMP-001',
     name: 'Carlos Eduardo',
@@ -378,7 +389,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-005',
     manager: 'Marcos Vinicius',
     costCenter: 'TI-001',
-    registration: '10001',
     cpf: '123.456.789-00',
     avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=200&h=200&fit=crop',
     // Dependente nomeado à mão; o resto da ficha (inclusive o histórico de
@@ -406,7 +416,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-004',
     manager: 'Ana Paula Lima',
     costCenter: 'RH-001',
-    registration: '10002',
     cpf: '234.567.890-11',
     avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=200&h=200&fit=crop'
   },
@@ -429,7 +438,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'BOARD',
     manager: 'Board',
     costCenter: 'ADM-001',
-    registration: '00001',
     cpf: '345.678.901-22',
     avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?q=80&w=200&h=200&fit=crop',
   },
@@ -452,7 +460,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-003',
     manager: 'Ricardo Silva',
     costCenter: 'RH-001',
-    registration: '00002',
     cpf: '456.789.012-33',
     avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&h=200&fit=crop'
   },
@@ -475,7 +482,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-003',
     manager: 'Ricardo Silva',
     costCenter: 'TI-001',
-    registration: '00003',
     cpf: '567.890.123-44',
     avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=200&h=200&fit=crop'
   },
@@ -499,7 +505,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-005',
     manager: 'Marcos Vinicius',
     costCenter: 'TI-001',
-    registration: '10006',
     cpf: '678.901.234-55',
     avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?q=80&w=200&h=200&fit=crop'
   },
@@ -522,7 +527,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-005',
     manager: 'Marcos Vinicius',
     costCenter: 'TI-001',
-    registration: '10007',
     cpf: '789.012.345-66',
     avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=200&h=200&fit=crop'
   },
@@ -545,7 +549,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-005',
     manager: 'Marcos Vinicius',
     costCenter: 'TI-001',
-    registration: '10008',
     cpf: '890.123.456-77',
     avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=200&h=200&fit=crop'
   },
@@ -568,7 +571,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-019',
     manager: 'Leonardo Vinci',
     costCenter: 'COM-001',
-    registration: '10009',
     cpf: '901.234.567-88',
     avatar: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?q=80&w=200&h=200&fit=crop'
   },
@@ -591,7 +593,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-019',
     manager: 'Leonardo Vinci',
     costCenter: 'COM-001',
-    registration: '10010',
     cpf: '012.345.678-99',
     avatar: 'https://images.unsplash.com/photo-1567532939604-b6c5b0ad2e01?q=80&w=200&h=200&fit=crop'
   },
@@ -614,7 +615,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-005',
     manager: 'Marcos Vinicius',
     costCenter: 'TI-001',
-    registration: '20001',
     cpf: '111.222.333-44',
     avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=200&h=200&fit=crop'
   },
@@ -637,7 +637,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-004',
     manager: 'Ana Paula Lima',
     costCenter: 'RH-001',
-    registration: '10012',
     cpf: '222.333.444-55',
     avatar: 'https://images.unsplash.com/photo-1554151228-14d9def656e4?q=80&w=200&h=200&fit=crop'
   },
@@ -660,7 +659,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-018',
     manager: 'Karina Lopes',
     costCenter: 'FIN-001',
-    registration: '10013',
     cpf: '333.444.555-66',
     avatar: 'https://images.unsplash.com/photo-1542909168-82c3e7fdca5c?q=80&w=200&h=200&fit=crop'
   },
@@ -683,7 +681,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-003',
     manager: 'Ricardo Silva',
     costCenter: 'JUR-001',
-    registration: '10014',
     cpf: '444.555.666-77',
     avatar: 'https://images.unsplash.com/photo-1598550874175-4d0fe4a2c90b?q=80&w=200&h=200&fit=crop'
   },
@@ -706,7 +703,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-005',
     manager: 'Marcos Vinicius',
     costCenter: 'OPE-001',
-    registration: '10015',
     cpf: '555.666.777-88',
     avatar: 'https://images.unsplash.com/photo-1504257432389-52343af06ae3?q=80&w=200&h=200&fit=crop'
   },
@@ -729,7 +725,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-004',
     manager: 'Ana Paula Lima',
     costCenter: 'RH-001',
-    registration: '10016',
     cpf: '666.777.888-99',
     avatar: 'https://images.unsplash.com/photo-1531123897727-8f129e16fd3c?q=80&w=200&h=200&fit=crop'
   },
@@ -752,7 +747,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-011',
     manager: 'Daniel Rocha',
     costCenter: 'TI-001',
-    registration: '20017',
     cpf: '777.888.999-00',
     avatar: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?q=80&w=200&h=200&fit=crop'
   },
@@ -775,7 +769,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-003',
     manager: 'Ricardo Silva',
     costCenter: 'FIN-001',
-    registration: '10018',
     cpf: '888.999.000-11',
     avatar: 'https://images.unsplash.com/photo-1567532939604-b6c5b0ad2e01?q=80&w=200&h=200&fit=crop'
   },
@@ -798,7 +791,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-003',
     manager: 'Ricardo Silva',
     costCenter: 'COM-001',
-    registration: '10019',
     cpf: '999.000.111-22',
     avatar: 'https://images.unsplash.com/photo-1463453091185-61582044d556?q=80&w=200&h=200&fit=crop'
   },
@@ -821,7 +813,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-004',
     manager: 'Ana Paula Lima',
     costCenter: 'RH-001',
-    registration: '10020',
     cpf: '000.111.222-33',
     avatar: 'https://images.unsplash.com/photo-1594744803329-e58b31de8bf5?q=80&w=200&h=200&fit=crop'
   },
@@ -844,7 +835,6 @@ const EMPLOYEES_BASE: Employee[] = [
     salary: 10000,
     manager: 'Marcos Vinicius',
     costCenter: 'TI-001',
-    registration: '90001',
     cpf: '111.111.111-11'
   },
   {
@@ -866,7 +856,6 @@ const EMPLOYEES_BASE: Employee[] = [
     salary: 15000,
     manager: 'Ricardo Silva',
     costCenter: 'COM-001',
-    registration: '90002',
     cpf: '222.222.222-22'
   },
   {
@@ -888,7 +877,6 @@ const EMPLOYEES_BASE: Employee[] = [
     salary: 30000,
     manager: 'Ricardo Silva',
     costCenter: 'OPE-001',
-    registration: '90003',
     cpf: '333.333.333-33'
   },
 
@@ -913,7 +901,6 @@ const EMPLOYEES_BASE: Employee[] = [
     salary: 32000,
     manager: 'Conselho JYNX',
     costCenter: 'TI-001',
-    registration: '80001',
     cpf: '801.111.111-01',
     avatar: 'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?q=80&w=200&h=200&fit=crop'
   },
@@ -936,7 +923,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-024',
     manager: 'Ítalo Silva',
     costCenter: 'TI-001',
-    registration: '80002',
     cpf: '802.222.222-02',
     avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200&h=200&fit=crop'
   },
@@ -959,7 +945,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-025',
     manager: 'Jonathan Oliveira',
     costCenter: 'TI-001',
-    registration: '80003',
     cpf: '803.333.333-03',
     avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=200&h=200&fit=crop'
   },
@@ -982,7 +967,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-025',
     manager: 'Jonathan Oliveira',
     costCenter: 'TI-001',
-    registration: '80004',
     cpf: '804.444.444-04',
     avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=200&h=200&fit=crop'
   },
@@ -1005,7 +989,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-024',
     manager: 'Ítalo Silva',
     costCenter: 'RH-001',
-    registration: '80005',
     cpf: '805.555.555-05',
     avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&h=200&fit=crop'
   },
@@ -1028,7 +1011,6 @@ const EMPLOYEES_BASE: Employee[] = [
     managerId: 'EMP-024',
     manager: 'Ítalo Silva',
     costCenter: 'TI-001',
-    registration: '80000',
     cpf: '800.000.000-00',
     avatar: 'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?q=80&w=200&h=200&fit=crop'
   },
@@ -1056,7 +1038,6 @@ const EMPLOYEES_BASE: Employee[] = [
     salary: 6200,
     manager: 'A definir',
     costCenter: '1010 - ADM',
-    registration: 'AD-90001',
     cpf: '901.111.111-11',
     documents: [],
     admissaoDigital: {
@@ -1163,7 +1144,6 @@ const EMPLOYEES_BASE: Employee[] = [
     salary: 4800,
     manager: 'A definir',
     costCenter: '2020 - TI',
-    registration: 'AD-90002',
     cpf: '902.222.222-22',
     documents: [],
     admissaoDigital: {
@@ -1255,8 +1235,36 @@ const EMPLOYEES_BASE: Employee[] = [
  * (utils/fichaColaborador). Pré-admitidos passam intactos: sem vínculo não há
  * exame periódico, férias nem movimentação — e as abas deles mostram o estado
  * vazio, que é a informação certa.
+ *
+ * A matrícula entra aqui, derivada do id: `EMP-007` → `00007`. Duas pessoas só
+ * colidiriam se tivessem o mesmo id, que é a chave primária do cadastro.
  */
-export const INITIAL_EMPLOYEES: Employee[] = EMPLOYEES_BASE.map(emp => comFichaCompleta(emp));
+export const INITIAL_EMPLOYEES: Employee[] = EMPLOYEES_BASE.map(emp =>
+  comFichaCompleta({ ...emp, registration: matriculaDoCadastro(emp.id) })
+);
+
+/**
+ * Snapshot do solicitante montado A PARTIR DO CADASTRO, pelo id do usuário.
+ *
+ * Nenhuma solicitação do seed digita matrícula, cargo ou setor: era assim que
+ * o "Administrador Demo" saía com a matrícula do Diretor Geral e o mesmo Marcos
+ * Vinicius aparecia como Gerente de TI numa tela e Gerente Comercial noutra.
+ * Conta sem ficha (sistema) fica sem os campos cadastrais — que é o que ela é.
+ */
+const snapshotDoUsuario = (userId: string) => {
+  const usuario = DEMO_USERS.find(u => u.id === userId);
+  const ficha = INITIAL_EMPLOYEES.find(e => e.id === usuario?.employeeId);
+  return {
+    name: ficha?.name || usuario?.name || userId,
+    registration: ficha?.registration,
+    email: usuario?.email || ficha?.email,
+    role: ficha?.role || usuario?.role,
+    department: ficha?.department,
+    costCenter: ficha?.costCenter,
+    branch: ficha?.branch,
+    avatar: ficha?.avatar || usuario?.avatar
+  };
+};
 
 // Helper for default permissions
 const defaultPerms = () => {
@@ -1507,6 +1515,9 @@ const genHist = (req: RHRequest, steps: string[]) => {
 // Helper to generate requests
 const generateInitialRequests = () => {
   let counter = 1;
+  // Assinatura do protocolo de VR/VA sai da ficha de quem assina, não de um
+  // par nome/matrícula digitado.
+  const gestorDemo = INITIAL_EMPLOYEES.find(e => e.id === 'EMP-005')!;
   INITIAL_RH_PROCESSES.forEach(p => {
     // Enhanced data based on process
     const getMockData = (pid: string) => {
@@ -1519,7 +1530,12 @@ const generateInitialRequests = () => {
           valorCreditado: 850.00,
           dataCredito: '05/03/2026',
           confirmacaoRecebimento: true,
-          assinatura: { signed: true, date: '2026-03-06T13:20:00.000Z', name: 'Marcos Vinicius', registration: '00003' },
+          assinatura: {
+            signed: true,
+            date: '2026-03-06T13:20:00.000Z',
+            name: gestorDemo.name,
+            registration: gestorDemo.registration
+          },
           observacao: 'Crédito recebido corretamente.'
         };
         case '7': return { tipoAlteracao: 'Promoção', novoCargo: 'Coordenador Operacional', novoSalario: 9500, vigencia: '2026-09-01', justificativa: 'Destaque na liderança de projetos de automação.' };
@@ -1541,23 +1557,7 @@ const generateInitialRequests = () => {
       origem: 'manual',
       solicitante: counter % 2 === 0 ? 'Administrador Demo' : 'Marcos Vinicius',
       requesterId: counter % 2 === 0 ? 'ADMIN-001' : 'GEST-001',
-      requesterSnapshot: counter % 2 === 0 ? {
-        name: 'Administrador Demo',
-        registration: '00001',
-        email: 'admin@rh360.demo',
-        role: 'Administrador de Sistemas',
-        department: 'TI',
-        costCenter: '1010 - ADM',
-        branch: 'Matriz'
-      } : {
-        name: 'Marcos Vinicius',
-        registration: '00003',
-        email: 'marcos.vinicius@rh360.demo',
-        role: 'Gerente de TI',
-        department: 'Tecnologia',
-        costCenter: 'TI-001',
-        branch: 'Matriz'
-      },
+      requesterSnapshot: snapshotDoUsuario(counter % 2 === 0 ? 'ADMIN-001' : 'GEST-001'),
       alvo: INITIAL_EMPLOYEES[counter % 20].name,
       employeeId: INITIAL_EMPLOYEES[counter % 20].id,
       empresa: INITIAL_EMPLOYEES[counter % 20].company,
@@ -1590,23 +1590,7 @@ const generateInitialRequests = () => {
       origem: 'manual',
       solicitante: counter % 3 === 0 ? 'Carlos Eduardo' : 'Marcos Vinicius',
       requesterId: counter % 3 === 0 ? 'COLAB-001' : 'GEST-001',
-      requesterSnapshot: counter % 3 === 0 ? {
-        name: 'Carlos Eduardo',
-        registration: '10001',
-        email: 'carlos.eduardo@rh360.demo',
-        role: 'Analista de Sistemas',
-        department: 'Desenvolvimento',
-        costCenter: 'TI-001',
-        branch: 'Matriz'
-      } : {
-        name: 'Marcos Vinicius',
-        registration: '00003',
-        email: 'marcos.vinicius@rh360.demo',
-        role: 'Gerente de TI',
-        department: 'Tecnologia',
-        costCenter: 'TI-001',
-        branch: 'Matriz'
-      },
+      requesterSnapshot: snapshotDoUsuario(counter % 3 === 0 ? 'COLAB-001' : 'GEST-001'),
       alvo: INITIAL_EMPLOYEES[(counter + 1) % 20].name,
       employeeId: INITIAL_EMPLOYEES[(counter + 1) % 20].id,
       empresa: INITIAL_EMPLOYEES[(counter + 1) % 20].company,
@@ -1639,15 +1623,7 @@ const generateInitialRequests = () => {
       origem: 'manual',
       solicitante: 'Ana Paula Lima',
       requesterId: 'RH-001',
-      requesterSnapshot: {
-        name: 'Ana Paula Lima',
-        registration: '00002',
-        email: 'ana.paula@rh360.demo',
-        role: 'Gerente de RH',
-        department: 'Recursos Humanos',
-        costCenter: 'RH-001',
-        branch: 'Matriz'
-      },
+      requesterSnapshot: snapshotDoUsuario('RH-001'),
       alvo: INITIAL_EMPLOYEES[(counter + 2) % 20].name,
       employeeId: INITIAL_EMPLOYEES[(counter + 2) % 20].id,
       empresa: INITIAL_EMPLOYEES[(counter + 2) % 20].company,
@@ -1674,6 +1650,7 @@ const generateInitialRequests = () => {
 generateInitialRequests();
 
 // Force RH-2026-0052 for specific requirement
+const alvoDoReq52 = INITIAL_EMPLOYEES.find(e => e.id === 'EMP-004')!;
 const req52: RHRequest = {
   id: 'req-52',
   numero: 'RH-2026-0052',
@@ -1682,20 +1659,19 @@ const req52: RHRequest = {
   processName: 'Alteração Salarial e de Cargo',
   category: 'Cargos e Salários',
   origem: 'manual',
+  // `MGR-001` não existia em DEMO_USERS e o snapshot inventava um segundo
+  // Marcos Vinicius — matrícula '00102', Gerente Comercial do Comercial —
+  // enquanto o cadastro tem um só, Gerente de TI. Agora é o mesmo usuário do
+  // resto do seed, com os dados vindos da ficha.
   solicitante: 'Marcos Vinicius',
-  requesterId: 'MGR-001',
-  requesterSnapshot: {
-    name: 'Marcos Vinicius',
-    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100',
-    registration: '00102',
-    role: 'Gerente Comercial',
-    email: 'marcos.v@rh360.com.br',
-    department: 'Comercial',
-    costCenter: '3030 - COM',
-    branch: 'Matriz'
-  },
-  alvo: 'Ana Paula Lima',
-  employeeId: 'RH-001',
+  requesterId: 'GEST-001',
+  requesterSnapshot: snapshotDoUsuario('GEST-001'),
+  // O alvo é a ficha da Ana Paula Lima (EMP-004). Aqui estava 'RH-001', que é
+  // id de USUÁRIO: não casava com nenhum colaborador e o bloco do alvo abria
+  // sem cargo nem setor.
+  alvo: alvoDoReq52.name,
+  alvoId: alvoDoReq52.id,
+  employeeId: alvoDoReq52.id,
   status: 'Em Análise',
   etapaAtual: 'Aprovação',
   responsavelAtual: 'Ricardo Silva',
@@ -1703,7 +1679,7 @@ const req52: RHRequest = {
   slaStatus: 'normal',
   trail: ['Solicitação', 'Aprovação', 'Conclusão'],
   data: {
-    colaborador: 'Ana Paula Lima',
+    colaborador: alvoDoReq52.name,
     tipo_alteracao: 'Mérito',
     novo_cargo: 'Coordenadora de RH',
     novo_salario: 8500,
@@ -1805,12 +1781,16 @@ generateOnboardingRequests();
 //  - paradas na mão dela, com a alçada atual apontando para o seu id — é o que
 //    `isPendingApprover` (utils/approvalFlow) procura.
 // -----------------------------------------------------------------------
+// Só o id da conta e a ficha que ela usa: nome, cargo e e-mail saem de
+// DEMO_USERS/cadastro na hora de montar o snapshot. As cópias que ficavam aqui
+// já divergiam — o e-mail do Ítalo era 'italo@jynx.com.br' contra o
+// 'italo.silva@jynx.com.br' com que ele realmente entra.
 const CONTAS_DA_DEMO = [
-  { id: 'ADMIN-GERAL-001', nome: 'Administrador Geral', employeeId: 'EMP-029', email: 'admin@jynx.com.br', cargo: 'Administrador Geral' },
-  { id: 'JYNX-001', nome: 'Ítalo Silva', employeeId: 'EMP-024', email: 'italo@jynx.com.br', cargo: 'Administrador Geral' },
+  { id: 'ADMIN-GERAL-001', employeeId: 'EMP-029' },
+  { id: 'JYNX-001', employeeId: 'EMP-024' },
   // A Diretoria também abria "Minhas Solicitações" zerada: ela só aparecia como
   // aprovadora. RH/DP, Gestor e Colaborador já têm pedidos no seed antigo.
-  { id: 'DIR-002', nome: 'Ricardo Silva', employeeId: 'EMP-003', email: 'ricardo.silva@rh360.demo', cargo: 'Diretor Geral' }
+  { id: 'DIR-002', employeeId: 'EMP-003' }
 ];
 
 /** Processos usados nos lotes, com um `data` plausível para cada um. */
@@ -1841,12 +1821,13 @@ const ESTADOS_PARA_APROVAR: { status: RHRequest['status']; sla: RHRequest['slaSt
   { status: 'Em Análise', sla: 'normal' }
 ];
 
-const SOLICITANTES_TERCEIROS = [
-  { id: 'GEST-001', nome: 'Marcos Vinicius', registro: '00003', cargo: 'Gerente de TI', setor: 'Tecnologia', cc: 'TI-001' },
-  { id: 'RH-001', nome: 'Ana Paula Lima', registro: '00002', cargo: 'Gerente de RH', setor: 'Recursos Humanos', cc: 'RH-001' },
-  { id: 'COLAB-001', nome: 'Carlos Eduardo', registro: '10001', cargo: 'Analista de Sistemas', setor: 'Desenvolvimento', cc: 'TI-001' },
-  { id: 'GEST-001', nome: 'Marcos Vinicius', registro: '00003', cargo: 'Gerente de TI', setor: 'Tecnologia', cc: 'TI-001' }
-];
+/**
+ * Quem abre os pedidos que caem na aprovação das contas da demonstração. Só o
+ * id do usuário: nome, matrícula, cargo e setor saem do cadastro na hora de
+ * montar o snapshot — repetir esses campos aqui era mais uma cópia para
+ * divergir da ficha.
+ */
+const SOLICITANTES_TERCEIROS = ['GEST-001', 'RH-001', 'COLAB-001', 'GEST-001'];
 
 const generateDemoAccountRequests = () => {
   // Continua a numeração de onde o seed parou, para não colidir com o contador.
@@ -1856,15 +1837,12 @@ const generateDemoAccountRequests = () => {
 
   CONTAS_DA_DEMO.forEach((conta, contaIdx) => {
     const emp = INITIAL_EMPLOYEES.find(e => e.id === conta.employeeId);
-    const snapshotDaConta = {
-      name: conta.nome,
-      registration: emp?.registration || '00000',
-      email: conta.email,
-      role: conta.cargo,
-      department: emp?.department || 'Tecnologia',
-      costCenter: emp?.costCenter || 'TI-001',
-      branch: emp?.branch || 'Matriz SP'
-    };
+    // Mesma fonte de todo o resto do seed. O `|| '00000'` que ficava aqui era
+    // um valor de reserva que virava matrícula na tela quando o vínculo
+    // falhava — e falhar em silêncio é justamente o que não pode acontecer com
+    // o número que identifica a pessoa.
+    const snapshotDaConta = snapshotDoUsuario(conta.id);
+    const nomeDaConta = snapshotDaConta.name;
 
     // --- Lote 1: abertas pela conta ---
     ESTADOS_PROPRIOS.forEach((estado, i) => {
@@ -1882,17 +1860,17 @@ const generateDemoAccountRequests = () => {
         processName: processo.name,
         category: processo.category,
         origem: 'manual',
-        solicitante: conta.nome,
+        solicitante: nomeDaConta,
         requesterId: conta.id,
         requesterSnapshot: snapshotDaConta,
-        alvo: conta.nome,
+        alvo: nomeDaConta,
         employeeId: conta.employeeId,
         empresa: emp?.company || 'RH360 Corporate',
         filial: emp?.branch || 'Matriz SP',
         centroCusto: emp?.costCenter || 'TI-001',
         status: estado.status,
         etapaAtual: estado.etapa,
-        responsavelAtual: concluida ? '' : estado.status === 'Devolvida' ? conta.nome : 'RH da Filial',
+        responsavelAtual: concluida ? '' : estado.status === 'Devolvida' ? nomeDaConta : 'RH da Filial',
         slaVencimento: new Date(Date.now() + (concluida ? -3 : 2) * 24 * 3600000).toISOString(),
         slaStatus: estado.sla,
         trail: ['Solicitação', 'Aprovação', 'Conclusão'],
@@ -1919,8 +1897,8 @@ const generateDemoAccountRequests = () => {
         historico: [
           {
             id: `h-${numero}-1`,
-            autor: conta.nome,
-            userName: conta.nome,
+            autor: nomeDaConta,
+            userName: nomeDaConta,
             userId: conta.id,
             etapa: 'Solicitação',
             de: 'Novo',
@@ -1963,7 +1941,8 @@ const generateDemoAccountRequests = () => {
     ESTADOS_PARA_APROVAR.forEach((estado, i) => {
       const modelo = MODELOS_DE_PEDIDO[(contaIdx * 4 + i + 4) % MODELOS_DE_PEDIDO.length];
       const processo = INITIAL_RH_PROCESSES.find(p => p.id === modelo.processId)!;
-      const solicitante = SOLICITANTES_TERCEIROS[i % SOLICITANTES_TERCEIROS.length];
+      const solicitanteId = SOLICITANTES_TERCEIROS[i % SOLICITANTES_TERCEIROS.length];
+      const solicitante = snapshotDoUsuario(solicitanteId);
       const alvoEmp = INITIAL_EMPLOYEES[(contaIdx * 4 + i) % 20];
       const aberto = new Date(Date.now() - (1 + i) * 24 * 3600000).toISOString();
       const numero = proximoNumero();
@@ -1976,18 +1955,11 @@ const generateDemoAccountRequests = () => {
         processName: processo.name,
         category: processo.category,
         origem: 'manual',
-        solicitante: solicitante.nome,
-        requesterId: solicitante.id,
-        requesterSnapshot: {
-          name: solicitante.nome,
-          registration: solicitante.registro,
-          email: `${solicitante.nome.toLowerCase().replace(/\s+/g, '.')}@rh360.demo`,
-          role: solicitante.cargo,
-          department: solicitante.setor,
-          costCenter: solicitante.cc,
-          branch: 'Matriz SP'
-        },
+        solicitante: solicitante.name,
+        requesterId: solicitanteId,
+        requesterSnapshot: solicitante,
         alvo: alvoEmp.name,
+        alvoId: alvoEmp.id,
         employeeId: alvoEmp.id,
         empresa: alvoEmp.company,
         filial: alvoEmp.branch,
@@ -1996,7 +1968,7 @@ const generateDemoAccountRequests = () => {
         // A alçada pendente aponta para a conta: é isso que faz a solicitação
         // aparecer em "Minhas Aprovações" dela e em nenhuma outra.
         etapaAtual: 'Aprovação Administrativa',
-        responsavelAtual: conta.nome,
+        responsavelAtual: nomeDaConta,
         slaVencimento: new Date(Date.now() + (estado.sla === 'critical' ? -1 : 1) * 24 * 3600000).toISOString(),
         slaStatus: estado.sla,
         trail: ['Solicitação', 'Aprovação Administrativa', 'Conclusão'],
@@ -2006,7 +1978,7 @@ const generateDemoAccountRequests = () => {
             name: 'Aprovação Administrativa',
             order: 1,
             responsibilityType: 'pessoa',
-            responsibleLabel: conta.nome,
+            responsibleLabel: nomeDaConta,
             responsibleUserId: conta.id,
             sla: 24,
             slaUnit: 'h',
@@ -2021,16 +1993,16 @@ const generateDemoAccountRequests = () => {
         historico: [
           {
             id: `h-${numero}-1`,
-            autor: solicitante.nome,
-            userName: solicitante.nome,
-            userId: solicitante.id,
+            autor: solicitante.name,
+            userName: solicitante.name,
+            userId: solicitanteId,
             etapa: 'Solicitação',
             de: 'Novo',
             para: 'Aprovação Administrativa',
             action: 'Envio',
             dataHora: aberto,
             timestamp: aberto,
-            comentario: `Solicitação enviada. Aguardando aprovação de ${conta.nome}.`
+            comentario: `Solicitação enviada. Aguardando aprovação de ${nomeDaConta}.`
           }
         ]
       });
@@ -2064,15 +2036,7 @@ const reqDesligamentoEncerramento: RHRequest = {
   origem: 'manual',
   solicitante: 'Marcos Vinicius',
   requesterId: 'GEST-001',
-  requesterSnapshot: {
-    name: 'Marcos Vinicius',
-    registration: '00003',
-    email: 'marcos.vinicius@rh360.demo',
-    role: 'Gerente de TI',
-    department: 'Tecnologia',
-    costCenter: 'TI-001',
-    branch: 'Matriz'
-  },
+  requesterSnapshot: snapshotDoUsuario('GEST-001'),
   alvo: desligadoDemo.name,
   alvoId: desligadoDemo.id,
   employeeId: desligadoDemo.id,

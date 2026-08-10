@@ -17,7 +17,7 @@ import { Avatar, SLABar, EmptyState } from './ui/Misc';
 import { Modal } from './ui/Misc';
 import { Select } from './ui/Select';
 import { getStatusVariant, isPendingStatus } from '../utils/requestStatus';
-import { isPendingApprover } from '../utils/approvalFlow';
+import { ehMinhaAprovacao } from '../utils/approvalFlow';
 import { podeAbrirPeloFluxoGenerico } from '../utils/permissions';
 import { useAppConfig } from '../contexts/AppConfigContext';
 import OnboardingManager from './process-managers/OnboardingManager';
@@ -276,9 +276,9 @@ function ConsultationPanel({ type, onOpenDetail }: { type: 'mine' | 'approvals',
       return req.requesterId === config.usuarioAtual.id || req.solicitante === config.usuarioAtual.name;
     }
     // Paradas NA MÃO do usuário: ele responde pela alçada pendente agora.
-    // Mesmo motor usado pelo botão Aprovar (utils/approvalFlow).
-    const processo = config.processos.find(p => p.id === (req.tipoProcesso || req.processId));
-    return isPendingApprover(req, processo, config.usuarioAtual, config.grupos);
+    // Mesmo motor usado pelo botão Aprovar e pelo atalho da Intranet
+    // (utils/approvalFlow).
+    return ehMinhaAprovacao(req, config.processos, config.usuarioAtual, config.grupos);
   });
 
   // Contadores derivados do MESMO array já filtrado que popula a lista, usando o

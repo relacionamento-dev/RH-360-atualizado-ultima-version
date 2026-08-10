@@ -16,6 +16,7 @@ import { computeDerivedFields } from '../utils/computedFields';
 import { isEmptyFieldValue } from '../utils/formValues';
 import { buildApprovalChain } from '../utils/approvalFlow';
 import { ETAPA_ENCERRAMENTO } from '../utils/desligamento';
+import { resolverSolicitante } from '../utils/identidade';
 import { Button } from './ui/Button';
 import RequesterCard from './RequesterCard';
 
@@ -142,24 +143,30 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Requester snapshot (current or from request)
+  // Cabeçalho "Identificação do Solicitante". Em edição, resolve pelo cadastro
+  // (utils/identidade) em vez de reexibir o snapshot congelado; em pedido novo,
+  // é a ficha de quem está logado. Nada de sentinela '00000'/'N/A': campo sem
+  // ficha mostra "—", que é o que o ReadOnlyField já faz com valor vazio.
   const requesterData = useMemo(() => {
-    if (isEditing && existingRequest?.requesterSnapshot) {
-      return { ...existingRequest.requesterSnapshot, requestedAt: existingRequest.createdAt };
+    if (isEditing && existingRequest) {
+      return {
+        ...resolverSolicitante(existingRequest, config.usuariosDemo, config.colaboradores),
+        requestedAt: existingRequest.createdAt
+      };
     }
     const employee = config.colaboradores.find(e => e.id === config.usuarioAtual.employeeId);
     return {
-      avatar: config.usuarioAtual.avatar,
-      name: config.usuarioAtual.name,
-      registration: employee?.registration || '00000',
+      avatar: employee?.avatar || config.usuarioAtual.avatar,
+      name: employee?.name || config.usuarioAtual.name,
+      registration: employee?.registration,
       email: config.usuarioAtual.email,
-      role: config.usuarioAtual.role,
-      department: employee?.department || 'N/A',
-      costCenter: employee?.costCenter || 'N/A',
-      branch: employee?.branch || 'N/A',
+      role: employee?.role || config.usuarioAtual.role,
+      department: employee?.department,
+      costCenter: employee?.costCenter,
+      branch: employee?.branch,
       requestedAt: new Date().toISOString(),
     };
-  }, [config.usuarioAtual, config.colaboradores, isEditing, existingRequest]);
+  }, [config.usuarioAtual, config.usuariosDemo, config.colaboradores, isEditing, existingRequest]);
 
   // Handle TargetMode logic
   useEffect(() => {
