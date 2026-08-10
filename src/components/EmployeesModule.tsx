@@ -10,6 +10,7 @@ import { PageHeader } from './ui/FormAndHeader';
 import { Avatar, Modal } from './ui/Misc';
 import { Select } from './ui/Select';
 import { useAppConfig } from '../contexts/AppConfigContext';
+import { colaboradoresNoEscopo, contextoDeEscopoDoConfig } from '../utils/escopo';
 import { isSuperAdmin } from '../utils/permissions';
 
 interface EmployeesModuleProps {
@@ -18,7 +19,13 @@ interface EmployeesModuleProps {
 
 export default function EmployeesModule({ onNavigate }: EmployeesModuleProps) {
   const { config } = useAppConfig();
-  const employees = config.colaboradores;
+  // A lista é o que o ESCOPO do perfil alcança, não a base inteira: um Gestor
+  // enxerga a própria equipe, um Colaborador só a própria ficha. Antes toda
+  // ficha da empresa aparecia para quem tivesse a tela no menu.
+  const employees = useMemo(
+    () => colaboradoresNoEscopo(config.usuarioAtual, contextoDeEscopoDoConfig(config)),
+    [config]
+  );
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isNewEmployeeModalOpen, setIsNewEmployeeModalOpen] = useState(false);

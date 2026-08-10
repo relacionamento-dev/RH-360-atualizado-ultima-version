@@ -11,7 +11,8 @@ import { useAppConfig } from '../contexts/AppConfigContext';
 import { Avatar, Modal, Badge } from './ui/Misc';
 import { Button } from './ui/Button';
 import { RHProcess, ProcessPermission, RHRequest, User } from '../types';
-import { isSuperAdmin, podeAbrirPeloFluxoGenerico } from '../utils/permissions';
+import { isSuperAdmin, podeAbrirPeloFluxoGenerico, podeAcessarView, ViewDoMenu } from '../utils/permissions';
+import { empresasDoUsuario, podeTrocarDeEmpresa } from '../utils/empresa';
 import RHRequestForm from './RHRequestForm';
 import RequestDetail from './RequestDetail';
 
@@ -44,7 +45,7 @@ export default function AppShell({
   currentView, 
   onNavigate
 }: AppShellProps) {
-  const { config, updateConfig, resetDemo, createRequest, isAuthorized, logout } = useAppConfig();
+  const { config, updateConfig, resetDemo, createRequest, isAuthorized, logout, trocarEmpresa } = useAppConfig();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
@@ -52,6 +53,11 @@ export default function AppShell({
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showEmpresaMenu, setShowEmpresaMenu] = useState(false);
+
+  // Empresas que este usuário pode operar e se ele pode trocar entre elas.
+  const empresasDisponiveis = empresasDoUsuario(config.usuarioAtual, config.empresas);
+  const podeTrocar = podeTrocarDeEmpresa(config.usuarioAtual, config.empresas);
 
   const irParaInicio = () => {
     setIsMobileMenuOpen(false);
@@ -117,11 +123,11 @@ export default function AppShell({
     'Clock': <Clock />,
   };
 
-  const userProfile = config.usuarioAtual.profile;
-  // Administrador Geral vê todos os menus. Vale para o usuário efetivo: ao
-  // "Visualizar como", `usuarioAtual` é o perfil simulado e o menu encolhe
-  // conforme as regras dele.
-  const hasFullAccess = isSuperAdmin(config.usuarioAtual);
+  // Quais telas este perfil alcança é decisão de `podeAcessarView`
+  // (utils/permissions), não mais de cinco `filter` escritos aqui — os atalhos
+  // da Intranet fazem a mesma pergunta e precisam da mesma resposta. Vale para
+  // o usuário EFETIVO: ao "Visualizar como", `usuarioAtual` é o perfil simulado
+  // e o menu encolhe conforme as regras dele.
   const realUser = config.originalUser || config.usuarioAtual;
   const realUserProfile = realUser.profile;
   const isImpersonating = !!config.originalUser;
@@ -136,19 +142,27 @@ export default function AppShell({
     'Colaborador': 'COLAB-001'
   };
 
+  // "Visualizar como" percorre os PERFIS CADASTRADOS, não uma lista fixa de
+  // seis nomes: um perfil criado na Central Adm aparece aqui na hora, que é
+  // como se testa o que ele enxerga.
   const impersonationOptions = (realUserProfile === 'Administrador Geral' || realUserProfile === 'Administrador')
-    ? ['Administrador Geral', 'Administrador', 'Diretoria', 'RH/DP', 'Gestor', 'Colaborador']
-        .filter(profile => {
-          if (realUserProfile === 'Administrador') {
-            return profile !== 'Administrador Geral';
-          }
-          return true;
-        })
-        .map(profile => {
-          const representative = config.usuariosDemo.find(user => user.id === profileRepresentatives[profile]) || config.usuariosDemo.find(user => user.profile === profile);
+    ? (config.perfis || [])
+        .filter(perfil => perfil.ativo)
+        .filter(perfil => realUserProfile !== 'Administrador' || perfil.nome !== 'Administrador Geral')
+        .map(perfil => {
+          const representative =
+            config.usuariosDemo.find(user => user.id === profileRepresentatives[perfil.nome]) ||
+            config.usuariosDemo.find(user => user.profile === perfil.nome);
           return {
-            profile: profile as User['profile'],
-            representative: representative || { id: `rep-${profile}`, name: profile, role: profile, groups: [], profile: profile as User['profile'], scope: 'empresa', email: '', status: 'Ativo' }
+            profile: perfil.nome,
+            descricao: perfil.descricao,
+            escopo: perfil.escopo,
+            // Perfil novo ainda não tem usuário: simula com uma conta derivada
+            // do perfil, para dar para conferir a visão antes de atribuí-lo.
+            representative: representative || {
+              id: `rep-${perfil.id}`, name: perfil.nome, role: perfil.nome, groups: [],
+              profile: perfil.nome, scope: perfil.escopo, email: '', status: 'Ativo' as const
+            }
           };
         })
     : [];
@@ -169,11 +183,7 @@ export default function AppShell({
           icon: <LayoutDashboard className="w-5 h-5" />, 
           view: 'dashboard'
         }
-      ].filter(item => {
-        if (hasFullAccess) return true;
-        if (userProfile === 'Colaborador') return item.id === 'intranet';
-        return true;
-      })
+      ].filter(item => podeAcessarView(config.usuarioAtual, item.id as ViewDoMenu, config.perfis))
     },
     {
       label: 'MEU DIA A DIA',
@@ -196,11 +206,7 @@ export default function AppShell({
           icon: <CheckCircle2 className="w-5 h-5" />, 
           view: 'approvals'
         }
-      ].filter(item => {
-        if (hasFullAccess) return true;
-        if (userProfile === 'Colaborador') return item.id === 'requests';
-        return true;
-      })
+      ].filter(item => podeAcessarView(config.usuarioAtual, item.id as ViewDoMenu, config.perfis))
     },
     {
       label: 'PESSOAS',
@@ -223,12 +229,7 @@ export default function AppShell({
           icon: <MonitorSmartphone className="w-5 h-5" />,
           view: 'portal-colaborador'
         }
-      ].filter(item => {
-        if (hasFullAccess) return true;
-        if (['Administrador', 'RH/DP'].includes(userProfile)) return true;
-        if (userProfile === 'Gestor' && item.id === 'profile-360') return true;
-        return false;
-      })
+      ].filter(item => podeAcessarView(config.usuarioAtual, item.id as ViewDoMenu, config.perfis))
     },
     {
       label: 'PROCESSOS DE RH',
@@ -248,12 +249,7 @@ export default function AppShell({
           icon: <Search className="w-5 h-5" />,
           view: 'global-query'
         }
-      ].filter(item => {
-        if (hasFullAccess) return true;
-        if (userProfile === 'Colaborador') return false;
-        if (userProfile === 'Gestor') return item.id === 'hr-processes';
-        return true;
-      })
+      ].filter(item => podeAcessarView(config.usuarioAtual, item.id as ViewDoMenu, config.perfis))
     },
     {
       label: 'GESTÃO',
@@ -282,22 +278,7 @@ export default function AppShell({
           icon: <ShieldCheck className="w-5 h-5" />,
           view: 'access-management'
         }
-      ].filter(item => {
-        if (hasFullAccess) return true;
-        if (item.id === 'access-management') {
-          return config.usuarioAtual.canManageAccesses === true;
-        }
-        if (item.id === 'admin') {
-          return userProfile === 'Administrador';
-        }
-        if (item.id === 'integrations') {
-          return userProfile === 'Administrador';
-        }
-        if (item.id === 'reports') {
-          return ['Administrador', 'Diretoria', 'RH/DP'].includes(userProfile);
-        }
-        return false;
-      })
+      ].filter(item => podeAcessarView(config.usuarioAtual, item.id as ViewDoMenu, config.perfis))
     }
   ].filter(group => group.items.length > 0);
 
@@ -592,14 +573,58 @@ export default function AppShell({
             
             <div className="h-8 w-px bg-[var(--color-brand-border)] hidden sm:block" />
 
-            <div className="flex items-center gap-3 group text-left">
-              <div className="text-right hidden sm:block leading-tight">
-                <p className="label-caps opacity-60">Empresa</p>
-                <p className="text-[13px] font-bold text-[var(--color-brand-text-primary)] group-hover:text-[var(--color-brand-primary)] transition-colors">{config.empresaAtual.name}</p>
-              </div>
-              <div className="w-10 h-10 bg-[var(--color-brand-bg)] rounded-[6px] flex items-center justify-center text-gray-400 hairline-border group-hover:bg-orange-50 group-hover:text-[var(--color-brand-primary)] transition-all">
-                <Building2 size={20} />
-              </div>
+            {/* SELETOR DE EMPRESA. Era um rótulo decorativo; agora troca a
+                empresa ativa e, com ela, todos os dados e a parametrização.
+                Quem não tem escopo global fica preso à própria empresa: o bloco
+                continua informando onde ele está, sem virar botão. */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => podeTrocar && setShowEmpresaMenu(v => !v)}
+                aria-expanded={podeTrocar ? showEmpresaMenu : undefined}
+                aria-label={podeTrocar ? 'Trocar de empresa' : `Empresa ativa: ${config.empresaAtual.name}`}
+                className={`flex items-center gap-3 group text-left ${podeTrocar ? '' : 'cursor-default'}`}
+              >
+                <div className="text-right hidden sm:block leading-tight">
+                  <p className="label-caps opacity-60">Empresa</p>
+                  <p className="text-[13px] font-bold text-[var(--color-brand-text-primary)] group-hover:text-[var(--color-brand-primary)] transition-colors flex items-center gap-1 justify-end">
+                    {config.empresaAtual.name}
+                    {podeTrocar && <ChevronDown size={13} className="text-gray-400" />}
+                  </p>
+                </div>
+                <div className="w-10 h-10 bg-[var(--color-brand-bg)] rounded-[6px] flex items-center justify-center text-gray-400 hairline-border group-hover:bg-orange-50 group-hover:text-[var(--color-brand-primary)] transition-all">
+                  <Building2 size={20} />
+                </div>
+              </button>
+
+              {podeTrocar && showEmpresaMenu && (
+                <>
+                  <div className="fixed inset-0 z-[55]" onClick={() => setShowEmpresaMenu(false)} />
+                  <div className="absolute top-full right-0 mt-2 w-72 bg-white border border-gray-100 rounded-[12px] shadow-2xl z-[60] overflow-hidden animate-in fade-in slide-in-from-top-2">
+                    <div className="p-3 border-b border-gray-50 bg-gray-50/50">
+                      <p className="label-caps opacity-60">Trocar de empresa</p>
+                    </div>
+                    {empresasDisponiveis.map(empresa => {
+                      const ativa = empresa.id === config.empresaAtual.id;
+                      return (
+                        <button
+                          key={empresa.id}
+                          onClick={() => { setShowEmpresaMenu(false); if (!ativa) trocarEmpresa(empresa.id); }}
+                          className={`w-full text-left px-4 py-3 border-b border-gray-50 last:border-b-0 transition-colors ${
+                            ativa ? 'bg-orange-50/60' : 'hover:bg-gray-50'
+                          }`}
+                        >
+                          <p className="text-[13px] font-black text-gray-900 flex items-center gap-2">
+                            {empresa.name}
+                            {ativa && <Badge variant="green" size="sm">ATIVA</Badge>}
+                          </p>
+                          <p className="text-[11px] font-medium text-gray-400 tabular-nums">{empresa.document}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="relative">

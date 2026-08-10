@@ -15,13 +15,15 @@ import { isSuperAdmin } from '../utils/permissions';
 import AdminOverview from './admin/AdminOverview';
 import AdminOrganization from './admin/AdminOrganization';
 import AdminAccess from './admin/AdminAccess';
+import AdminPerfis from './admin/AdminPerfis';
+import AdminImplantacao from './admin/AdminImplantacao';
 import AdminProcesses from './admin/AdminProcesses';
 import AdminIntranet from './admin/AdminIntranet';
 import AdminIntegrations from './admin/AdminIntegrations';
 import AdminAI from './admin/AdminAI';
 import AdminAudit from './admin/AdminAudit';
 
-type AdminTab = 'overview' | 'org' | 'access' | 'processes' | 'intranet' | 'integrations' | 'ai' | 'audit';
+type AdminTab = 'overview' | 'org' | 'implantacao' | 'access' | 'perfis' | 'processes' | 'intranet' | 'integrations' | 'ai' | 'audit';
 
 export default function AdminModule({ view = 'admin' }: { view?: string }) {
   const { config } = useAppConfig();
@@ -38,6 +40,8 @@ export default function AdminModule({ view = 'admin' }: { view?: string }) {
     { id: 'overview', label: 'Visão Geral', icon: <BarChart3 size={18} />, color: 'bg-blue-500' },
     { id: 'org', label: 'Organização', icon: <Building2 size={18} />, color: 'bg-indigo-500' },
     { id: 'access', label: 'Pessoas e Acessos', icon: <Users size={18} />, color: 'bg-orange-500' },
+    { id: 'implantacao', label: 'Implantação de Cliente', icon: <Building2 size={18} />, color: 'bg-rose-500' },
+    { id: 'perfis', label: 'Perfis de Acesso', icon: <Shield size={18} />, color: 'bg-amber-500' },
     { id: 'processes', label: 'Processos', icon: <Target size={18} />, color: 'bg-emerald-500' },
     { id: 'intranet', label: 'Intranet', icon: <Globe size={18} />, color: 'bg-sky-500' },
     { id: 'integrations', label: 'Integrações', icon: <Share2 size={18} />, color: 'bg-purple-500' },
@@ -47,6 +51,9 @@ export default function AdminModule({ view = 'admin' }: { view?: string }) {
 
   const visibleTabs = tabs.filter(tab => {
     if (tab.id === 'access') return isAdmin;
+    if (tab.id === 'perfis') return isAdmin;
+    // Implantação é operação da JYNX: só o Administrador Geral.
+    if (tab.id === 'implantacao') return isSuperAdmin(config.usuarioAtual);
     if (tab.id === 'integrations') return isAdmin;
     return true;
   });
@@ -56,6 +63,8 @@ export default function AdminModule({ view = 'admin' }: { view?: string }) {
       case 'overview': return <AdminOverview onNavigate={setActiveTab} />;
       case 'org': return <AdminOrganization />;
       case 'access': return <AdminAccess />;
+      case 'perfis': return <AdminPerfis />;
+      case 'implantacao': return <AdminImplantacao />;
       case 'processes': return <AdminProcesses />;
       case 'intranet': return <AdminIntranet />;
       case 'integrations': return <AdminIntegrations />;

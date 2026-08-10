@@ -27,7 +27,7 @@
  *   acompanhar.
  */
 
-import { INITIAL_RH_PROCESSES } from '../src/data';
+import { COST_CENTERS, DEMO_USERS, INITIAL_EMPLOYEES, INITIAL_RH_PROCESSES, SECTORS } from '../src/data';
 import { PROCESS_DEFINITIONS } from '../src/processDefinitions';
 import {
   buildApprovalChain,
@@ -35,10 +35,12 @@ import {
   getCurrentLevelIndex,
   isStepApplicable,
   levelLabel,
+  Organizacao,
   resolveConditionField,
   slaToMs
 } from '../src/utils/approvalFlow';
-import { ApprovalStep, FormField, RHProcess, RequestApprovalLevel } from '../src/types';
+import { estaAbaixoDe, porId } from '../src/utils/hierarquia';
+import { ApprovalStep, Employee, FormField, RHProcess, RequestApprovalLevel } from '../src/types';
 import { PROCESSO_DESLIGAMENTO } from '../src/utils/permissions';
 import { ETAPA_ENCERRAMENTO } from '../src/utils/desligamento';
 
@@ -59,10 +61,28 @@ interface SolicitacaoSimulada {
   tarefas: { title: string; assignedTo?: string }[];
 }
 
+/**
+ * A estrutura real da empresa, igual à que o provider monta
+ * (`organizacaoDoConfig`). É ela que faz o aprovador sair da hierarquia do alvo
+ * em vez de um mapa fixo de tipo → usuário.
+ */
+const ORGANIZACAO: Organizacao = {
+  colaboradores: INITIAL_EMPLOYEES,
+  setores: SECTORS,
+  centrosDeCusto: COST_CENTERS,
+  usuarios: DEMO_USERS
+};
+
 /** Espelha createRequest (AppConfigContext.tsx:440-578), caminho não-rascunho. */
-function abrirSolicitacao(process: RHProcess, data: Record<string, any>): SolicitacaoSimulada {
+function abrirSolicitacao(
+  process: RHProcess,
+  data: Record<string, any>,
+  alvo?: Employee
+): SolicitacaoSimulada {
   const acknowledgement = PROCESS_DEFINITIONS[process.id]?.acknowledgement; // :449
-  const approvalChain = acknowledgement ? [] : buildApprovalChain(process, data); // :453
+  const approvalChain = acknowledgement
+    ? []
+    : buildApprovalChain(process, data, { ...ORGANIZACAO, alvo }); // :453
   const firstLevel = approvalChain[0]; // :454
 
   const req: SolicitacaoSimulada = {
@@ -94,7 +114,7 @@ function abrirSolicitacao(process: RHProcess, data: Record<string, any>): Solici
     // :526-552 — a tarefa nasce no responsável do PRIMEIRO nível.
     req.tarefas.push({
       title: `Aprovar ${process.name} — ${firstLevel?.name || 'Aprovação'}`,
-      assignedTo: firstLevel?.responsibleUserId || 'ADMIN-001'
+      assignedTo: firstLevel?.responsibleUserId || firstLevel?.responsibleEmployeeId || 'ADMIN-001'
     });
   }
   // Só para exercitar o cálculo de SLA da abertura (:496).
@@ -144,7 +164,7 @@ function aprovarUmNivel(req: SolicitacaoSimulada, process: RHProcess, aprovador 
     // :800-823 — abre a tarefa do PRÓXIMO nível.
     req.tarefas.push({
       title: `Aprovar ${process.name} — ${nextLevel.name}`,
-      assignedTo: nextLevel.responsibleUserId || 'ADMIN-001'
+      assignedTo: nextLevel.responsibleUserId || nextLevel.responsibleEmployeeId || 'ADMIN-001'
     });
   }
 
@@ -472,6 +492,110 @@ for (const process of INITIAL_RH_PROCESSES) {
   // Etapas: avaliadas uma vez, sobre o cenário de valor alto.
   const reqAlto = abrirSolicitacao(process, montarDados(process.id, 50000));
   if (!PROCESS_DEFINITIONS[process.id]?.acknowledgement) auditarEtapas(process, reqAlto);
+}
+
+// ---------------------------------------------------------------------------
+// RESOLUÇÃO DO APROVADOR — o aprovador sai da hierarquia do ALVO
+// ---------------------------------------------------------------------------
+//
+// Enquanto o responsável vinha de RESPONSIBILITY_USERS (tipo de alçada → um
+// usuário de demonstração fixo), estas quatro perguntas tinham a mesma resposta
+// para qualquer alvo. São elas que provam que a resolução é real.
+
+/** Processos com alçada hierárquica, cada um exercitado com alvos de setores distintos. */
+const PROCESSOS_DE_ALVO = ['9', '8', '12'];
+
+const ALVOS: { emp: Employee; nota: string }[] = [
+  { emp: porId('EMP-001', INITIAL_EMPLOYEES)!, nota: 'Desenvolvimento / gestor Marcos Vinicius' },
+  { emp: porId('EMP-009', INITIAL_EMPLOYEES)!, nota: 'Vendas / gestor Leonardo Vinci' },
+  { emp: porId('EMP-013', INITIAL_EMPLOYEES)!, nota: 'Financeiro / gestor Karina Lopes' },
+  { emp: porId('EMP-003', INITIAL_EMPLOYEES)!, nota: 'Diretor Geral / topo da hierarquia' }
+];
+
+const aprovadoresDe = (process: RHProcess, alvo: Employee) =>
+  buildApprovalChain(process, montarDados(process.id, 3000), { ...ORGANIZACAO, alvo });
+
+for (const processId of PROCESSOS_DE_ALVO) {
+  const process = INITIAL_RH_PROCESSES.find(p => p.id === processId);
+  if (!process) continue;
+  const cenario = 'resolução por alvo';
+
+  // (a) Alvos com gestores diferentes geram aprovadores diferentes.
+  const porAlvo = ALVOS.map(a => ({
+    ...a,
+    chain: aprovadoresDe(process, a.emp)
+  }));
+  const assinaturas = porAlvo.map(p => p.chain.map(l => l.responsibleEmployeeId || l.responsibleUserId || '—').join('+'));
+  const distintas = new Set(assinaturas).size;
+  registrar(
+    process.id,
+    cenario,
+    distintas > 1 ? 'OK' : 'FALHA',
+    'alvos de setores diferentes geram aprovadores diferentes',
+    porAlvo.map((p, i) => `${p.emp.name} → ${p.chain.map(l => l.responsibleName || l.responsibleLabel).join(', ')}`).join(' | ')
+  );
+
+  // (b) O aprovador nunca é hierarquicamente inferior ao alvo.
+  for (const { emp, chain } of porAlvo) {
+    const inferiores = chain
+      .filter(l => l.responsibleEmployeeId)
+      .map(l => ({ nivel: l, aprovador: porId(l.responsibleEmployeeId, INITIAL_EMPLOYEES)! }))
+      // 'rh-filial'/'diretoria' são papéis institucionais: o RH processa o
+      // pedido do diretor sem estar acima dele. A regra vale para as alçadas
+      // que saem da hierarquia.
+      .filter(x => ['gestor-direto', 'gestor-setor', 'responsavel-cc'].includes(x.nivel.responsibilityType))
+      .filter(x => x.aprovador && estaAbaixoDe(x.aprovador, emp, INITIAL_EMPLOYEES));
+    registrar(
+      process.id,
+      cenario,
+      inferiores.length === 0 ? 'OK' : 'FALHA',
+      `aprovador nunca abaixo do alvo (${emp.name})`,
+      inferiores.length === 0
+        ? `${chain.length} nível(is) conferido(s); ${chain.filter(l => l.responsibleEmployeeId).length} com pessoa resolvida`
+        : inferiores.map(x => `${x.nivel.name} → ${x.aprovador.name}`).join(', ')
+    );
+  }
+
+  // (c) Titular ausente → substituto, e o motivo fica gravado.
+  const alvoDoSubstituto = porId('EMP-001', INITIAL_EMPLOYEES)!;
+  const comTitularAusente = INITIAL_EMPLOYEES.map(e =>
+    e.id === 'EMP-005' ? { ...e, status: 'Afastado' as const } : e
+  );
+  const chainSubstituto = buildApprovalChain(process, montarDados(process.id, 3000), {
+    ...ORGANIZACAO,
+    colaboradores: comTitularAusente,
+    alvo: comTitularAusente.find(e => e.id === alvoDoSubstituto.id)
+  });
+  const chainNormal = aprovadoresDe(process, alvoDoSubstituto);
+  const mudou = chainSubstituto.some((l, i) =>
+    l.responsibleEmployeeId !== chainNormal[i]?.responsibleEmployeeId
+  );
+  const comMotivo = chainSubstituto.some(l => l.resolucao?.substituicao || l.resolucao?.escalado);
+  const tinhaTitular = chainNormal.some(l => l.responsibleEmployeeId === 'EMP-005');
+  registrar(
+    process.id,
+    cenario,
+    !tinhaTitular || (mudou && comMotivo) ? 'OK' : 'FALHA',
+    'titular afastado sai da fila e o motivo vai para a trilha',
+    tinhaTitular
+      ? chainSubstituto
+          .map(l => `${l.name}: ${l.responsibleName || '—'}${l.resolucao?.motivo ? ` [${l.resolucao.motivo}]` : ''}`)
+          .join(' | ')
+      : 'nenhum nível deste processo resolve para EMP-005 — nada a substituir'
+  );
+
+  // (d) O responsável exibido é quem tem o item na fila.
+  const req = abrirSolicitacao(process, montarDados(process.id, 3000), alvoDoSubstituto);
+  const nivelAtual = req.approvalChain[getCurrentLevelIndex(req.approvalChain)];
+  const donoDaTarefa = req.tarefas[0]?.assignedTo;
+  const donoEsperado = nivelAtual?.responsibleUserId || nivelAtual?.responsibleEmployeeId;
+  registrar(
+    process.id,
+    cenario,
+    req.responsavelAtual === nivelAtual?.responsibleLabel && donoDaTarefa === donoEsperado ? 'OK' : 'FALHA',
+    'responsável exibido = dono da fila',
+    `exibido "${req.responsavelAtual}" · nível "${nivelAtual?.responsibleLabel}" · tarefa para ${donoDaTarefa} (esperado ${donoEsperado})`
+  );
 }
 
 if (process.argv.includes('--json')) {

@@ -13,6 +13,8 @@ import { Avatar, EmptyState, Modal } from './ui/Misc';
 import { ScrollableTabs } from './ui/ScrollableTabs';
 import { Select } from './ui/Select';
 import { useAppConfig } from '../contexts/AppConfigContext';
+import { alcancaColaborador, colaboradoresNoEscopo, contextoDeEscopoDoConfig, podeVerRemuneracao, REMUNERACAO_OCULTA } from '../utils/escopo';
+import { colaboradorDoUsuario } from '../utils/hierarquia';
 import { useToast } from './ToastContext';
 import { isSuperAdmin, PROCESSO_DESLIGAMENTO } from '../utils/permissions';
 import { baixarTexto, montarCSV, nomeSeguro } from '../utils/download';
@@ -44,7 +46,21 @@ export default function Profile360Module({ employeeId, initialTab }: Profile360M
     if (employeeId) setSelectedId(employeeId);
   }, [employeeId]);
 
-  const employee = config.colaboradores.find(e => e.id === selectedId) || config.colaboradores[0];
+  // ESCOPO: a ficha só abre para quem o perfil alcança. Sem isto, o Gestor
+  // (que tem a tela no menu) abria o Perfil 360 de qualquer pessoa da empresa.
+  const ctxEscopo = useMemo(() => contextoDeEscopoDoConfig(config), [config]);
+  const visiveis = useMemo(
+    () => colaboradoresNoEscopo(config.usuarioAtual, ctxEscopo),
+    [config.usuarioAtual, ctxEscopo]
+  );
+  const eu = colaboradorDoUsuario(config.usuarioAtual.id, config.usuariosDemo, config.colaboradores);
+  const escolhido = config.colaboradores.find(e => e.id === selectedId);
+  // Fora do escopo cai na própria ficha — nunca no primeiro da base.
+  const employee = (escolhido && alcancaColaborador(config.usuarioAtual, escolhido, ctxEscopo) ? escolhido : undefined)
+    || (eu && alcancaColaborador(config.usuarioAtual, eu, ctxEscopo) ? eu : undefined)
+    || visiveis[0]
+    || config.colaboradores[0];
+  const podeVerSalario = podeVerRemuneracao(config.usuarioAtual, ctxEscopo);
   const isSelf = employee.id === config.usuarioAtual.id;
   const canSwitch = isSuperAdmin(config.usuarioAtual) ||
     config.usuarioAtual.role === 'Admin' || config.usuarioAtual.role === 'RH' || config.usuarioAtual.role === 'Diretor';
@@ -59,7 +75,9 @@ export default function Profile360Module({ employeeId, initialTab }: Profile360M
     { id: 'dependentes', label: 'Dependentes', icon: <Users size={16} /> },
     { id: 'beneficios', label: 'Benefícios', icon: <Heart size={16} /> },
     { id: 'ferias', label: 'Férias', icon: <Palmtree size={16} /> },
-    { id: 'cargosalario', label: 'Cargo e Salário', icon: <DollarSign size={16} /> },
+    // A aba de remuneração só existe para quem pode ver remuneração: deixá-la
+    // visível e vazia já entrega que existe um valor ali.
+    ...(podeVerSalario ? [{ id: 'cargosalario', label: 'Cargo e Salário', icon: <DollarSign size={16} /> }] : []),
     { id: 'movimentacoes', label: 'Movimentações', icon: <TrendingUp size={16} /> },
     { id: 'treinamentos', label: 'Treinamentos', icon: <GraduationCap size={16} /> },
     { id: 'solicitacoes', label: 'Solicitações', icon: <FileText size={16} /> },
@@ -79,7 +97,7 @@ export default function Profile360Module({ employeeId, initialTab }: Profile360M
     return `${years} anos e ${months} meses`;
   };
 
-  const filteredSearchEmployees = config.colaboradores.filter(e =>
+  const filteredSearchEmployees = visiveis.filter(e =>
     e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     e.registration.includes(searchTerm)
   );
@@ -315,16 +333,18 @@ export default function Profile360Module({ employeeId, initialTab }: Profile360M
 
   function renderTabContent() {
     switch (activeTab) {
-      case 'resumo': return <SummaryTab employee={employee} config={config} />;
+      case 'resumo': return <SummaryTab employee={employee} config={config} podeVerSalario={podeVerSalario} />;
       case 'onboarding': return <OnboardingTab employee={employee} config={config} />;
       case 'pessoais': return <PersonalTab employee={employee} />;
-      case 'profissionais': return <ProfessionalTab employee={employee} />;
+      case 'profissionais': return <ProfessionalTab employee={employee} podeVerSalario={podeVerSalario} />;
       case 'documentos': return <DocumentsTab employee={employee} onAnexar={() => anexoInputRef.current?.click()} />;
       case 'exames': return <ExamsTab employee={employee} />;
       case 'dependentes': return <DependentsTab employee={employee} />;
       case 'beneficios': return <BenefitsTab employee={employee} />;
       case 'ferias': return <VacationTab employee={employee} />;
-      case 'cargosalario': return <SalaryTab employee={employee} faixas={config.faixasSalariais} />;
+      case 'cargosalario': return podeVerSalario
+        ? <SalaryTab employee={employee} faixas={config.faixasSalariais} />
+        : <SemPermissao />;
       case 'movimentacoes': return <MovementsTab employee={employee} />;
       case 'treinamentos': return <TrainingsTab employee={employee} />;
       case 'solicitacoes': return <RequestsTab employee={employee} config={config} onNavigate={updateConfig} />;
@@ -337,7 +357,7 @@ export default function Profile360Module({ employeeId, initialTab }: Profile360M
 
 // Sub-components for Tabs
 
-function SummaryTab({ employee, config }: { employee: Employee, config: any }) {
+function SummaryTab({ employee, config, podeVerSalario }: { employee: Employee, config: any, podeVerSalario: boolean }) {
   const requests = config.solicitacoes.filter((r: RHRequest) => r.solicitante === employee.name || r.alvo === employee.name).slice(0, 5);
   const onboarding = config.solicitacoes.find((r: RHRequest) => r.processId === '3' && (r.alvoId === employee.id || r.alvo === employee.name));
 
@@ -464,7 +484,9 @@ function SummaryTab({ employee, config }: { employee: Employee, config: any }) {
             </div>
             <div className="flex justify-between">
               <span className="text-[12px] text-gray-500">Salário Atual</span>
-              <span className="text-[12px] font-bold text-gray-700">{employee.salary.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+              <span className="text-[12px] font-bold text-gray-700">
+                {podeVerSalario ? employee.salary.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : REMUNERACAO_OCULTA}
+              </span>
             </div>
           </div>
         </Card>
@@ -593,7 +615,7 @@ function PersonalTab({ employee }: { employee: Employee }) {
   );
 }
 
-function ProfessionalTab({ employee }: { employee: Employee }) {
+function ProfessionalTab({ employee, podeVerSalario }: { employee: Employee, podeVerSalario: boolean }) {
   return (
     <Card className="p-8">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
@@ -615,7 +637,7 @@ function ProfessionalTab({ employee }: { employee: Employee }) {
           <div className="grid grid-cols-2 gap-x-8 gap-y-6">
             <InfoBlock label="Gestor Direto" value={employee.manager} />
             <InfoBlock label="Centro de Custo" value={employee.costCenter} />
-            <InfoBlock label="Salário Base" value={employee.salary.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} />
+            <InfoBlock label="Salário Base" value={podeVerSalario ? employee.salary.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : REMUNERACAO_OCULTA} />
             <InfoBlock label="Último Reajuste" value="01/05/2024" />
             <InfoBlock label="Escala / Jornada" value="220h Mensais" />
             <InfoBlock label="Horário" value="08:00 às 18:00" />
@@ -1490,6 +1512,21 @@ function MenuAcao({
       <span className={destaque ? 'text-red-500' : 'text-gray-400'}>{icon}</span>
       <span className="text-[13px] font-bold">{label}</span>
     </button>
+  );
+}
+
+/**
+ * Bloco de "você não tem acesso a isto". Diz o motivo em vez de mostrar a aba
+ * vazia — quem vê precisa saber que existe dado ali e que falta permissão, não
+ * concluir que a pessoa não tem histórico.
+ */
+function SemPermissao() {
+  return (
+    <EmptyState
+      icon={<Shield size={40} />}
+      title="Sem acesso a dados de remuneração"
+      description="Salário, faixa salarial e histórico de cargo e salário são restritos a RH/DP, Diretoria e Administração. Fale com o RH se você precisa dessa visão."
+    />
   );
 }
 

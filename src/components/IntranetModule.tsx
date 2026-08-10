@@ -15,8 +15,8 @@ import { Avatar, Modal, EmptyState } from './ui/Misc';
 import { useAppConfig } from '../contexts/AppConfigContext';
 import { useToast } from './ToastContext';
 import { AnexoComunicado, Announcement, Employee } from '../types';
-import { podeGerenciarComunicado } from '../utils/permissions';
-import { listarMinhasAprovacoes } from '../utils/approvalFlow';
+import { ACOES_DE_TELA, podeAcessarView, podeExecutarAcao, podeGerenciarComunicado } from '../utils/permissions';
+import { listarMinhasAprovacoes, organizacaoDoConfig } from '../utils/approvalFlow';
 import { listarTarefasDaCentral } from '../utils/tarefas';
 
 interface IntranetModuleProps {
@@ -138,6 +138,16 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
 
   const inputArquivo = useRef<HTMLInputElement>(null);
   const inputBanner = useRef<HTMLInputElement>(null);
+
+  // O QUE ESTE PERFIL PODE FAZER NESTA TELA
+  //
+  // A Intranet é a única tela do Colaborador, e era a única que oferecia ação
+  // sem checar perfil: ele via "Novo Comunicado" e atalhos para Central de
+  // Tarefas e Minhas Aprovações — telas que o menu lateral dele não tem.
+  // Os atalhos usam a MESMA função do menu, para não existirem duas regras.
+  const podeComunicar = podeExecutarAcao(config.usuarioAtual, ACOES_DE_TELA.COMUNICADO_OFICIAL, config.perfis);
+  const podeVerTarefas = podeAcessarView(config.usuarioAtual, 'tasks', config.perfis);
+  const podeVerAprovacoes = podeAcessarView(config.usuarioAtual, 'approvals', config.perfis);
 
   // Só comunicados com banner entram no carrossel.
   const destaques = useMemo(() => config.comunicados.filter(c => c.imagem), [config.comunicados]);
@@ -279,7 +289,7 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
   // função, mesmo recorte. Contar "tudo em aberto" mostrava a base inteira a
   // quem, em Minhas Aprovações, só vê as alçadas que são dele.
   const minhasAprovacoes = useMemo(
-    () => listarMinhasAprovacoes(config.solicitacoes, config.processos, config.usuarioAtual, config.grupos).length,
+    () => listarMinhasAprovacoes(config.solicitacoes, config.processos, config.usuarioAtual, config.grupos, organizacaoDoConfig(config)).length,
     [config.solicitacoes, config.processos, config.usuarioAtual, config.grupos]
   );
   const tarefasPendentes = useMemo(
@@ -425,7 +435,7 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
                       <Badge variant="blue" size="sm">{naoLidas} NOVAS</Badge>
                     </div>
 
-                    {minhasAprovacoes > 0 && (
+                    {podeVerAprovacoes && minhasAprovacoes > 0 && (
                       <button
                         onClick={() => { setNotificacoesAbertas(false); onNavigate?.('approvals'); }}
                         className="w-full p-4 border-b border-gray-50 hover:bg-orange-50/40 transition-colors text-left flex items-center gap-3"
@@ -459,7 +469,7 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
                           </div>
                         ))
                       ) : (
-                        minhasAprovacoes === 0 && (
+                        (!podeVerAprovacoes || minhasAprovacoes === 0) && (
                           <div className="p-8 text-center">
                             <Bell size={24} className="mx-auto text-gray-200 mb-2" />
                             <p className="text-[13px] font-bold text-gray-400">Nenhuma notificação</p>
@@ -472,7 +482,9 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
               )}
             </div>
 
-            <Button leftIcon={<Plus size={16} />} onClick={() => setComunicadoAberto(true)}>Novo Comunicado</Button>
+            {podeComunicar && (
+              <Button leftIcon={<Plus size={16} />} onClick={() => setComunicadoAberto(true)}>Novo Comunicado</Button>
+            )}
           </div>
         }
       />
@@ -580,37 +592,46 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
             </div>
           </Card>
 
-          {/* Atalho de Pendências */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card className="p-5 border-l-4 border-l-orange-500 bg-orange-50/30 cursor-pointer hover:bg-orange-50 transition-all group" onClick={() => onNavigate?.('tasks')}>
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-white rounded-[16px] flex items-center justify-center text-orange-500 shadow-sm ring-1 ring-orange-100 group-hover:scale-105 transition-transform">
-                  <Bell size={24} />
-                </div>
-                <div>
-                  <h4 className="text-[14px] font-bold text-gray-900">Central de Tarefas</h4>
-                  <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">
-                    {tarefasPendentes} {tarefasPendentes === 1 ? 'Ação pendente' : 'Ações pendentes'}
-                  </p>
-                </div>
-                <ChevronRight className="ml-auto text-orange-400 group-hover:translate-x-1 transition-transform" size={20} />
-              </div>
-            </Card>
-            <Card className="p-5 border-l-4 border-l-blue-500 bg-blue-50/30 cursor-pointer hover:bg-blue-50 transition-all group" onClick={() => onNavigate?.('approvals')}>
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-white rounded-[16px] flex items-center justify-center text-blue-500 shadow-sm ring-1 ring-blue-100 group-hover:scale-105 transition-transform">
-                  <CheckCircle2 size={24} />
-                </div>
-                <div>
-                  <h4 className="text-[14px] font-bold text-gray-900">Minhas Aprovações</h4>
-                  <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">
-                    {minhasAprovacoes} {minhasAprovacoes === 1 ? 'Solicitação' : 'Solicitações'}
-                  </p>
-                </div>
-                <ChevronRight className="ml-auto text-blue-400 group-hover:translate-x-1 transition-transform" size={20} />
-              </div>
-            </Card>
-          </div>
+          {/* Atalho de Pendências — só para as telas que este perfil alcança.
+              O Colaborador não tem nenhuma das duas no menu, então o bloco
+              inteiro some para ele em vez de virar um atalho para uma tela que
+              o menu dele não oferece. */}
+          {(podeVerTarefas || podeVerAprovacoes) && (
+            <div className={`grid grid-cols-1 gap-4 ${podeVerTarefas && podeVerAprovacoes ? 'md:grid-cols-2' : ''}`}>
+              {podeVerTarefas && (
+                <Card className="p-5 border-l-4 border-l-orange-500 bg-orange-50/30 cursor-pointer hover:bg-orange-50 transition-all group" onClick={() => onNavigate?.('tasks')}>
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-white rounded-[16px] flex items-center justify-center text-orange-500 shadow-sm ring-1 ring-orange-100 group-hover:scale-105 transition-transform">
+                      <Bell size={24} />
+                    </div>
+                    <div>
+                      <h4 className="text-[14px] font-bold text-gray-900">Central de Tarefas</h4>
+                      <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">
+                        {tarefasPendentes} {tarefasPendentes === 1 ? 'Ação pendente' : 'Ações pendentes'}
+                      </p>
+                    </div>
+                    <ChevronRight className="ml-auto text-orange-400 group-hover:translate-x-1 transition-transform" size={20} />
+                  </div>
+                </Card>
+              )}
+              {podeVerAprovacoes && (
+                <Card className="p-5 border-l-4 border-l-blue-500 bg-blue-50/30 cursor-pointer hover:bg-blue-50 transition-all group" onClick={() => onNavigate?.('approvals')}>
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-white rounded-[16px] flex items-center justify-center text-blue-500 shadow-sm ring-1 ring-blue-100 group-hover:scale-105 transition-transform">
+                      <CheckCircle2 size={24} />
+                    </div>
+                    <div>
+                      <h4 className="text-[14px] font-bold text-gray-900">Minhas Aprovações</h4>
+                      <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">
+                        {minhasAprovacoes} {minhasAprovacoes === 1 ? 'Solicitação' : 'Solicitações'}
+                      </p>
+                    </div>
+                    <ChevronRight className="ml-auto text-blue-400 group-hover:translate-x-1 transition-transform" size={20} />
+                  </div>
+                </Card>
+              )}
+            </div>
+          )}
 
           <div className="space-y-6">
             <div className="flex items-center justify-between px-2">
@@ -896,7 +917,7 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
         </Modal>
       )}
 
-      {comunicadoAberto && (
+      {comunicadoAberto && podeComunicar && (
         <Modal isOpen title="Novo comunicado oficial" onClose={() => setComunicadoAberto(false)} size="md">
           <div className="space-y-5">
             <p className="text-[13px] text-gray-500 font-medium">

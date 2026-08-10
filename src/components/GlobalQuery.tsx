@@ -9,6 +9,7 @@ import { SLABar, EmptyState } from './ui/Misc';
 import { Select } from './ui/Select';
 import { getStatusVariant } from '../utils/requestStatus';
 import { RHRequest } from '../types';
+import { contextoDeEscopoDoConfig, solicitacoesNoEscopo } from '../utils/escopo';
 
 const FILTROS_VAZIOS = {
   processo: 'all',
@@ -37,7 +38,9 @@ export default function GlobalQuery() {
     setFilters(FILTROS_VAZIOS);
   };
 
-  const filteredRequests = config.solicitacoes.filter(req => {
+  // "Consulta Global" é global dentro do ESCOPO de quem consulta: sem este
+  // recorte, a tela entregaria a base inteira a qualquer perfil que a alcance.
+  const filteredRequests = solicitacoesNoEscopo(config.usuarioAtual, config.solicitacoes, contextoDeEscopoDoConfig(config)).filter(req => {
     const matchesSearch = 
       req.numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
       req.alvo.toLowerCase().includes(searchTerm.toLowerCase()) ||

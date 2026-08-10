@@ -9,6 +9,8 @@ import {
 } from 'recharts';
 
 import { useAppConfig } from '../contexts/AppConfigContext';
+import { colaboradoresNoEscopo, contextoDeEscopoDoConfig, solicitacoesNoEscopo } from '../utils/escopo';
+import { ACOES_DE_TELA, podeExecutarAcao } from '../utils/permissions';
 import { useToast } from './ToastContext';
 import { Button } from './ui/Button';
 import { Card, Table } from './ui/CardAndTable';
@@ -68,20 +70,25 @@ export default function ReportsModule() {
   const [isExporting, setIsExporting] = useState(false);
 
   // Derived metrics from real state
-  const totalEmployees = config.colaboradores.length;
+  // Relatório também respeita escopo: o Gestor analisa a equipe dele.
+  const ctxEscopo = contextoDeEscopoDoConfig(config);
+  const podeExportar = podeExecutarAcao(config.usuarioAtual, ACOES_DE_TELA.EXPORTAR_RELATORIO, config.perfis);
+  const colaboradoresVisiveis = colaboradoresNoEscopo(config.usuarioAtual, ctxEscopo);
+  const solicitacoesVisiveis = solicitacoesNoEscopo(config.usuarioAtual, config.solicitacoes, ctxEscopo);
+  const totalEmployees = colaboradoresVisiveis.length;
   // Vínculo encerrado conta como saída no turnover. 'Desligado' é o status que o
   // fluxo de Desligamento grava na aprovação final (AppConfigContext.tsx:190-201);
   // 'Inativo' cobre os cadastros que já vêm assim do seed.
-  const inactiveEmployees = config.colaboradores.filter(e => ['Inativo', 'Desligado'].includes(e.status)).length;
+  const inactiveEmployees = colaboradoresVisiveis.filter(e => ['Inativo', 'Desligado'].includes(e.status)).length;
   const turnoverRate = ((inactiveEmployees / totalEmployees) * 100).toFixed(2);
   
-  const completedAdmissions = config.solicitacoes.filter(r => r.tipoProcesso === '3' && r.status === 'Concluída');
+  const completedAdmissions = solicitacoesVisiveis.filter(r => r.tipoProcesso === '3' && r.status === 'Concluída');
   const avgHiringTime = completedAdmissions.length > 0 ? 32 : 34; // Simulated avg but based on presence
 
-  const absenteismoRate = (config.solicitacoes.filter(r => r.tipoProcesso === '10').length * 0.15).toFixed(1);
+  const absenteismoRate = (solicitacoesVisiveis.filter(r => r.tipoProcesso === '10').length * 0.15).toFixed(1);
 
   const stageDistribution = Object.entries(
-    config.solicitacoes.reduce((acc, req) => {
+    solicitacoesVisiveis.reduce((acc, req) => {
       acc[req.status] = (acc[req.status] || 0) + 1;
       return acc;
     }, {} as Record<string, number>)
@@ -92,7 +99,7 @@ export default function ReportsModule() {
   }));
 
   const slaByProcess = config.processos.map(p => {
-    const pRequests = config.solicitacoes.filter(r => r.tipoProcesso === p.id);
+    const pRequests = solicitacoesVisiveis.filter(r => r.tipoProcesso === p.id);
     if (pRequests.length === 0) return { process: p.name, sla: 100 };
     const onTime = pRequests.filter(r => r.slaStatus === 'normal').length;
     return {
@@ -117,13 +124,16 @@ export default function ReportsModule() {
         actions={
           <div className="flex gap-3">
             <Button variant="outline" leftIcon={<Filter size={16} />}>Filtrar Período</Button>
-            <Button 
-              leftIcon={isExporting ? <Activity className="w-4 h-4 animate-spin" /> : <FileDown size={16} />} 
+            {/* Exportar leva dado para fora: é ação com permissão própria. */}
+            {podeExportar && (
+            <Button
+              leftIcon={isExporting ? <Activity className="w-4 h-4 animate-spin" /> : <FileDown size={16} />}
               onClick={handleExport}
               disabled={isExporting}
             >
               {isExporting ? 'Exportando...' : 'Exportar PDF'}
             </Button>
+            )}
           </div>
         }
       />

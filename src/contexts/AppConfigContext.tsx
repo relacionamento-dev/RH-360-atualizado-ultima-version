@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { AppConfig, RHRequest, Task, Announcement, HistoryEntry, Job, User, AuditLog, EmployeeMovement, Employee, AdmissaoDigital, AdmissaoDisparo, EmployeeDocument, EncerramentoDesligamento } from '../types';
+import { AccessProfile, AppConfig, Company, ParametrizacaoEmpresa, RHRequest, Task, Announcement, HistoryEntry, Job, User, AuditLog, EmployeeMovement, Employee, Sector, AdmissaoDigital, AdmissaoDisparo, EmployeeDocument, EncerramentoDesligamento } from '../types';
 import { 
   INITIAL_RH_PROCESSES, 
   INITIAL_RH_REQUESTS, 
@@ -9,6 +9,7 @@ import {
   INITIAL_TASKS,
   INITIAL_ANNOUNCEMENTS,
   INITIAL_BENEFITS,
+  INITIAL_ACCESS_PROFILES,
   INITIAL_GROUPS,
   COMPANIES,
   BRANCHES,
@@ -23,11 +24,16 @@ import {
   INITIAL_REQUEST_COUNTER,
   INITIAL_INTEGRATIONS,
   INITIAL_ACCESSOS,
-  menuModules 
+  TECHFLOW_BRANCHES,
+  TECHFLOW_COST_CENTERS,
+  TECHFLOW_ROLES,
+  TECHFLOW_SECTORS,
+  TODOS_OS_COLABORADORES,
+  menuModules
 } from '../data';
 import { PROCESS_DEFINITIONS } from '../processDefinitions';
 import { blocosComDadosDoDisparo, criarBlocosAdmissao, fotoDePerfilDaAdmissao } from '../utils/admissaoDigital';
-import { isSuperAdmin, isJynxEmail, asSuperAdmin, podeGerenciarComunicado, podeAprovarPropriaSolicitacao, FULL_PROCESS_PERMISSIONS, FULL_SENSITIVE_PERMISSIONS, PROCESSO_DESLIGAMENTO } from '../utils/permissions';
+import { hasGlobalScope, perfilDoUsuario, isSuperAdmin, isJynxEmail, asSuperAdmin, podeGerenciarComunicado, podePublicarComunicadoOficial, podeAprovarPropriaSolicitacao, FULL_PROCESS_PERMISSIONS, FULL_SENSITIVE_PERMISSIONS, PROCESSO_DESLIGAMENTO } from '../utils/permissions';
 import { ETAPA_ENCERRAMENTO } from '../utils/desligamento';
 import { matriculaDoCadastro } from '../utils/identidade';
 import {
@@ -35,10 +41,62 @@ import {
   ensureApprovalChain,
   getCurrentLevelIndex,
   levelLabel,
+  motivosDaCascata,
+  organizacaoDoConfig,
   slaToMs
 } from '../utils/approvalFlow';
+import { colaboradorDoUsuario, resolverAlvo } from '../utils/hierarquia';
+import { aplicarParametrizacao, parametrizacaoAtual, parametrizacaoInicial } from '../utils/empresa';
 
 const STORAGE_KEY = 'RH360_DEMO_V2';
+
+/**
+ * Parametrização inicial das duas empresas do seed.
+ *
+ * A RH360 recebe a configuração que hoje é a única do produto; a TechFlow
+ * recebe os MESMOS processos e perfis (é o que a torna operável) com estrutura
+ * PRÓPRIA — cargos, centros de custo, setores e filiais dela. Copiar a
+ * estrutura de uma para a outra seria levar dado de um cliente para outro.
+ */
+const PARAMETRIZACAO_INICIAL: Record<string, ParametrizacaoEmpresa> = {
+  [COMPANIES[0].id]: {
+    processos: INITIAL_RH_PROCESSES,
+    perfis: INITIAL_ACCESS_PROFILES,
+    grupos: INITIAL_GROUPS,
+    cargos: ROLES,
+    centrosDeCusto: COST_CENTERS,
+    setores: SECTORS,
+    filiais: BRANCHES,
+    unidades: UNITS,
+    faixasSalariais: SALARY_BANDS,
+    sindicatos: UNIONS,
+    beneficios: INITIAL_BENEFITS,
+    politicas: { slaPadraoHoras: 48, exigirAnexoDespesa: true, tetoAprovacaoGestor: 10000 }
+  },
+  [COMPANIES[1].id]: {
+    // Cópia PROFUNDA dos processos: é o que garante que mexer na alçada da
+    // TechFlow não alcance a RH360 (as duas referenciariam o mesmo objeto).
+    processos: INITIAL_RH_PROCESSES.map(p => ({
+      ...p,
+      approvals: p.approvals.map(a => ({ ...a })),
+      etapas: [...p.etapas]
+    })),
+    perfis: INITIAL_ACCESS_PROFILES.map(p => ({
+      ...p, telas: [...p.telas], permissoes: { ...p.permissoes },
+      acoesDeTela: { ...p.acoesDeTela }, dadosSensiveis: { ...p.dadosSensiveis }
+    })),
+    grupos: [],
+    cargos: TECHFLOW_ROLES,
+    centrosDeCusto: TECHFLOW_COST_CENTERS,
+    setores: TECHFLOW_SECTORS,
+    filiais: TECHFLOW_BRANCHES,
+    unidades: [],
+    faixasSalariais: SALARY_BANDS,
+    sindicatos: [],
+    beneficios: INITIAL_BENEFITS,
+    politicas: { slaPadraoHoras: 24, exigirAnexoDespesa: false, tetoAprovacaoGestor: 5000 }
+  }
+};
 
 interface AppConfigContextType {
   config: AppConfig;
@@ -60,6 +118,16 @@ interface AppConfigContextType {
   removerComentario: (comunicadoId: string, comentarioId: string) => void;
   addNotification: (titulo: string, mensagem: string, tipo: import('../types').Notificacao['tipo']) => void;
   resetDemo: () => void;
+  /** Multiempresa. */
+  trocarEmpresa: (empresaId: string) => void;
+  criarEmpresa: (dados: { name: string; document: string }) => Company;
+  atualizarParametrizacao: (empresaId: string, updates: Partial<ParametrizacaoEmpresa>) => void;
+  importarColaboradores: (empresaId: string, novos: Employee[]) => void;
+  publicarEmpresa: (empresaId: string) => { ok: boolean; motivo?: string };
+  /** Perfis de acesso — CRUD da Central Adm. */
+  salvarPerfil: (perfil: AccessProfile) => void;
+  alternarPerfilAtivo: (perfilId: string) => void;
+  excluirPerfil: (perfilId: string) => { ok: boolean; motivo?: string };
   isAuthorized: (processId: string, action: keyof import('../types').ProcessPermission) => boolean;
   getEffectivePermissions: (userId: string, processId: string) => import('../types').ProcessPermission;
   getSensitiveDataPermissions: (userId: string) => import('../types').SensitiveDataPermission;
@@ -102,8 +170,22 @@ const INITIAL_STATE: AppConfig = {
   // das solicitações montados a partir da ficha e vínculos usuário→colaborador
   // corrigidos. TODAS as matrículas do seed mudaram: sem o bump, o
   // localStorage antigo devolveria as duplicadas.
-  version: '1.9.0',
+  // 1.10.0 — Aprovador resolvido pela hierarquia real: colaborador com gestor
+  // por ID, setores com gestor titular e substituto por ID, centros de custo
+  // com responsável, e a cascata das solicitações do seed já resolvida sobre o
+  // alvo. Sem o bump, o localStorage antigo devolveria setores sem `managerId`
+  // e toda alçada de setor cairia no fallback.
+  // 1.11.0 — RBAC: perfil virou entidade configurável (AppConfig.perfis) com
+  // escopo de dados, telas, ações de tela e matriz por processo. Sem o bump o
+  // localStorage antigo viria sem `perfis` e toda checagem cairia na tabela de
+  // fábrica — inclusive liberando telas para perfis que o cliente desativou.
+  // 1.12.0 — Multiempresa: parametrização por empresa (AppConfig.parametrizacao),
+  // troca de empresa ativa, recorte de dados por empresa e a base própria da
+  // TechFlow. Sem o bump o localStorage antigo viria sem parametrizacao e sem o
+  // quadro da segunda empresa, e o seletor trocaria de nome sem trocar de dados.
+  version: '1.12.0',
   empresaAtual: COMPANIES[0],
+  parametrizacao: PARAMETRIZACAO_INICIAL,
   usuarioAtual: DEMO_USERS[0], // Admin by default
   usuariosDemo: DEMO_USERS,
   empresas: COMPANIES,
@@ -114,13 +196,14 @@ const INITIAL_STATE: AppConfig = {
   centrosDeCusto: COST_CENTERS,
   setores: SECTORS,
   grupos: INITIAL_GROUPS,
+  perfis: INITIAL_ACCESS_PROFILES,
   cargos: ROLES,
   modulos: menuModules.map(m => ({ id: m.id, label: m.label, ativo: m.active })),
   processos: INITIAL_RH_PROCESSES,
   processDefinitions: PROCESS_DEFINITIONS,
   intranet: INITIAL_INTRANET,
   solicitacoes: INITIAL_RH_REQUESTS,
-  colaboradores: INITIAL_EMPLOYEES,
+  colaboradores: TODOS_OS_COLABORADORES,
   vagas: INITIAL_JOBS,
   candidaturas: INITIAL_APPLICATIONS,
   tarefas: INITIAL_TASKS,
@@ -162,6 +245,49 @@ const AppConfigContext = createContext<AppConfigContextType | undefined>(undefin
  * as notificações a disparar, sem tocar em estado. Quem chama decide quando
  * notificar.
  */
+/**
+ * Gestão de Hierarquia (processo 13) aprovada → grava o vínculo na ESTRUTURA.
+ *
+ * É o que transforma o formulário em dado: sem isto, escolher gestor titular e
+ * substituto ali não mudava nada no roteamento — a alçada 'gestor-setor'
+ * continuava lendo o setor com o gestor antigo.
+ */
+function aplicarHandoffHierarquia(
+  setores: Sector[],
+  colaboradores: Employee[],
+  req: Pick<RHRequest, 'data'>,
+  processId?: string
+): { setores: Sector[]; notificacoes: { titulo: string; mensagem: string }[] } {
+  if (processId !== '13') return { setores, notificacoes: [] };
+
+  const dados = req.data || {};
+  const idx = setores.findIndex(s => s.name === dados.setor);
+  if (idx === -1) return { setores, notificacoes: [] };
+
+  // Os campos guardam id de colaborador; nome ainda é aceito para o que foi
+  // preenchido antes desta mudança.
+  const acha = (ref?: string) =>
+    ref ? colaboradores.find(c => c.id === ref || c.name === ref) : undefined;
+  const titular = acha(dados.gestor_principal);
+  const substituto = acha(dados.substituto);
+  if (!titular && !substituto) return { setores, notificacoes: [] };
+
+  const novos = [...setores];
+  novos[idx] = {
+    ...novos[idx],
+    ...(titular ? { manager: titular.name, managerId: titular.id } : {}),
+    ...(substituto ? { substitute: substituto.name, substituteId: substituto.id } : {})
+  };
+
+  return {
+    setores: novos,
+    notificacoes: [{
+      titulo: 'Hierarquia Atualizada',
+      mensagem: `${novos[idx].name}: ${titular ? `gestor ${titular.name}` : 'gestor mantido'}${substituto ? `, substituto ${substituto.name}` : ''}. As próximas aprovações do setor já seguem esta estrutura.`
+    }]
+  };
+}
+
 function aplicarHandoffCadastro(
   colaboradores: Employee[],
   req: Pick<RHRequest, 'employeeId' | 'colaborador' | 'alvo' | 'alvoId' | 'data'>,
@@ -205,6 +331,13 @@ function aplicarHandoffCadastro(
       department: dados.setorDestino || emp.department,
       costCenter: dados.ccDestino || emp.costCenter,
       manager: dados.gestorDestino?.name || emp.manager,
+      // O vínculo de gestor precisa acompanhar por ID, senão a movimentação
+      // troca o nome do gestor na ficha e a alçada continua roteando para o
+      // gestor antigo.
+      managerId: dados.gestorDestinoId || dados.gestorDestino?.id ||
+        (dados.gestorDestino?.name
+          ? colaboradores.find(c => c.name === dados.gestorDestino.name)?.id
+          : undefined) || emp.managerId,
       branch: dados.filialDestino || emp.branch
     };
     notificacoes.push({
@@ -337,6 +470,185 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
     setConfig(prev => ({ ...prev, activeView: 'login', currentAccessId: null, originalUserId: null, originalUser: null, usuarioAtual: DEMO_USERS[0] }));
   };
 
+  // EMPRESA ATIVA
+  //
+  // Trocar de empresa é: guardar a parametrização da atual, carregar a da
+  // destino e apontar `empresaAtual` para ela. O recorte dos DADOS (quem
+  // aparece em cada lista) é feito na leitura por `utils/empresa` — aqui só a
+  // configuração troca de lugar.
+  const trocarEmpresa = (empresaId: string) => {
+    setConfig(prev => {
+      const destino = prev.empresas.find(e => e.id === empresaId);
+      if (!destino || destino.id === prev.empresaAtual.id) return prev;
+      if (!hasGlobalScope(prev.usuarioAtual)) return prev;
+
+      const parametrizacao = {
+        ...prev.parametrizacao,
+        // A fatia ativa pode ter sido editada desde a última troca: salva antes
+        // de sair, senão a configuração da empresa que está saindo se perde.
+        [prev.empresaAtual.id]: parametrizacaoAtual(prev)
+      };
+      const daDestino = parametrizacao[destino.id];
+
+      return {
+        ...prev,
+        empresaAtual: destino,
+        parametrizacao,
+        ...(daDestino ? aplicarParametrizacao(daDestino) : {}),
+        // A navegação volta para a Intranet: continuar na tela anterior com
+        // outra empresa deixaria um registro da empresa antiga aberto.
+        activeView: 'intranet',
+        selectedEmployeeId: null,
+        currentRequestId: null,
+        auditTrail: [{
+          id: `audit-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          userId: prev.usuarioAtual.id,
+          userName: prev.usuarioAtual.name,
+          action: 'Troca de empresa',
+          module: 'Sessão',
+          targetId: destino.id,
+          details: `${prev.empresaAtual.name} → ${destino.name}`
+        }, ...prev.auditTrail]
+      };
+    });
+  };
+
+  /** Cadastra uma empresa em implantação, com parametrização de partida. */
+  const criarEmpresa = (dados: { name: string; document: string }): Company => {
+    const nova: Company = {
+      id: `emp-${Date.now()}`,
+      name: dados.name.trim(),
+      document: dados.document.trim(),
+      status: 'implantacao',
+      criadaEm: new Date().toISOString()
+    };
+    setConfig(prev => ({
+      ...prev,
+      empresas: [...prev.empresas, nova],
+      parametrizacao: {
+        ...prev.parametrizacao,
+        [nova.id]: parametrizacaoInicial(prev.parametrizacao[COMPANIES[0].id] || parametrizacaoAtual(prev))
+      }
+    }));
+    return nova;
+  };
+
+  /** Grava a parametrização de uma empresa que NÃO é a ativa (implantação). */
+  const atualizarParametrizacao = (empresaId: string, updates: Partial<ParametrizacaoEmpresa>) => {
+    setConfig(prev => ({
+      ...prev,
+      parametrizacao: {
+        ...prev.parametrizacao,
+        [empresaId]: { ...prev.parametrizacao[empresaId], ...updates } as ParametrizacaoEmpresa
+      },
+      // Se a empresa em edição É a ativa, as fatias do topo acompanham.
+      ...(prev.empresaAtual.id === empresaId ? updates : {})
+    }));
+  };
+
+  /** Importa colaboradores já validados para a empresa. */
+  const importarColaboradores = (empresaId: string, novos: Employee[]) => {
+    setConfig(prev => {
+      const empresa = prev.empresas.find(e => e.id === empresaId);
+      const comEmpresa = novos.map(e => ({ ...e, company: empresa?.name || e.company }));
+      const idsNovos = new Set(comEmpresa.map(e => e.id));
+      return {
+        ...prev,
+        // Reimportar substitui a ficha de mesmo id em vez de duplicar.
+        colaboradores: [...prev.colaboradores.filter(e => !idsNovos.has(e.id)), ...comEmpresa],
+        auditTrail: [{
+          id: `audit-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          userId: prev.usuarioAtual.id,
+          userName: prev.usuarioAtual.name,
+          action: 'Importação de colaboradores',
+          module: 'Implantação',
+          targetId: empresaId,
+          details: `${comEmpresa.length} ficha(s) para ${empresa?.name || empresaId}`
+        }, ...prev.auditTrail]
+      };
+    });
+  };
+
+  /** Coloca a empresa no ar: ela passa a aparecer no seletor do topo. */
+  const publicarEmpresa = (empresaId: string): { ok: boolean; motivo?: string } => {
+    const empresa = config.empresas.find(e => e.id === empresaId);
+    if (!empresa) return { ok: false, motivo: 'Empresa não encontrada.' };
+    const param = config.parametrizacao[empresaId];
+    const quadro = config.colaboradores.filter(e => e.company === empresa.name);
+    if (quadro.length === 0) return { ok: false, motivo: 'Importe ao menos um colaborador antes de publicar.' };
+    if (!param?.processos?.some(p => p.ativo)) return { ok: false, motivo: 'Nenhum processo ativo configurado.' };
+    if (!param?.filiais?.length) return { ok: false, motivo: 'Cadastre ao menos uma filial.' };
+
+    setConfig(prev => ({
+      ...prev,
+      empresas: prev.empresas.map(e =>
+        e.id === empresaId ? { ...e, status: 'ativa' as const, publicadaEm: new Date().toISOString() } : e
+      ),
+      auditTrail: [{
+        id: `audit-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        userId: prev.usuarioAtual.id,
+        userName: prev.usuarioAtual.name,
+        action: 'Empresa publicada',
+        module: 'Implantação',
+        targetId: empresaId,
+        details: `${empresa.name} entrou no ar com ${quadro.length} colaborador(es)`
+      }, ...prev.auditTrail]
+    }));
+    return { ok: true };
+  };
+
+  // PERFIS DE ACESSO
+  //
+  // Perfil virou dado: criar um novo aqui basta para ele valer no menu, no
+  // escopo e nos botões — nenhuma tela tem lista de perfis escrita no código.
+
+  const salvarPerfil = (perfil: AccessProfile) => {
+    setConfig(prev => {
+      const existe = prev.perfis.some(p => p.id === perfil.id);
+      return {
+        ...prev,
+        perfis: existe
+          ? prev.perfis.map(p => (p.id === perfil.id ? { ...p, ...perfil, sistema: p.sistema } : p))
+          : [...prev.perfis, perfil],
+        auditTrail: [{
+          id: `audit-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          userId: prev.usuarioAtual.id,
+          userName: prev.usuarioAtual.name,
+          action: existe ? 'Perfil de acesso atualizado' : 'Perfil de acesso criado',
+          module: 'Central Adm',
+          targetId: perfil.id,
+          details: `${perfil.nome} · escopo ${perfil.escopo} · ${perfil.telas.length} tela(s)`
+        }, ...prev.auditTrail]
+      };
+    });
+  };
+
+  const alternarPerfilAtivo = (perfilId: string) => {
+    setConfig(prev => ({
+      ...prev,
+      perfis: prev.perfis.map(p => (p.id === perfilId ? { ...p, ativo: !p.ativo } : p))
+    }));
+  };
+
+  /**
+   * Perfil de sistema não sai, e perfil em uso também não: apagar deixaria os
+   * usuários apontando para um nome que não resolve mais — e sem registro a
+   * checagem cairia na tabela de fábrica, liberando telas em silêncio.
+   */
+  const excluirPerfil = (perfilId: string): { ok: boolean; motivo?: string } => {
+    const perfil = config.perfis.find(p => p.id === perfilId);
+    if (!perfil) return { ok: false, motivo: 'Perfil não encontrado.' };
+    if (perfil.sistema) return { ok: false, motivo: 'Perfis que acompanham o produto não podem ser excluídos — desative-o.' };
+    const emUso = config.usuariosDemo.filter(u => u.profile === perfil.nome).length;
+    if (emUso > 0) return { ok: false, motivo: `${emUso} usuário(s) usam este perfil. Troque o perfil deles antes de excluir.` };
+    setConfig(prev => ({ ...prev, perfis: prev.perfis.filter(p => p.id !== perfilId) }));
+    return { ok: true };
+  };
+
   const resetDemo = () => {
     setConfig(INITIAL_STATE);
     localStorage.removeItem(STORAGE_KEY);
@@ -368,6 +680,24 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       return effective;
     }
 
+    // O REGISTRO DO PERFIL manda. É por aqui que um perfil criado na Central
+    // Adm ganha (ou não) cada ação de cada processo, sem passar por código.
+    // Perfil desativado não autoriza nada.
+    const registro = perfilDoUsuario(user, config.perfis);
+    if (registro) {
+      if (!registro.ativo) return effective;
+      const doPerfil = registro.permissoes[processId];
+      if (doPerfil) Object.assign(effective, doPerfil);
+      // Grupos ainda somam por cima — é como o cliente concede exceção
+      // pontual sem criar um perfil novo.
+      userGroups.forEach(g => {
+        const p = g.permissoes[processId];
+        if (p) Object.keys(effective).forEach(k => { if ((p as any)[k]) (effective as any)[k] = true; });
+      });
+      return effective;
+    }
+
+    // Sem registro (base antiga): a regra por papel do processo, como era.
     const allowedByProfile = (profile: User['profile']) => {
       if (profile === 'Administrador Geral' || profile === 'Administrador') return true;
       if (profile === 'Diretoria') return process.roles.director || process.roles.manager || process.roles.hr || process.roles.employee;
@@ -426,7 +756,9 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
 
     const userGroups = config.grupos.filter(g => g.membros.includes(user.id) || user.groups.includes(g.nome));
 
-    const effective: import('../types').SensitiveDataPermission = {
+    // O perfil é a base; os grupos somam por cima.
+    const doPerfil = perfilDoUsuario(user, config.perfis)?.dadosSensiveis;
+    const effective: import('../types').SensitiveDataPermission = doPerfil ? { ...doPerfil } : {
       visualizarSalario: false,
       editarSalario: false,
       visualizarCPF: false,
@@ -479,8 +811,19 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
 
     // Cascata de alçadas: níveis configurados no processo que passaram na
     // condição de acionamento, congelados na solicitação.
-    const approvalChain = acknowledgement ? [] : buildApprovalChain(process, data);
+    //
+    // O aprovador de cada nível sai da estrutura da empresa aplicada ao ALVO
+    // deste pedido (utils/hierarquia): dois colaboradores de gestores
+    // diferentes geram cascatas com aprovadores diferentes.
+    const organizacao = organizacaoDoConfig(config);
+    const alvoDoPedido = resolverAlvo({ data }, config.colaboradores);
+    const approvalChain = acknowledgement
+      ? []
+      : buildApprovalChain(process, data, { ...organizacao, alvo: alvoDoPedido });
     const firstLevel = approvalChain[0];
+    // Substituição, escalonamento e fallback ficam registrados na abertura —
+    // "por que caiu comigo?" tem de ter resposta na própria trilha.
+    const motivosDeRoteamento = motivosDaCascata(approvalChain);
 
     const employee = config.colaboradores.find(e => e.id === config.usuarioAtual.employeeId);
 
@@ -549,7 +892,10 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
           comentario: isDraft
             ? 'Rascunho criado.'
             : (acknowledgement?.comment ||
-               `Solicitação enviada. Fluxo com ${approvalChain.length} nível(is) de aprovação: ${approvalChain.map(l => l.name).join(' → ')}.`)
+               [
+                 `Solicitação enviada. Fluxo com ${approvalChain.length} nível(is) de aprovação: ${approvalChain.map(l => l.name).join(' → ')}.`,
+                 ...motivosDeRoteamento
+               ].join(' '))
         }
       ],
     };
@@ -561,7 +907,9 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
         id: `task-${Date.now()}`,
         title: `Aprovar ${process.name} — ${firstLevel?.name || 'Aprovação'}`,
         description: `Revisar solicitação ${newRequest.numero} de ${newRequest.solicitante} (${levelLabel(approvalChain, 0)})`,
-        assignedTo: firstLevel?.responsibleUserId || 'ADMIN-001',
+        // A tarefa nasce em quem a alçada resolveu — conta de usuário quando
+        // existe, senão a ficha do colaborador responsável.
+        assignedTo: firstLevel?.responsibleUserId || firstLevel?.responsibleEmployeeId || 'ADMIN-001',
         dueDate: newRequest.slaVencimento,
         status: 'Pendente',
         priority: 'Média',
@@ -576,7 +924,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
         solicitante: newRequest.solicitante,
         type: 'Aprovação',
         responsible: firstLevel?.responsibleLabel || 'Administrador Demo',
-        responsibleUserId: firstLevel?.responsibleUserId || 'ADMIN-001',
+        responsibleUserId: firstLevel?.responsibleUserId || firstLevel?.responsibleEmployeeId || 'ADMIN-001',
         responsibleGroupId: firstLevel?.responsibleGroupId,
         prazo: newRequest.slaVencimento
       };
@@ -647,7 +995,14 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       if (isSubmitting && !acknowledgement) {
         const submitProcess = prev.processos.find(p => p.id === (oldReq.tipoProcesso || oldReq.processId));
         const previousChain = oldReq.approvalChain || [];
-        resubmitChain = buildApprovalChain(submitProcess, updates.data || oldReq.data).map(level => {
+        const dadosDoReenvio = updates.data || oldReq.data;
+        // O reenvio pode ter trocado o alvo (o formulário é editável na
+        // devolução): a cascata é remontada com o alvo NOVO.
+        const ctxReenvio = {
+          ...organizacaoDoConfig(prev),
+          alvo: resolverAlvo({ ...oldReq, ...updates, data: dadosDoReenvio }, prev.colaboradores)
+        };
+        resubmitChain = buildApprovalChain(submitProcess, dadosDoReenvio, ctxReenvio).map(level => {
           const previous = previousChain.find(p => p.id === level.id);
           return previous?.status === 'aprovado' ? { ...level, ...previous } : level;
         });
@@ -695,7 +1050,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
           id: `task-${Date.now()}`,
           title: `Aprovar ${newReq.processName} — ${submitLevel?.name || 'Aprovação'}`,
           description: `Revisar solicitação ${newReq.numero} de ${newReq.solicitante}`,
-          assignedTo: submitLevel?.responsibleUserId || 'ADMIN-001',
+          assignedTo: submitLevel?.responsibleUserId || submitLevel?.responsibleEmployeeId || 'ADMIN-001',
           dueDate: newReq.slaVencimento,
           status: 'Pendente',
           priority: 'Média',
@@ -708,7 +1063,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
           solicitante: newReq.solicitante,
           type: 'Aprovação',
           responsible: submitLevel?.responsibleLabel || 'Administrador Demo',
-          responsibleUserId: submitLevel?.responsibleUserId || 'ADMIN-001',
+          responsibleUserId: submitLevel?.responsibleUserId || submitLevel?.responsibleEmployeeId || 'ADMIN-001',
           responsibleGroupId: submitLevel?.responsibleGroupId,
           prazo: newReq.slaVencimento
         };
@@ -750,7 +1105,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
     // A aprovação avança UM nível da cascata configurada no processo. Só depois
     // do último nível aplicável a solicitação é concluída.
     const approvalProcess = config.processos.find(p => p.id === (req.tipoProcesso || req.processId));
-    const chain = ensureApprovalChain(req, approvalProcess);
+    const chain = ensureApprovalChain(req, approvalProcess, organizacaoDoConfig(config));
     const levelIndex = getCurrentLevelIndex(chain);
     const approvedLevel = chain[levelIndex];
 
@@ -843,6 +1198,9 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       const newSolicitacoes = prev.solicitacoes.map(r => r.id === requestId ? { ...r, ...updatedRequest } : r);
       let newTarefas = prev.tarefas.map(t => t.relatedRequestId === requestId && t.status !== 'Concluída' ? { ...t, status: 'Concluída' as const } : t);
       let newColaboradores = [...prev.colaboradores];
+      // A estrutura de setores também pode ser reescrita pela aprovação — é o
+      // processo de Gestão de Hierarquia gravando gestor titular e substituto.
+      let newSetores = [...prev.setores];
       let newVagas = [...prev.vagas];
       let newCandidaturas = [...prev.candidaturas];
       let newRequestCounter = prev.requestCounter;
@@ -857,7 +1215,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
           id: `task-${Date.now()}`,
           title: `Aprovar ${req.processName} — ${nextLevel.name}`,
           description: `Solicitação ${req.numero} aguardando ${levelLabel(newChain, levelIndex + 1)}.`,
-          assignedTo: nextLevel.responsibleUserId || 'ADMIN-001',
+          assignedTo: nextLevel.responsibleUserId || nextLevel.responsibleEmployeeId || 'ADMIN-001',
           dueDate: nextDue,
           status: 'Pendente',
           priority: 'Média',
@@ -890,6 +1248,12 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
           const handoff = aplicarHandoffCadastro(newColaboradores, req, processId);
           newColaboradores = handoff.colaboradores;
           handoff.notificacoes.forEach(n => addNotification(n.titulo, n.mensagem));
+          // Gestão de Hierarquia grava gestor titular e substituto no setor: é
+          // o que faz a alçada 'gestor-setor' dos PRÓXIMOS pedidos seguir a
+          // decisão aprovada aqui.
+          const hierarquia = aplicarHandoffHierarquia(newSetores, newColaboradores, req, processId);
+          newSetores = hierarquia.setores;
+          hierarquia.notificacoes.forEach(n => addNotification(n.titulo, n.mensagem));
         } else {
           // A etapa do RH/DP vira tarefa — é o que a coloca na Central de
           // Tarefas e em "Minhas Aprovações" de quem responde pelo DP.
@@ -1054,6 +1418,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
         solicitacoes: newSolicitacoes,
         tarefas: newTarefas,
         colaboradores: newColaboradores,
+        setores: newSetores,
         vagas: newVagas,
         candidaturas: newCandidaturas,
         auditTrail: [auditEntry, ...prev.auditTrail],
@@ -1070,7 +1435,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
     // A reprovação encerra o fluxo no nível em que estava — os níveis seguintes
     // nem chegam a ser acionados.
     const rejectProcess = config.processos.find(p => p.id === (req.tipoProcesso || req.processId));
-    const rejectChain = ensureApprovalChain(req, rejectProcess);
+    const rejectChain = ensureApprovalChain(req, rejectProcess, organizacaoDoConfig(config));
     const rejectIndex = getCurrentLevelIndex(rejectChain);
     const rejectedChain = rejectChain.map((level, i) => i === rejectIndex
       ? { ...level, status: 'reprovado' as const, decidedBy: config.usuarioAtual.name, decidedAt: new Date().toISOString(), comment: reason }
@@ -1221,6 +1586,12 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
   };
 
   const createAnnouncement = (announcement: Partial<Announcement>) => {
+    // Comunicado OFICIAL é o que tem banner: é o `imagem` que o coloca no
+    // carrossel com o selo "COMUNICADO OFICIAL" (o post do feed usa `anexo`).
+    // Esconder o botão não basta — a regra vale aqui também, como já valia para
+    // editar e excluir publicação.
+    if (announcement.imagem && !podePublicarComunicadoOficial(config.usuarioAtual)) return;
+
     const newAnnouncement: Announcement = {
       id: `ann-${Date.now()}`,
       title: announcement.title || 'Novo Comunicado',
@@ -1762,6 +2133,14 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       resetDemo,
+      trocarEmpresa,
+      criarEmpresa,
+      atualizarParametrizacao,
+      importarColaboradores,
+      publicarEmpresa,
+      salvarPerfil,
+      alternarPerfilAtivo,
+      excluirPerfil,
       isAuthorized,
       getEffectivePermissions,
       getSensitiveDataPermissions,

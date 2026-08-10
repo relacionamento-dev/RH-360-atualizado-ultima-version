@@ -14,9 +14,10 @@ import { useToast } from './ToastContext';
 import { FormRenderer } from './FormRenderer';
 import { computeDerivedFields } from '../utils/computedFields';
 import { isEmptyFieldValue } from '../utils/formValues';
-import { buildApprovalChain } from '../utils/approvalFlow';
+import { buildApprovalChain, organizacaoDoConfig } from '../utils/approvalFlow';
 import { ETAPA_ENCERRAMENTO } from '../utils/desligamento';
 import { resolverSolicitante } from '../utils/identidade';
+import { resolverAlvo } from '../utils/hierarquia';
 import { Button } from './ui/Button';
 import RequesterCard from './RequesterCard';
 
@@ -168,6 +169,17 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
     };
   }, [config.usuarioAtual, config.usuariosDemo, config.colaboradores, isEditing, existingRequest]);
 
+  // A prévia de "Fluxo de Aprovação" tem de mostrar os aprovadores REAIS deste
+  // pedido — resolvidos sobre o alvo que está no formulário agora. Recalcula a
+  // cada digitação, junto com as condições de acionamento.
+  const ctxDaAlcada = useMemo(
+    () => ({
+      ...organizacaoDoConfig(config),
+      alvo: resolverAlvo({ data: currentFormData }, config.colaboradores)
+    }),
+    [config, currentFormData]
+  );
+
   // Handle TargetMode logic
   useEffect(() => {
     if (isEditing || !process) return;
@@ -277,7 +289,7 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
     // Demais processos: as etapas são as alçadas configuradas no processo que se
     // aplicam a ESTES dados. Como a cascata é recalculada a cada digitação, um
     // nível condicional ("Se maior que 10000") aparece assim que o valor entra.
-    const chain = buildApprovalChain(process, currentFormData);
+    const chain = buildApprovalChain(process, currentFormData, ctxDaAlcada);
     const approvalSteps = chain.map(level => ({
       label: level.name,
       desc: level.conditionLabel
@@ -306,7 +318,7 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
 
   // Aprovadores e SLA derivados das alçadas que realmente vão rodar para estes
   // dados (condições avaliadas sobre o formulário atual), não hardcoded.
-  const applicableChain = acknowledgement ? [] : buildApprovalChain(process, currentFormData);
+  const applicableChain = acknowledgement ? [] : buildApprovalChain(process, currentFormData, ctxDaAlcada);
   const aprovadorLabel = acknowledgement
     ? 'Não se aplica'
     : applicableChain.map(l => l.name).join(' → ') || 'RH / Gestor';

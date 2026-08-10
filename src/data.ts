@@ -1,8 +1,11 @@
-import { Employee, RHProcess, RHRequest, Group, Job, Application, Task, Announcement, BenefitConfig, Company, CostCenter, Sector, User, HistoryEntry, Accesso, TargetMode, AdmissaoBloco, DocumentoStatusRevisao } from './types';
+import { AccessProfile, Employee, EscopoDeDados, NomeDePerfil, ProcessPermission, RHProcess, RHRequest, Group, Job, Application, Task, Announcement, BenefitConfig, Company, CostCenter, Sector, User, HistoryEntry, Accesso, TargetMode, AdmissaoBloco, DocumentoStatusRevisao } from './types';
 import { criarBlocosAdmissao } from './utils/admissaoDigital';
 import { ETAPA_ENCERRAMENTO } from './utils/desligamento';
 import { comFichaCompleta } from './utils/fichaColaborador';
 import { matriculaDoCadastro } from './utils/identidade';
+import { colaboradorDoUsuario, TOPO_DA_HIERARQUIA } from './utils/hierarquia';
+import { acoesDoPerfilPadrao, telasDoPerfilPadrao } from './utils/permissions';
+import { buildApprovalChain } from './utils/approvalFlow';
 
 /**
  * Blocos de demonstração da Admissão Digital derivados da definição canônica
@@ -23,8 +26,30 @@ const blocosDemo = (
 
 // COMPANIES
 export const COMPANIES: Company[] = [
-  { id: '1', name: 'RH360 Corporate', document: '12.345.678/0001-90' },
-  { id: '2', name: 'TechFlow Solutions', document: '98.765.432/0001-21' }
+  { id: '1', name: 'RH360 Corporate', document: '12.345.678/0001-90', status: 'ativa', publicadaEm: '2024-01-01' },
+  // Segunda empresa com estrutura e base PRÓPRIAS (ver TECHFLOW_* abaixo): é
+  // com ela que se demonstra que trocar de empresa troca tudo o que a tela
+  // mostra, e que a alçada de uma não mexe na da outra.
+  { id: '2', name: 'TechFlow Solutions', document: '98.765.432/0001-21', status: 'ativa', publicadaEm: '2025-06-10' }
+];
+
+// --- Estrutura própria da TechFlow ------------------------------------------
+export const TECHFLOW_BRANCHES = ['Sede Florianópolis', 'Unidade Remota'];
+
+export const TECHFLOW_COST_CENTERS: CostCenter[] = [
+  { id: 'tf-cc-1', name: 'Engenharia', code: 'ENG-100', responsibleId: 'TF-EMP-001', substituteId: 'TF-EMP-002' },
+  { id: 'tf-cc-2', name: 'Produto', code: 'PRD-200', responsibleId: 'TF-EMP-002', substituteId: 'TF-EMP-004' },
+  { id: 'tf-cc-3', name: 'Administrativo', code: 'ADM-300', responsibleId: 'TF-EMP-003' }
+];
+
+export const TECHFLOW_SECTORS: Sector[] = [
+  { id: 'tf-s-1', name: 'Engenharia', manager: 'Vitor Andrade', managerId: 'TF-EMP-001', substitute: 'Larissa Prado', substituteId: 'TF-EMP-002', branch: 'Sede Florianópolis' },
+  { id: 'tf-s-2', name: 'Produto', manager: 'Larissa Prado', managerId: 'TF-EMP-002', substitute: 'Rafael Nunes', substituteId: 'TF-EMP-004', branch: 'Sede Florianópolis' },
+  { id: 'tf-s-3', name: 'Administrativo', manager: 'Sofia Bianchi', managerId: 'TF-EMP-003', branch: 'Sede Florianópolis' }
+];
+
+export const TECHFLOW_ROLES = [
+  'CTO', 'Head de Produto', 'Gerente Administrativo', 'Engenheiro de Software', 'Designer de Produto'
 ];
 
 // BRANCHES
@@ -86,25 +111,48 @@ export const INITIAL_INTRANET: any[] = [
 ];
 
 // COST CENTERS
+// Centro de custo com responsável e substituto POR ID: é o que a alçada
+// 'responsavel-cc' lê. Antes o CC não tinha dono nenhum e o tipo de alçada caía
+// num usuário fixo.
 export const COST_CENTERS: CostCenter[] = [
-  { id: '1', name: 'Tecnologia', code: 'TI-001' },
-  { id: '2', name: 'Administrativo', code: 'ADM-001' },
-  { id: '3', name: 'Comercial', code: 'COM-001' },
-  { id: '4', name: 'Recursos Humanos', code: 'RH-001' },
-  { id: '5', name: 'Financeiro', code: 'FIN-001' },
-  { id: '6', name: 'Operações', code: 'OPE-001' },
-  { id: '7', name: 'Marketing', code: 'MKT-001' },
-  { id: '8', name: 'Jurídico', code: 'JUR-001' }
+  { id: '1', name: 'Tecnologia', code: 'TI-001', responsibleId: 'EMP-005', substituteId: 'EMP-011' },
+  { id: '2', name: 'Administrativo', code: 'ADM-001', responsibleId: 'EMP-004', substituteId: 'EMP-020' },
+  { id: '3', name: 'Comercial', code: 'COM-001', responsibleId: 'EMP-019', substituteId: 'EMP-009' },
+  { id: '4', name: 'Recursos Humanos', code: 'RH-001', responsibleId: 'EMP-004', substituteId: 'EMP-016' },
+  { id: '5', name: 'Financeiro', code: 'FIN-001', responsibleId: 'EMP-018', substituteId: 'EMP-013' },
+  { id: '6', name: 'Operações', code: 'OPE-001', responsibleId: 'EMP-005', substituteId: 'EMP-015' },
+  { id: '7', name: 'Marketing', code: 'MKT-001', responsibleId: 'EMP-019', substituteId: 'EMP-010' },
+  { id: '8', name: 'Jurídico', code: 'JUR-001', responsibleId: 'EMP-003', substituteId: 'EMP-014' },
+  // Os dois CCs que só existiam escritos na ficha de alguém (a conta de
+  // demonstração usa '1010 - ADM' e '2020 - TI'). Sem eles, 'responsavel-cc'
+  // não achava o centro de custo daquele colaborador e caía no fallback.
+  { id: '9', name: 'Administrativo (Demo)', code: '1010 - ADM', responsibleId: 'EMP-004', substituteId: 'EMP-020' },
+  { id: '10', name: 'Tecnologia (Demo)', code: '2020 - TI', responsibleId: 'EMP-005', substituteId: 'EMP-011' }
 ];
 
-// SECTORS
+// SECTORS — a estrutura de Gestão de Hierarquia.
+//
+// Gestor titular e SUBSTITUTO por id. O substituto era só um campo do
+// formulário do processo 13 (uma string solta, sem efeito nenhum no
+// roteamento); aqui ele é dado da estrutura e assume quando o titular está
+// ausente. A lista cobre TODOS os departamentos que aparecem nas fichas —
+// faltavam 8 deles, e um alvo em setor não cadastrado caía no fallback.
 export const SECTORS: Sector[] = [
-  { id: '1', name: 'Desenvolvimento', manager: 'Marcos Vinicius', branch: 'Matriz SP' },
-  { id: '2', name: 'Departamento Pessoal', manager: 'Ana Paula Lima', branch: 'Matriz SP' },
-  { id: '3', name: 'Vendas', manager: 'Marcos Vinicius', branch: 'Filial PR' },
-  { id: '4', name: 'Controladoria', manager: 'Ricardo Silva', branch: 'Matriz SP' },
-  { id: '5', name: 'Infraestrutura', manager: 'Marcos Vinicius', branch: 'Filial Goiânia' },
-  { id: '6', name: 'Recrutamento', manager: 'Ana Paula Lima', branch: 'Matriz SP' }
+  { id: '1', name: 'Desenvolvimento', manager: 'Marcos Vinicius', managerId: 'EMP-005', substitute: 'Daniel Rocha', substituteId: 'EMP-011', branch: 'Matriz SP' },
+  { id: '2', name: 'Departamento Pessoal', manager: 'Ana Paula Lima', managerId: 'EMP-004', substitute: 'Marta Rocha', substituteId: 'EMP-020', branch: 'Matriz SP' },
+  { id: '3', name: 'Vendas', manager: 'Leonardo Vinci', managerId: 'EMP-019', substitute: 'Bruno Meirelles', substituteId: 'EMP-009', branch: 'Filial PR' },
+  { id: '4', name: 'Controladoria', manager: 'Karina Lopes', managerId: 'EMP-018', substitute: 'Ricardo Silva', substituteId: 'EMP-003', branch: 'Matriz SP' },
+  { id: '5', name: 'Infraestrutura', manager: 'Marcos Vinicius', managerId: 'EMP-005', substitute: 'Renato Oliveira', substituteId: 'EMP-007', branch: 'Filial Goiânia' },
+  { id: '6', name: 'Recrutamento', manager: 'Ana Paula Lima', managerId: 'EMP-004', substitute: 'Eliana Martins', substituteId: 'EMP-012', branch: 'Matriz SP' },
+  { id: '7', name: 'Tecnologia', manager: 'Ítalo Silva', managerId: 'EMP-024', substitute: 'Jonathan Oliveira', substituteId: 'EMP-025', branch: 'Matriz SP' },
+  { id: '8', name: 'Recursos Humanos', manager: 'Ana Paula Lima', managerId: 'EMP-004', substitute: 'Fernanda Honorato', substituteId: 'EMP-028', branch: 'Matriz SP' },
+  { id: '9', name: 'Financeiro', manager: 'Karina Lopes', managerId: 'EMP-018', substitute: 'Felipe Neves', substituteId: 'EMP-013', branch: 'Matriz SP' },
+  { id: '10', name: 'Jurídico', manager: 'Ricardo Silva', managerId: 'EMP-003', substitute: 'Giovana Santos', substituteId: 'EMP-014', branch: 'Matriz SP' },
+  { id: '11', name: 'Operações', manager: 'Marcos Vinicius', managerId: 'EMP-005', substitute: 'Helio Garcia', substituteId: 'EMP-015', branch: 'Matriz SP' },
+  { id: '12', name: 'Diretoria', manager: 'Ricardo Silva', managerId: 'EMP-003', branch: 'Matriz SP' },
+  // Apelidos que algumas fichas usam para os mesmos times.
+  { id: '13', name: 'TI', manager: 'Marcos Vinicius', managerId: 'EMP-005', substitute: 'Daniel Rocha', substituteId: 'EMP-011', branch: 'Matriz SP' },
+  { id: '14', name: 'RH', manager: 'Ana Paula Lima', managerId: 'EMP-004', substitute: 'Fernanda Honorato', substituteId: 'EMP-028', branch: 'Matriz SP' }
 ];
 
 // ROLES
@@ -314,6 +362,47 @@ export const DEMO_USERS: User[] = [
     email: 'carlos.eduardo@rh360.demo',
     password: 'Colab123!',
     employeeId: 'EMP-001',
+    status: 'Ativo'
+  },
+  // --- Contas da TechFlow Solutions ---
+  //
+  // A segunda empresa precisa das PRÓPRIAS contas: sem elas, a alçada
+  // institucional ('rh-filial', 'diretoria') não acha ninguém dentro da empresa
+  // e o pedido de quem está no topo da hierarquia fica sem aprovador.
+  {
+    id: 'TF-DIR-001',
+    name: 'Vitor Andrade',
+    role: 'CTO',
+    groups: ['Diretoria'],
+    profile: 'Diretoria',
+    scope: 'empresa',
+    email: 'vitor.andrade@techflow.demo',
+    password: 'Tech123!',
+    employeeId: 'TF-EMP-001',
+    status: 'Ativo'
+  },
+  {
+    id: 'TF-RH-001',
+    name: 'Sofia Bianchi',
+    role: 'Gerente Administrativo',
+    groups: ['RH/DP'],
+    profile: 'RH/DP',
+    scope: 'empresa',
+    email: 'sofia.bianchi@techflow.demo',
+    password: 'Tech123!',
+    employeeId: 'TF-EMP-003',
+    status: 'Ativo'
+  },
+  {
+    id: 'TF-GEST-001',
+    name: 'Larissa Prado',
+    role: 'Head de Produto',
+    groups: ['Gestores'],
+    profile: 'Gestor',
+    scope: 'equipe',
+    email: 'larissa.prado@techflow.demo',
+    password: 'Tech123!',
+    employeeId: 'TF-EMP-002',
     status: 'Ativo'
   }
 ];
@@ -607,7 +696,7 @@ const EMPLOYEES_BASE: Omit<Employee, 'registration'>[] = [
     department: 'Desenvolvimento',
     role: 'Tech Lead',
     branch: 'Matriz SP',
-    company: 'TechFlow Solutions',
+    company: 'RH360 Corporate', // gestor, setor e CC são da RH360 — a ficha estava com a empresa errada
     status: 'Ativo',
     admissionDate: '2020-01-15',
     birthDate: '1986-10-05',
@@ -739,7 +828,7 @@ const EMPLOYEES_BASE: Omit<Employee, 'registration'>[] = [
     department: 'Desenvolvimento',
     role: 'Analista de Sistemas',
     branch: 'Matriz SP',
-    company: 'TechFlow Solutions',
+    company: 'RH360 Corporate', // gestor, setor e CC são da RH360 — a ficha estava com a empresa errada
     status: 'Ativo',
     admissionDate: '2022-11-20',
     birthDate: '1996-03-15',
@@ -900,6 +989,9 @@ const EMPLOYEES_BASE: Omit<Employee, 'registration'>[] = [
     birthDate: '1987-02-11',
     salary: 32000,
     manager: 'Conselho JYNX',
+    // Conselho não é colaborador: marca o topo da hierarquia explicitamente,
+    // em vez de deixar o vínculo vazio (que significaria "não sei").
+    managerId: TOPO_DA_HIERARQUIA,
     costCenter: 'TI-001',
     cpf: '801.111.111-01',
     avatar: 'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?q=80&w=200&h=200&fit=crop'
@@ -1239,9 +1331,71 @@ const EMPLOYEES_BASE: Omit<Employee, 'registration'>[] = [
  * A matrícula entra aqui, derivada do id: `EMP-007` → `00007`. Duas pessoas só
  * colidiriam se tivessem o mesmo id, que é a chave primária do cadastro.
  */
+const ID_PELO_NOME = new Map(EMPLOYEES_BASE.map(e => [e.name.trim().toLowerCase(), e.id]));
+
 export const INITIAL_EMPLOYEES: Employee[] = EMPLOYEES_BASE.map(emp =>
-  comFichaCompleta({ ...emp, registration: matriculaDoCadastro(emp.id) })
+  comFichaCompleta({
+    ...emp,
+    registration: matriculaDoCadastro(emp.id),
+    // Gestor por ID. A maioria das fichas já traz; as que só tinham o nome
+    // resolvem aqui, de uma vez, para o dado sair correto do seed em vez de
+    // depender da compatibilidade por nome em toda leitura. Quem sobra sem
+    // vínculo é pré-admissão ("A definir"), que é ausência de verdade.
+    managerId: emp.managerId || ID_PELO_NOME.get((emp.manager || '').trim().toLowerCase())
+  })
 );
+
+// Quadro próprio da TechFlow. Nomes, setores, CCs e filiais que NÃO existem na
+// RH360 — é isso que torna visível, ao trocar de empresa, que a tela inteira
+// mudou de base e não só de rótulo.
+const TECHFLOW_BASE: Omit<Employee, 'registration'>[] = [
+  {
+    id: 'TF-EMP-001', name: 'Vitor Andrade', email: 'vitor.andrade@techflow.demo', phone: '(48) 99911-0001',
+    address: 'Rua das Palmeiras, 120', city: 'Florianópolis', state: 'SC',
+    department: 'Engenharia', role: 'CTO', branch: 'Sede Florianópolis', company: 'TechFlow Solutions',
+    status: 'Ativo', admissionDate: '2021-02-01', birthDate: '1984-06-12', salary: 34000,
+    manager: 'Conselho TechFlow', managerId: TOPO_DA_HIERARQUIA, costCenter: 'ENG-100', cpf: '901.111.111-01'
+  },
+  {
+    id: 'TF-EMP-002', name: 'Larissa Prado', email: 'larissa.prado@techflow.demo', phone: '(48) 99911-0002',
+    address: 'Av. Beira Mar, 900', city: 'Florianópolis', state: 'SC',
+    department: 'Produto', role: 'Head de Produto', branch: 'Sede Florianópolis', company: 'TechFlow Solutions',
+    status: 'Ativo', admissionDate: '2021-08-15', birthDate: '1989-11-03', salary: 24000,
+    manager: 'Vitor Andrade', managerId: 'TF-EMP-001', costCenter: 'PRD-200', cpf: '901.111.111-02'
+  },
+  {
+    id: 'TF-EMP-003', name: 'Sofia Bianchi', email: 'sofia.bianchi@techflow.demo', phone: '(48) 99911-0003',
+    address: 'Rua Lauro Linhares, 45', city: 'Florianópolis', state: 'SC',
+    department: 'Administrativo', role: 'Gerente Administrativo', branch: 'Sede Florianópolis', company: 'TechFlow Solutions',
+    status: 'Ativo', admissionDate: '2022-03-07', birthDate: '1987-01-29', salary: 18000,
+    manager: 'Vitor Andrade', managerId: 'TF-EMP-001', costCenter: 'ADM-300', cpf: '901.111.111-03'
+  },
+  {
+    id: 'TF-EMP-004', name: 'Rafael Nunes', email: 'rafael.nunes@techflow.demo', phone: '(48) 99911-0004',
+    address: 'Servidão dos Coqueiros, 8', city: 'Florianópolis', state: 'SC',
+    department: 'Produto', role: 'Designer de Produto', branch: 'Sede Florianópolis', company: 'TechFlow Solutions',
+    status: 'Ativo', admissionDate: '2023-05-22', birthDate: '1994-09-17', salary: 11000,
+    manager: 'Larissa Prado', managerId: 'TF-EMP-002', costCenter: 'PRD-200', cpf: '901.111.111-04'
+  },
+  {
+    id: 'TF-EMP-005', name: 'Beatriz Coelho', email: 'beatriz.coelho@techflow.demo', phone: '(48) 99911-0005',
+    address: 'Rua Deodoro, 300', city: 'Florianópolis', state: 'SC',
+    department: 'Engenharia', role: 'Engenheiro de Software', branch: 'Unidade Remota', company: 'TechFlow Solutions',
+    status: 'Ativo', admissionDate: '2024-01-08', birthDate: '1996-04-02', salary: 13500,
+    manager: 'Vitor Andrade', managerId: 'TF-EMP-001', costCenter: 'ENG-100', cpf: '901.111.111-05'
+  }
+];
+
+export const TECHFLOW_EMPLOYEES: Employee[] = TECHFLOW_BASE.map(emp =>
+  comFichaCompleta({ ...emp, registration: `TF-${String(Number(emp.id.replace(/\D/g, ''))).padStart(5, '0')}` })
+);
+
+/**
+ * Cadastro completo do ambiente — as duas empresas juntas. O recorte por
+ * empresa acontece na LEITURA (utils/empresa), não guardando listas separadas:
+ * uma lista por empresa duplicaria o problema que a matrícula já teve.
+ */
+export const TODOS_OS_COLABORADORES: Employee[] = [...INITIAL_EMPLOYEES, ...TECHFLOW_EMPLOYEES];
 
 /**
  * Snapshot do solicitante montado A PARTIR DO CADASTRO, pelo id do usuário.
@@ -1315,6 +1469,49 @@ const defaultSensitive = (isFull: boolean) => ({
   visualizarJuridico: isFull,
   visualizarAuditoria: isFull
 });
+
+// PERFIS DE ACESSO
+//
+// Os seis perfis que acompanham o produto, agora como REGISTRO e não como union
+// type. O `telas` e as `acoesDeTela` de cada um saem das mesmas tabelas que o
+// código usava (utils/permissions), então o comportamento de fábrica é
+// idêntico ao de antes — a diferença é que agora dá para editar, desativar e
+// criar perfis novos pela Central Adm.
+const perfilDeSistema = (
+  id: string,
+  nome: NomeDePerfil,
+  escopo: EscopoDeDados,
+  descricao: string,
+  permissoes: Record<string, ProcessPermission>,
+  sensiveis: boolean
+): AccessProfile => ({
+  id,
+  nome,
+  descricao,
+  escopo,
+  ativo: true,
+  sistema: true,
+  telas: telasDoPerfilPadrao(nome),
+  acoesDeTela: acoesDoPerfilPadrao(nome),
+  permissoes,
+  dadosSensiveis: defaultSensitive(sensiveis)
+});
+
+export const INITIAL_ACCESS_PROFILES: AccessProfile[] = [
+  perfilDeSistema('perf-admin-geral', 'Administrador Geral', 'global',
+    'Acesso irrestrito a todas as empresas. Reservado às contas @jynx.com.br.', adminPerms(), true),
+  perfilDeSistema('perf-admin', 'Administrador', 'empresa',
+    'Administra a empresa ativa: processos, acessos e parametrização.', adminPerms(), true),
+  perfilDeSistema('perf-diretoria', 'Diretoria', 'empresa',
+    'Visão executiva da empresa, com aprovação de alçadas superiores.', adminPerms(), true),
+  perfilDeSistema('perf-rh-dp', 'RH/DP', 'empresa',
+    'Opera os processos de pessoas e responde pelo dado sensível.', adminPerms(), true),
+  // Gestor: escopo de EQUIPE e sem dado sensível — é o recorte que faltava.
+  perfilDeSistema('perf-gestor', 'Gestor', 'equipe',
+    'Enxerga a própria equipe. Sem acesso a remuneração, salvo permissão explícita.', defaultPerms(), false),
+  perfilDeSistema('perf-colaborador', 'Colaborador', 'proprio',
+    'Enxerga apenas os próprios registros.', defaultPerms(), false)
+];
 
 // GROUPS
 export const INITIAL_GROUPS: Group[] = [
@@ -1512,6 +1709,26 @@ const genHist = (req: RHRequest, steps: string[]) => {
   return h;
 };
 
+/**
+ * A estrutura da empresa, do jeito que o provider a monta. O seed resolve as
+ * alçadas com ela para que a solicitação já nasça apontando para o aprovador
+ * real do alvo — e não para um nome escolhido a dedo, que era o que fazia a
+ * coluna "Responsável" divergir de quem tinha o item na fila.
+ */
+const ORGANIZACAO_DO_SEED = () => ({
+  colaboradores: INITIAL_EMPLOYEES,
+  setores: SECTORS,
+  centrosDeCusto: COST_CENTERS,
+  usuarios: DEMO_USERS
+});
+
+const cascataDoSeed = (processo: RHProcess, alvo?: Employee, solicitanteId?: string, dados: Record<string, any> = {}) =>
+  buildApprovalChain(processo, dados, {
+    ...ORGANIZACAO_DO_SEED(),
+    alvo,
+    solicitante: colaboradorDoUsuario(solicitanteId, DEMO_USERS, INITIAL_EMPLOYEES)
+  });
+
 // Helper to generate requests
 const generateInitialRequests = () => {
   let counter = 1;
@@ -1565,7 +1782,11 @@ const generateInitialRequests = () => {
       centroCusto: INITIAL_EMPLOYEES[counter % 20].costCenter,
       status: 'Em Análise',
       etapaAtual: p.etapas[1] || p.etapas[0],
-      responsavelAtual: p.approvals[0]?.responsibilityType === 'diretoria' ? 'Ricardo Silva' : 'Ana Paula Lima',
+      // O responsável exibido é o PAPEL que a alçada resolveu para o alvo deste
+      // pedido. Era um nome escolhido por `if` ("Ricardo Silva" ou "Ana Paula
+      // Lima"), que não tinha relação com quem ficava com o item na fila.
+      responsavelAtual: cascataDoSeed(p, INITIAL_EMPLOYEES[counter % 20], counter % 2 === 0 ? 'ADMIN-001' : 'GEST-001')[0]?.responsibleLabel || 'RH da Filial',
+      approvalChain: cascataDoSeed(p, INITIAL_EMPLOYEES[counter % 20], counter % 2 === 0 ? 'ADMIN-001' : 'GEST-001'),
       slaVencimento: new Date(Date.now() + 24 * 3600000).toISOString(),
       slaStatus: 'normal',
       trail: p.etapas,
@@ -1598,7 +1819,8 @@ const generateInitialRequests = () => {
       centroCusto: INITIAL_EMPLOYEES[(counter + 1) % 20].costCenter,
       status: 'Devolvida',
       etapaAtual: p.etapas[0],
-      responsavelAtual: counter % 3 === 0 ? 'Carlos Eduardo' : 'Marcos Vinicius',
+      // Devolvida: o item está com quem abriu, e o papel diz isso.
+      responsavelAtual: 'Solicitante',
       slaVencimento: new Date(Date.now() - 48 * 3600000).toISOString(),
       slaStatus: 'critical',
       trail: p.etapas,
@@ -1674,7 +1896,8 @@ const req52: RHRequest = {
   employeeId: alvoDoReq52.id,
   status: 'Em Análise',
   etapaAtual: 'Aprovação',
-  responsavelAtual: 'Ricardo Silva',
+  // Papel resolvido pela alçada sobre o alvo, não um nome fixo.
+  responsavelAtual: cascataDoSeed(INITIAL_RH_PROCESSES.find(p => p.id === '7')!, alvoDoReq52, 'GEST-001')[0]?.responsibleLabel || 'RH da Filial',
   slaVencimento: new Date(Date.now() + 48 * 3600000).toISOString(),
   slaStatus: 'normal',
   trail: ['Solicitação', 'Aprovação', 'Conclusão'],
@@ -1752,7 +1975,7 @@ const generateOnboardingRequests = () => {
       createdAt: new Date(Date.now() - (idx + 1) * 24 * 3600000).toISOString(),
       updatedAt: new Date().toISOString(),
       etapaAtual: c.progress === 1 ? 'Finalizado' : 'Em Integração',
-      responsavelAtual: 'Ana Paula Lima',
+      responsavelAtual: 'RH da Filial',
       data: {
         ...createTasks(c.progress),
         progress: c.progress * 100,
@@ -1829,6 +2052,12 @@ const ESTADOS_PARA_APROVAR: { status: RHRequest['status']; sla: RHRequest['slaSt
  */
 const SOLICITANTES_TERCEIROS = ['GEST-001', 'RH-001', 'COLAB-001', 'GEST-001'];
 
+/**
+ * Papel do nível que espera a conta de demonstração. É o PAPEL que a tela
+ * mostra (regra JYNX); o nome de quem responde fica em `responsibleName`.
+ */
+const PAPEL_APROVACAO_ADMINISTRATIVA = 'Aprovação Administrativa';
+
 const generateDemoAccountRequests = () => {
   // Continua a numeração de onde o seed parou, para não colidir com o contador.
   let sequencia = INITIAL_RH_REQUESTS.length + 1;
@@ -1870,7 +2099,7 @@ const generateDemoAccountRequests = () => {
         centroCusto: emp?.costCenter || 'TI-001',
         status: estado.status,
         etapaAtual: estado.etapa,
-        responsavelAtual: concluida ? '' : estado.status === 'Devolvida' ? nomeDaConta : 'RH da Filial',
+        responsavelAtual: concluida ? '' : estado.status === 'Devolvida' ? 'Solicitante' : 'RH da Filial',
         slaVencimento: new Date(Date.now() + (concluida ? -3 : 2) * 24 * 3600000).toISOString(),
         slaStatus: estado.sla,
         trail: ['Solicitação', 'Aprovação', 'Conclusão'],
@@ -1968,7 +2197,7 @@ const generateDemoAccountRequests = () => {
         // A alçada pendente aponta para a conta: é isso que faz a solicitação
         // aparecer em "Minhas Aprovações" dela e em nenhuma outra.
         etapaAtual: 'Aprovação Administrativa',
-        responsavelAtual: nomeDaConta,
+        responsavelAtual: PAPEL_APROVACAO_ADMINISTRATIVA,
         slaVencimento: new Date(Date.now() + (estado.sla === 'critical' ? -1 : 1) * 24 * 3600000).toISOString(),
         slaStatus: estado.sla,
         trail: ['Solicitação', 'Aprovação Administrativa', 'Conclusão'],
@@ -1978,8 +2207,10 @@ const generateDemoAccountRequests = () => {
             name: 'Aprovação Administrativa',
             order: 1,
             responsibilityType: 'pessoa',
-            responsibleLabel: nomeDaConta,
+            responsibleLabel: PAPEL_APROVACAO_ADMINISTRATIVA,
             responsibleUserId: conta.id,
+            responsibleEmployeeId: conta.employeeId,
+            responsibleName: nomeDaConta,
             sla: 24,
             slaUnit: 'h',
             isMandatory: true,
@@ -2121,6 +2352,104 @@ INITIAL_RH_REQUESTS.push(reqDesligamentoEncerramento);
 
 // Numera a partir daqui (RH-2026-0054 em diante), depois do último número fixo.
 generateDemoAccountRequests();
+
+/**
+ * Solicitações da TechFlow — a segunda empresa precisa de movimento próprio.
+ *
+ * A cascata é resolvida sobre a ESTRUTURA DELA (setores, CCs e quadro da
+ * TechFlow): é o que faz o aprovador sair de dentro da empresa, e não do
+ * diretor da RH360.
+ */
+const generateTechFlowRequests = () => {
+  const orgTechFlow = {
+    colaboradores: TECHFLOW_EMPLOYEES,
+    setores: TECHFLOW_SECTORS,
+    centrosDeCusto: TECHFLOW_COST_CENTERS,
+    usuarios: DEMO_USERS
+  };
+
+  const modelos: { processId: string; alvoId: string; solicitanteId: string; status: RHRequest['status']; data: Record<string, any> }[] = [
+    {
+      processId: '9', alvoId: 'TF-EMP-005', solicitanteId: 'TF-EMP-005', status: 'Pendente de Aprovação',
+      data: { periodoAquisitivo: '2024/2025 (30 dias)', dataInicio: '2026-10-05', diasGozo: 15, abonoPecuniario: false, adianta13: false }
+    },
+    {
+      processId: '8', alvoId: 'TF-EMP-004', solicitanteId: 'TF-EMP-004', status: 'Em Análise',
+      data: { competencia: 'Agosto/2026', tipoDespesa: 'Software', fornecedor: 'Figma', data: '2026-08-02', valor: 890, justificativa: 'Licença anual do time de Produto.' }
+    },
+    {
+      processId: '12', alvoId: 'TF-EMP-002', solicitanteId: 'TF-EMP-002', status: 'Concluída',
+      data: { data: '2026-07-28', horaInicio: '19:00', horaFim: '22:00', motivo: 'Projeto Especial', destino: 'Banco de Horas', observacao: 'Virada de release.' }
+    }
+  ];
+
+  modelos.forEach((modelo, i) => {
+    const processo = INITIAL_RH_PROCESSES.find(p => p.id === modelo.processId)!;
+    const alvo = TECHFLOW_EMPLOYEES.find(e => e.id === modelo.alvoId)!;
+    const solicitante = TECHFLOW_EMPLOYEES.find(e => e.id === modelo.solicitanteId)!;
+    const usuarioSolicitante = DEMO_USERS.find(u => u.employeeId === solicitante.id);
+    const cascata = buildApprovalChain(processo, modelo.data, {
+      ...orgTechFlow, alvo, solicitante
+    });
+    const concluida = modelo.status === 'Concluída';
+    const aberto = new Date(Date.now() - (2 + i * 4) * 24 * 3600000).toISOString();
+    const numero = `TF-2026-${String(i + 1).padStart(4, '0')}`;
+
+    INITIAL_RH_REQUESTS.push({
+      id: `req-tf-${i + 1}`,
+      numero,
+      tipoProcesso: processo.id,
+      processId: processo.id,
+      processName: processo.name,
+      category: processo.category,
+      origem: 'manual',
+      solicitante: solicitante.name,
+      requesterId: usuarioSolicitante?.id || solicitante.id,
+      requesterSnapshot: {
+        name: solicitante.name,
+        registration: solicitante.registration,
+        email: solicitante.email,
+        role: solicitante.role,
+        department: solicitante.department,
+        costCenter: solicitante.costCenter,
+        branch: solicitante.branch
+      },
+      alvo: alvo.name,
+      alvoId: alvo.id,
+      employeeId: alvo.id,
+      // É este campo que prende a solicitação à empresa no recorte das telas.
+      empresa: alvo.company,
+      filial: alvo.branch,
+      centroCusto: alvo.costCenter,
+      status: modelo.status,
+      etapaAtual: concluida ? 'Conclusão' : cascata[0]?.name || 'Aprovação',
+      responsavelAtual: concluida ? '' : cascata[0]?.responsibleLabel || 'RH da Filial',
+      slaVencimento: new Date(Date.now() + (concluida ? -2 : 2) * 24 * 3600000).toISOString(),
+      slaStatus: 'normal',
+      trail: ['Solicitação', ...cascata.map(l => l.name), 'Conclusão'],
+      approvalChain: concluida ? cascata.map(l => ({ ...l, status: 'aprovado' as const })) : cascata,
+      data: modelo.data,
+      attachments: [],
+      createdAt: aberto,
+      updatedAt: new Date().toISOString(),
+      historico: [{
+        id: `h-${numero}-1`,
+        autor: solicitante.name,
+        userName: solicitante.name,
+        userId: usuarioSolicitante?.id,
+        etapa: 'Solicitação',
+        de: 'Novo',
+        para: cascata[0]?.name || 'Aprovação',
+        action: 'Envio',
+        dataHora: aberto,
+        timestamp: aberto,
+        comentario: `Solicitação enviada. Fluxo com ${cascata.length} nível(is): ${cascata.map(l => l.name).join(' → ')}.`
+      }]
+    });
+  });
+};
+
+generateTechFlowRequests();
 
 // Update total counter for persistence
 export const INITIAL_REQUEST_COUNTER = INITIAL_RH_REQUESTS.length;
@@ -2574,9 +2903,24 @@ export const INITIAL_PROCESS_DEFINITIONS: Record<string, any[]> = {
         { id: 'empresa', label: 'Empresa', type: 'select', required: true, options: COMPANIES.map(c => c.name) },
         { id: 'filial', label: 'Filial', type: 'select', required: true, options: BRANCHES },
         { id: 'setor', label: 'Setor', type: 'select', required: true, options: SECTORS.map(s => s.name) },
-        { id: 'gestor_principal', label: 'Gestor Principal', type: 'select', required: true, options: DEMO_USERS.map(u => u.name) },
-        { id: 'substituto', label: 'Gestor Substituto', type: 'select', options: DEMO_USERS.map(u => u.name) },
-        { id: 'supervisor', label: 'Supervisor Imediato', type: 'select', options: DEMO_USERS.map(u => u.name) },
+        // Gestor e substituto saem do CADASTRO (valor = id do colaborador), não
+        // da lista de usuários de demonstração por nome. É o que permite a
+        // aprovação do processo gravar o vínculo na estrutura de setores — e é
+        // esse vínculo que a alçada 'gestor-setor' lê. Enquanto isso era um
+        // nome solto, o substituto não tinha efeito nenhum no roteamento.
+        {
+          id: 'gestor_principal', label: 'Gestor Principal', type: 'select', required: true,
+          options: INITIAL_EMPLOYEES.filter(e => e.status === 'Ativo').map(e => ({ value: e.id, label: `${e.name} — ${e.role}` }))
+        },
+        {
+          id: 'substituto', label: 'Gestor Substituto', type: 'select',
+          hint: 'Assume a alçada quando o titular estiver afastado, de férias ou inativo.',
+          options: INITIAL_EMPLOYEES.filter(e => e.status === 'Ativo').map(e => ({ value: e.id, label: `${e.name} — ${e.role}` }))
+        },
+        {
+          id: 'supervisor', label: 'Supervisor Imediato', type: 'select',
+          options: INITIAL_EMPLOYEES.filter(e => e.status === 'Ativo').map(e => ({ value: e.id, label: `${e.name} — ${e.role}` }))
+        },
         { id: 'vigencia', label: 'Vigência da Versão', type: 'date', required: true },
         { id: 'observacao', label: 'Observações Internas', type: 'textarea' }
       ]

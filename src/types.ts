@@ -1,11 +1,60 @@
+/**
+ * Escopo de dados: até onde a visão de um perfil alcança. O menu decide QUAIS
+ * telas aparecem; o escopo decide QUAIS REGISTROS cada tela mostra.
+ */
+export type EscopoDeDados =
+  | 'proprio'        // só os próprios registros
+  | 'equipe'         // subordinados diretos e indiretos + o próprio centro de custo
+  | 'setor'
+  | 'centro-custo'
+  | 'filial'
+  | 'empresa'        // toda a empresa ativa
+  | 'global';        // todas as empresas
+
+/**
+ * Os seis perfis que acompanham o produto. O tipo continua listando-os para
+ * manter autocomplete e pegar erro de digitação nas comparações que já existem,
+ * mas ACEITA qualquer string: perfil virou dado (`AppConfig.perfis`), e o
+ * cliente cria os dele pela Central Adm sem tocar em código.
+ */
+export type PerfilPadrao =
+  | 'Administrador Geral' | 'Administrador' | 'Diretoria' | 'RH/DP' | 'Gestor' | 'Colaborador';
+export type NomeDePerfil = PerfilPadrao | (string & {});
+
+/**
+ * Perfil de acesso configurável. O `nome` é a chave que liga o usuário ao
+ * perfil (`User.profile`), e é por ele que as regras antigas por nome
+ * continuam valendo.
+ */
+export interface AccessProfile {
+  id: string;
+  nome: NomeDePerfil;
+  descricao?: string;
+  escopo: EscopoDeDados;
+  ativo: boolean;
+  /** Telas do menu que este perfil alcança. */
+  telas: string[];
+  /** Ações por processo — mesma matriz que os grupos já usavam. */
+  permissoes: Record<string, ProcessPermission>;
+  /** Ações de tela que não são de processo (ex.: publicar comunicado oficial). */
+  acoesDeTela?: Record<string, boolean>;
+  dadosSensiveis: SensitiveDataPermission;
+  /**
+   * Perfil que acompanha o produto: pode ser editado, mas não excluído — há
+   * usuários e regras de negócio presas a ele.
+   */
+  sistema?: boolean;
+}
+
 export interface User {
   id: string;
   name: string;
   role: string;
   groups: string[];
   avatar?: string;
-  profile: 'Administrador Geral' | 'Administrador' | 'Diretoria' | 'RH/DP' | 'Gestor' | 'Colaborador';
-  scope: 'proprio' | 'equipe' | 'setor' | 'centro-custo' | 'filial' | 'empresa' | 'global';
+  /** Nome do perfil de acesso — casa com `AccessProfile.nome`. */
+  profile: NomeDePerfil;
+  scope: EscopoDeDados;
   email: string;
   password?: string;
   employeeId?: string;
@@ -22,7 +71,7 @@ export interface Accesso {
   client: string;
   email: string;
   password: string;
-  grantedProfile: User['profile'];
+  grantedProfile: NomeDePerfil;
   startDate: string;
   expirationDate: string;
   createdAt: string;
@@ -692,9 +741,18 @@ export interface RequestApprovalLevel {
   name: string;
   order: number;
   responsibilityType: ApprovalResponsibilityType;
+  /** O PAPEL que responde pelo nível ("Gestor do Setor"), nunca o nome. */
   responsibleLabel: string;
   responsibleUserId?: string;
   responsibleGroupId?: string;
+  /**
+   * Colaborador resolvido pela estrutura. Existe separado do `responsibleUserId`
+   * porque nem todo gestor da base tem conta de login — sem este campo, alçada
+   * de quem não tem usuário ficaria sem dono identificável.
+   */
+  responsibleEmployeeId?: string;
+  /** Nome do resolvido — para a trilha e o histórico, não para o rótulo. */
+  responsibleName?: string;
   sla: number;
   slaUnit: 'h' | 'd';
   isMandatory: boolean;
@@ -705,6 +763,25 @@ export interface RequestApprovalLevel {
   decidedBy?: string;
   decidedAt?: string;
   comment?: string;
+  /**
+   * Como este nível chegou ao aprovador que está nele. Fica gravado na
+   * solicitação junto da cascata: sem isso, "por que caiu comigo?" não tem
+   * resposta na tela — que era o caso quando o aprovador vinha de um mapa fixo.
+   */
+  resolucao?: ResolucaoAlcada;
+}
+
+export interface ResolucaoAlcada {
+  /** Frase pronta para a trilha, quando o caminho não foi o direto. */
+  motivo?: string;
+  /** Titular ausente/inativo: quem responde é o substituto. */
+  substituicao?: boolean;
+  /** Quem seria o titular, quando `substituicao`. */
+  titularId?: string;
+  /** O aprovador foi elevado por ser hierarquicamente inferior ao alvo. */
+  escalado?: boolean;
+  /** Não havia vínculo na estrutura e o nível caiu no fallback. */
+  fallback?: boolean;
 }
 
 export interface ProcessPermission {
@@ -736,7 +813,7 @@ export interface Group {
   id: string;
   nome: string;
   setor: string;
-  escopo: 'proprio' | 'equipe' | 'setor' | 'centro-custo' | 'filial' | 'empresa' | 'global';
+  escopo: EscopoDeDados;
   membros: string[]; 
   permissoes: Record<string, ProcessPermission>; 
   dadosSensiveis: SensitiveDataPermission;
@@ -745,7 +822,13 @@ export interface Group {
 export interface Sector {
   id: string;
   name: string;
+  /** Nome do gestor titular. Mantido para exibição e para os registros antigos. */
   manager: string;
+  /** Gestor titular por id de colaborador — é por ele que a alçada resolve. */
+  managerId?: string;
+  /** Substituto: assume a alçada quando o titular está ausente/inativo. */
+  substitute?: string;
+  substituteId?: string;
   branch: string;
 }
 
@@ -754,12 +837,57 @@ export interface Company {
   name: string;
   document: string;
   logo?: string;
+  /**
+   * Empresa ainda em implantação não aparece para operar: ela existe para
+   * receber carga e configuração, e só entra no ar quando é publicada.
+   */
+  status?: 'implantacao' | 'ativa' | 'suspensa';
+  criadaEm?: string;
+  publicadaEm?: string;
+}
+
+/**
+ * A PARAMETRIZAÇÃO DE UMA EMPRESA.
+ *
+ * Tudo que uma empresa configura por conta própria. Era um conjunto único no
+ * topo do estado, então mexer na alçada de aprovação de um cliente mexia na de
+ * todos — o que inviabiliza operar mais de um cliente no mesmo ambiente.
+ *
+ * O estado continua expondo as fatias ATIVAS no topo (`config.processos`,
+ * `config.perfis`, …) porque é assim que as telas leem; `config.parametrizacao`
+ * guarda uma cópia por empresa, e a troca de empresa salva a fatia atual antes
+ * de carregar a da empresa destino.
+ */
+export interface ParametrizacaoEmpresa {
+  processos: RHProcess[];
+  perfis: AccessProfile[];
+  grupos: Group[];
+  cargos: string[];
+  centrosDeCusto: CostCenter[];
+  setores: Sector[];
+  filiais: string[];
+  unidades: Unit[];
+  faixasSalariais: SalaryBand[];
+  sindicatos: Union[];
+  beneficios: BenefitConfig[];
+  politicas?: {
+    /** Horas para o SLA padrão quando o processo não define. */
+    slaPadraoHoras?: number;
+    /** Exige anexo em toda solicitação de despesa. */
+    exigirAnexoDespesa?: boolean;
+    /** Aprovação da diretoria acima deste valor. */
+    tetoAprovacaoGestor?: number;
+  };
 }
 
 export interface CostCenter {
   id: string;
   name: string;
   code: string;
+  /** Responsável pelo CC — quem responde pela alçada 'responsavel-cc'. */
+  responsible?: string;
+  responsibleId?: string;
+  substituteId?: string;
 }
 
 export interface Job {
@@ -919,6 +1047,8 @@ export interface Notificacao {
 export interface AppConfig {
   version: string;
   empresaAtual: Company;
+  /** Parametrização por empresa — a fatia ativa fica no topo deste objeto. */
+  parametrizacao: Record<string, ParametrizacaoEmpresa>;
   usuarioAtual: User;
   usuariosDemo: User[];
   accessos: Accesso[];
@@ -933,6 +1063,8 @@ export interface AppConfig {
   centrosDeCusto: CostCenter[];
   setores: Sector[];
   grupos: Group[];
+  /** Perfis de acesso — configuráveis pela Central Adm. */
+  perfis: AccessProfile[];
   cargos: string[];
   modulos: { id: string; label: string; ativo: boolean }[];
   processos: RHProcess[];

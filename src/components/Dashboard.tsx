@@ -14,6 +14,7 @@ import { Badge } from './ui/Badge';
 import { PageHeader } from './ui/FormAndHeader';
 import { Avatar, SLABar, EmptyState } from './ui/Misc';
 import { getStatusVariant, isPendingStatus } from '../utils/requestStatus';
+import { colaboradoresNoEscopo, contextoDeEscopoDoConfig, solicitacoesNoEscopo } from '../utils/escopo';
 
 interface DashboardProps {
   onNavigate: (view: string, id?: string) => void;
@@ -22,11 +23,16 @@ interface DashboardProps {
 export default function Dashboard({ onNavigate }: DashboardProps) {
   const { config, updateConfig } = useAppConfig();
 
-  const totalEmployeesCount = config.colaboradores.filter(c => c.status === 'Ativo').length;
+  // Os KPIs medem o que o perfil alcança: um Gestor vê os números da equipe
+  // dele, não os da empresa inteira.
+  const ctxEscopo = contextoDeEscopoDoConfig(config);
+  const colaboradoresVisiveis = colaboradoresNoEscopo(config.usuarioAtual, ctxEscopo);
+  const solicitacoesVisiveis = solicitacoesNoEscopo(config.usuarioAtual, config.solicitacoes, ctxEscopo);
+  const totalEmployeesCount = colaboradoresVisiveis.filter(c => c.status === 'Ativo').length;
   const openJobsCount = config.vagas.filter(v => v.status === 'Aberto').length;
   // Aprovações pendentes derivam das solicitações (mesma fonte/status das listas),
   // não de tarefas por assignedTo que não casava com o usuário logado.
-  const pendingApprovalsCount = config.solicitacoes.filter(s => isPendingStatus(s.status)).length;
+  const pendingApprovalsCount = solicitacoesVisiveis.filter(s => isPendingStatus(s.status)).length;
   const overdueCount = config.tarefas.filter(t => t.status === 'Atrasada' || (t.status === 'Pendente' && new Date(t.dueDate) < new Date())).length;
 
   // trendType reflete o SIGNIFICADO (pos = melhora → verde, neg = piora → vermelho);
@@ -66,7 +72,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     }
   ];
 
-  const recentRequests = config.solicitacoes.slice(0, 5).map(req => ({
+  const recentRequests = solicitacoesVisiveis.slice(0, 5).map(req => ({
     id: req.id,
     numero: req.numero,
     type: config.processos.find(p => p.id === req.tipoProcesso)?.name || 'Processo',

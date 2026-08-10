@@ -17,8 +17,9 @@ import { Avatar, SLABar, EmptyState } from './ui/Misc';
 import { Modal } from './ui/Misc';
 import { Select } from './ui/Select';
 import { getStatusVariant, isPendingStatus } from '../utils/requestStatus';
-import { ehMinhaAprovacao } from '../utils/approvalFlow';
+import { ehMinhaAprovacao, organizacaoDoConfig } from '../utils/approvalFlow';
 import { podeAbrirPeloFluxoGenerico } from '../utils/permissions';
+import { contextoDeEscopoDoConfig, solicitacoesNoEscopo } from '../utils/escopo';
 import { useAppConfig } from '../contexts/AppConfigContext';
 import OnboardingManager from './process-managers/OnboardingManager';
 import AdmissionManager from './process-managers/AdmissionManager';
@@ -92,6 +93,10 @@ export default function RHRequests({
   const isNewRequestOpen = config.isNewRequestModalOpen || false;
   const setIsNewRequestOpen = (open: boolean) => updateConfig({ isNewRequestModalOpen: open });
 
+  const podeAbrirAlgumProcesso = config.processos.some(
+    p => p.ativo && isAuthorized(p.id, 'solicitar') && podeAbrirPeloFluxoGenerico(p.id)
+  );
+
   // O processo aberto pelo Hub também acompanha a rota: sair para uma lista (ou
   // voltar para 'hr-processes' sem processo na URL) fecha o gerenciador, senão
   // a tela continuaria nele em vez de mostrar o que o menu pediu.
@@ -154,7 +159,12 @@ export default function RHRequests({
         title={titulo}
         subtitle={subtitulo}
         actions={
-          <Button leftIcon={<Plus size={18} />} onClick={() => setIsNewRequestOpen(true)}>Nova Solicitação</Button>
+          // O botão só existe se houver ao menos um processo que este perfil
+          // possa solicitar — o modal já filtrava por 'solicitar', então sem
+          // isto o botão abria uma vitrine vazia.
+          podeAbrirAlgumProcesso
+            ? <Button leftIcon={<Plus size={18} />} onClick={() => setIsNewRequestOpen(true)}>Nova Solicitação</Button>
+            : undefined
         }
       />
 
@@ -212,7 +222,7 @@ function ProcessHub({ onOpen }: { onOpen: (p: RHProcess) => void }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {filteredProcesses.map(process => {
-        const pendingCount = config.solicitacoes.filter(s => s.processId === process.id && (s.status === 'Em Aprovação' || s.status === 'Enviada' || s.status === 'Pendente de Aprovação' || s.status === 'Em Análise')).length;
+        const pendingCount = solicitacoesNoEscopo(config.usuarioAtual, config.solicitacoes, contextoDeEscopoDoConfig(config)).filter(s => s.processId === process.id && (s.status === 'Em Aprovação' || s.status === 'Enviada' || s.status === 'Pendente de Aprovação' || s.status === 'Em Análise')).length;
         return (
           <Card key={process.id} className="p-6 group hover:border-[var(--color-brand-primary)] transition-all">
             <div className="flex justify-between items-start mb-6">
@@ -253,7 +263,10 @@ function ConsultationPanel({ type, onOpenDetail }: { type: 'mine' | 'approvals',
   const [selectedProcessId, setSelectedProcessId] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
 
-  const requests = config.solicitacoes.filter(req => {
+  // ESCOPO primeiro: 'Minhas Solicitações' e 'Minhas Aprovações' só podem
+  // enxergar o que o perfil alcança. O recorte por usuário vem depois.
+  const noEscopo = solicitacoesNoEscopo(config.usuarioAtual, config.solicitacoes, contextoDeEscopoDoConfig(config));
+  const requests = noEscopo.filter(req => {
     // Search filter
     const matchesSearch =
       req.numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -278,7 +291,7 @@ function ConsultationPanel({ type, onOpenDetail }: { type: 'mine' | 'approvals',
     // Paradas NA MÃO do usuário: ele responde pela alçada pendente agora.
     // Mesmo motor usado pelo botão Aprovar e pelo atalho da Intranet
     // (utils/approvalFlow).
-    return ehMinhaAprovacao(req, config.processos, config.usuarioAtual, config.grupos);
+    return ehMinhaAprovacao(req, config.processos, config.usuarioAtual, config.grupos, organizacaoDoConfig(config));
   });
 
   // Contadores derivados do MESMO array já filtrado que popula a lista, usando o

@@ -21,7 +21,7 @@ import { ReadOnlyField, READONLY_BOX } from '../ui/ReadOnlyField';
 import { FormRenderer } from '../FormRenderer';
 import { TrilhaAprovacoes, TrilhaContainer } from '../request/TrilhaAprovacoes';
 import { PROCESS_DEFINITIONS } from '../../processDefinitions';
-import { ensureApprovalChain } from '../../utils/approvalFlow';
+import { ensureApprovalChain, organizacaoDoConfig } from '../../utils/approvalFlow';
 import { getStatusVariant } from '../../utils/requestStatus';
 import { podeExecutarEncerramento } from '../../utils/permissions';
 import { findFieldDef, formatCurrencyBR, formatRequestDate, getOptionLabel } from '../../utils/requestFields';
@@ -107,7 +107,7 @@ export default function DesligamentoEncerramento({
   const limitePagamento = dataLimitePagamento(termino);
 
   const approvalProcess = config.processos.find(p => p.id === (request.tipoProcesso || request.processId));
-  const approvalChain = ensureApprovalChain(request, approvalProcess);
+  const approvalChain = ensureApprovalChain(request, approvalProcess, organizacaoDoConfig(config));
 
   const tipoLabel = TIPO_DESLIGAMENTO_LABELS[tipo];
   const motivoField = findFieldDef(processDef, 'motivo', request.data);

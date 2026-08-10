@@ -14,7 +14,7 @@ import { Button } from './ui/Button';
 import { motion, AnimatePresence } from 'motion/react';
 import { PROCESS_DEFINITIONS } from '../processDefinitions';
 import { getStatusVariant } from '../utils/requestStatus';
-import { ensureApprovalChain, getCurrentLevelIndex } from '../utils/approvalFlow';
+import { ensureApprovalChain, getCurrentLevelIndex, organizacaoDoConfig } from '../utils/approvalFlow';
 import { TrilhaAprovacoes, TrilhaContainer } from './request/TrilhaAprovacoes';
 import {
   findFieldDef as findFieldDefinition,
@@ -32,7 +32,7 @@ interface RequestDetailProps {
 }
 
 export default function RequestDetail({ requestId, onBack }: RequestDetailProps) {
-  const { config, updateConfig, updateRequest, approveRequest, rejectRequest, returnRequest, cancelRequest } = useAppConfig();
+  const { config, updateConfig, updateRequest, approveRequest, rejectRequest, returnRequest, cancelRequest, isAuthorized } = useAppConfig();
   const { addToast } = useToast();
   const [comment, setComment] = useState('');
 
@@ -63,6 +63,12 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
   const finalStatuses = ['Concluída', 'Concluído', 'Recebimento Confirmado', 'Reprovada', 'Cancelada', 'Cancelado', 'Aguardando Encerramento'] as const;
   const isFinalStatus = finalStatuses.includes(request.status as typeof finalStatuses[number]);
   const canTakeAction = !isFinalStatus;
+  // Botão de decisão só aparece para quem tem a AÇÃO no processo — a mesma
+  // matriz que a Central Adm edita por perfil. Antes, quem alcançasse a tela
+  // via Aprovar/Reprovar/Devolver, independentemente do perfil.
+  const podeAprovar = isAuthorized(processId, 'aprovar');
+  const podeReprovar = isAuthorized(processId, 'aprovar');
+  const podeDevolver = isAuthorized(processId, 'devolver');
 
   // Desligamento aprovado esperando o RH/DP: a tela ganha o acesso à etapa.
   const aguardandoEncerramento =
@@ -74,7 +80,7 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
 
   // Cascata de aprovação desta solicitação (reconstruída para pedidos antigos).
   const approvalProcess = config.processos.find(p => p.id === (request.tipoProcesso || request.processId));
-  const approvalChain = ensureApprovalChain(request, approvalProcess);
+  const approvalChain = ensureApprovalChain(request, approvalProcess, organizacaoDoConfig(config));
   const currentLevelIndex = getCurrentLevelIndex(approvalChain);
 
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
@@ -457,11 +463,11 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
 
       <div className="fixed right-4 bottom-4 z-50 w-[min(96vw,460px)] rounded-[28px] border border-gray-200 bg-white/95 backdrop-blur-sm shadow-2xl shadow-black/5 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-          {canTakeAction ? (
+          {canTakeAction && (podeDevolver || podeReprovar || podeAprovar) ? (
             <>
-              <Button variant="outline" className="w-full sm:w-auto text-purple-600 border-purple-100 hover:bg-purple-50 font-black text-[10px] tracking-widest uppercase h-12 rounded-xl" onClick={() => setIsReturnModalOpen(true)}>Devolver</Button>
-              <Button variant="outline" className="w-full sm:w-auto text-red-500 border-red-100 hover:bg-red-50 font-black text-[10px] tracking-widest uppercase h-12 rounded-xl" onClick={() => setIsRejectModalOpen(true)}>Reprovar</Button>
-              <Button className="w-full sm:w-auto bg-green-600 hover:bg-green-700 font-black text-[10px] tracking-widest uppercase h-12 rounded-xl shadow-lg shadow-green-600/20" onClick={() => handleAction('approve')}>Aprovar</Button>
+              {podeDevolver && <Button variant="outline" className="w-full sm:w-auto text-purple-600 border-purple-100 hover:bg-purple-50 font-black text-[10px] tracking-widest uppercase h-12 rounded-xl" onClick={() => setIsReturnModalOpen(true)}>Devolver</Button>}
+              {podeReprovar && <Button variant="outline" className="w-full sm:w-auto text-red-500 border-red-100 hover:bg-red-50 font-black text-[10px] tracking-widest uppercase h-12 rounded-xl" onClick={() => setIsRejectModalOpen(true)}>Reprovar</Button>}
+              {podeAprovar && <Button className="w-full sm:w-auto bg-green-600 hover:bg-green-700 font-black text-[10px] tracking-widest uppercase h-12 rounded-xl shadow-lg shadow-green-600/20" onClick={() => handleAction('approve')}>Aprovar</Button>}
             </>
           ) : aguardandoEncerramento && podeEncerrar ? (
             <>
