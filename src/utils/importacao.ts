@@ -1,12 +1,26 @@
+import * as XLSX from 'xlsx';
+
 import { CostCenter, Employee, Sector } from '../types';
+import { localDateFromParts } from './dateLocal';
 import { matriculaDoCadastro } from './identidade';
 
 // IMPORTAÇÃO DE PLANILHA — carga inicial de um cliente novo
 //
-// Entrada em CSV (o "Salvar como CSV" de qualquer XLSX). O parse é próprio, sem
-// dependência nova: o formato é conhecido e o que importa aqui não é ler
-// qualquer planilha do mundo, e sim RECUSAR com precisão a linha ruim — quem
-// está implantando precisa saber qual linha, qual coluna e por quê.
+// Aceita .xlsx, .xls e .csv. O cliente manda o arquivo que sai do ERP, e isso é
+// XLSX — pedir "salve como CSV" empurra para ele um passo manual em que se
+// perde acento, separador e formato de data.
+//
+// A divisão é proposital e é o que sustenta o requisito de não duplicar regra:
+//
+//   LEITOR   `linhasDoCSV` / `abrirPlanilha` — abrem o arquivo e devolvem uma
+//            matriz de texto. Não validam nada.
+//   NÚCLEO   `importarLinhas` — sinônimos de coluna, validação, relatório de
+//            recusa e vínculo de gestor por id. É o mesmo para os dois
+//            formatos, então o relatório sai igual byte a byte.
+//
+// O que importa aqui não é ler qualquer planilha do mundo, e sim RECUSAR com
+// precisão a linha ruim: quem está implantando precisa saber qual linha, qual
+// coluna e por quê.
 
 export interface ErroDeImportacao {
   linha: number;
@@ -82,17 +96,40 @@ const paraNumero = (v: string): number => {
 };
 
 /**
- * Lê a planilha e devolve o que dá para importar MAIS a lista de erros. Não é
- * tudo-ou-nada de propósito: numa carga de centenas de linhas, three linhas
- * ruins não podem bloquear as outras — mas precisam aparecer nomeadas.
+ * Atalho para importar um CSV em texto. Mantido com a assinatura de sempre —
+ * o parser de texto não mudou.
  */
 export function importarPlanilhaDeColaboradores(
   csv: string,
   empresaNome: string,
   prefixoId = 'IMP'
 ): ResultadoImportacao {
-  const erros: ErroDeImportacao[] = [];
+  return importarLinhas(linhasDoCSV(csv), empresaNome, prefixoId);
+}
+
+/** Texto CSV → matriz de células. Separador e aspas como sempre foram. */
+export function linhasDoCSV(csv: string): string[][] {
   const linhas = csv.split(/\r?\n/).filter(l => l.trim() !== '');
+  if (linhas.length === 0) return [];
+  const sep = detectarSeparador(linhas[0]);
+  return linhas.map(l => dividirLinha(l, sep));
+}
+
+/**
+ * O NÚCLEO DA IMPORTAÇÃO — validação, sinônimos de coluna, relatório de recusa
+ * e vínculo de gestor por id.
+ *
+ * Recebe a planilha já normalizada em linhas de texto, venha ela de CSV ou de
+ * XLSX. É o que garante que o relatório saia idêntico nos dois formatos: não é
+ * uma regra parecida, é o mesmo código. O leitor de arquivo (`linhasDoCSV`,
+ * `linhasDaAba`) só entrega as células; quem decide o que é válido é aqui.
+ */
+export function importarLinhas(
+  linhas: string[][],
+  empresaNome: string,
+  prefixoId = 'IMP'
+): ResultadoImportacao {
+  const erros: ErroDeImportacao[] = [];
 
   if (linhas.length < 2) {
     return {
@@ -102,8 +139,7 @@ export function importarPlanilhaDeColaboradores(
     };
   }
 
-  const sep = detectarSeparador(linhas[0]);
-  const cabecalho = dividirLinha(linhas[0], sep).map(normalizar);
+  const cabecalho = linhas[0].map(normalizar);
 
   // Mapeia cada campo conhecido para o índice da coluna correspondente.
   const indice: Record<string, number> = {};
@@ -136,9 +172,8 @@ export function importarPlanilhaDeColaboradores(
   const celula = (cols: string[], campo: string) =>
     indice[campo] !== undefined ? (cols[indice[campo]] || '').trim() : '';
 
-  linhas.slice(1).forEach((linha, i) => {
+  linhas.slice(1).forEach((cols, i) => {
     const numeroDaLinha = i + 2; // 1 = cabeçalho
-    const cols = dividirLinha(linha, sep);
     const nome = celula(cols, 'nome');
     const cargo = celula(cols, 'cargo');
     const setor = celula(cols, 'setor');
@@ -231,6 +266,138 @@ export function importarPlanilhaDeColaboradores(
     totalLinhas: linhas.length - 1
   };
 }
+
+// LEITURA DE .XLSX / .XLS
+//
+// O cliente manda o arquivo que sai do ERP, e isso é .xlsx — não CSV. O leitor
+// abaixo só transforma a aba escolhida na MESMA matriz de texto que o CSV
+// produz e entrega para `importarLinhas`. Nenhuma validação vive aqui: é o que
+// faz o relatório de recusa sair idêntico nos dois formatos.
+
+export interface PlanilhaAberta {
+  /** Nomes das abas, na ordem do arquivo. */
+  abas: string[];
+  /** Linhas já normalizadas da aba pedida. */
+  linhasDaAba: (aba: string) => string[][];
+}
+
+const doisDigitos = (n: number) => String(n).padStart(2, '0');
+
+/** Uma data em partes de calendário vira o `dd/mm/aaaa` que o parser valida. */
+function partesParaDataBR(ano: number, mes: number, dia: number): string | null {
+  // `localDateFromParts` (utils/dateLocal) recusa data inexistente — 31/02 e
+  // afins, que o `Date` rolaria em silêncio para o mês seguinte.
+  return localDateFromParts(ano, mes, dia) ? `${doisDigitos(dia)}/${doisDigitos(mes)}/${ano}` : null;
+}
+
+/**
+ * Serial do Excel → `dd/mm/aaaa`.
+ *
+ * É AQUI que mora o off-by-one de fuso: somar o serial a um epoch e ler com
+ * `getDate()` converte para o fuso local e, em America/Sao_Paulo (UTC-3), a
+ * data volta um dia. A conta abaixo é UTC de ponta a ponta — `Date.UTC` para
+ * entrar e `getUTC*` para sair —, então nenhum fuso entra na conversão.
+ *
+ * O `- 1` para serial > 59 é o bug de 1900 do Excel, que conta 29/02/1900: um
+ * dia que não existiu. Ignorá-lo desloca toda data posterior a fevereiro/1900.
+ */
+export function serialDoExcelParaDataBR(serial: number): string | null {
+  if (!Number.isFinite(serial) || serial <= 0) return null;
+
+  // Exportador que converte a data pelo fuso grava 43890,99967 no lugar de
+  // 43891 — 28 segundos antes da meia-noite, ou seja, o dia ANTERIOR. Truncar
+  // aceitaria o erro do arquivo; a folga de um minuto recupera o dia que a
+  // planilha quis dizer sem estragar um horário de verdade (18:00 = ,75, bem
+  // longe da borda).
+  const FOLGA = 1 / 1440; // um minuto
+  const inteiro = Math.floor(serial);
+  const diaCheio = serial - inteiro > 1 - FOLGA ? inteiro + 1 : inteiro;
+
+  const dias = diaCheio > 59 ? diaCheio - 1 : diaCheio;
+  const base = Date.UTC(1899, 11, 31);
+  const d = new Date(base + dias * 86400000);
+  return partesParaDataBR(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+}
+
+/** O formato da célula é de data? (`dd/mm/yyyy`, `d-mmm-yy`, …) */
+const formatoDeData = (z?: string | number) => {
+  const f = String(z ?? '');
+  // Descarta as aspas de literais ("R$" etc.) antes de procurar y/m/d.
+  return /[ymd]/i.test(f.replace(/"[^"]*"/g, '')) && !/^[#0.,%\s]*$/.test(f);
+};
+
+/** Uma célula do Excel vira o texto que o parser já sabe validar. */
+function celulaParaTexto(cell: XLSX.CellObject | undefined): string {
+  if (!cell || cell.v === undefined || cell.v === null) return '';
+
+  // Data pode chegar de dois jeitos: como Date (leitura com `cellDates`) ou
+  // como número cru com formato de data. Os dois terminam em partes de
+  // calendário, nunca em um instante.
+  if (cell.t === 'd' && cell.v instanceof Date) {
+    const d = cell.v;
+    // O SheetJS monta a data em MEIA-NOITE UTC do dia da célula. Ler com
+    // getDate/getMonth converteria para o fuso local e, em America/Sao_Paulo,
+    // devolveria o dia anterior — 01/03/2020 virava 29/02/2020. Os getters UTC
+    // são o par correto dessa construção.
+    const comoData = partesParaDataBR(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+    if (comoData) return comoData;
+  }
+  if (cell.t === 'n' && typeof cell.v === 'number' && formatoDeData(cell.z)) {
+    const comoData = serialDoExcelParaDataBR(cell.v);
+    if (comoData) return comoData;
+  }
+
+  if (cell.t === 'b') return cell.v ? 'Sim' : 'Não';
+  // `w` é o texto como o Excel exibe — respeita máscara de moeda e milhar, que
+  // o `paraNumero` do parser já sabe limpar.
+  return String(cell.w ?? cell.v).trim();
+}
+
+/**
+ * Abre o arquivo e devolve as abas. Aceita .xlsx, .xls e também .csv — neste
+ * caso a leitura volta para `linhasDoCSV`, que continua sendo o parser de
+ * texto de sempre.
+ */
+export function abrirPlanilha(dados: ArrayBuffer, nomeArquivo = ''): PlanilhaAberta {
+  if (/\.csv$/i.test(nomeArquivo)) {
+    const texto = new TextDecoder('utf-8').decode(dados);
+    return { abas: ['CSV'], linhasDaAba: () => linhasDoCSV(texto) };
+  }
+
+  // Sem `cellDates`: a data continua sendo o serial cru, e quem converte é
+  // `serialDoExcelParaDataBR` — conta UTC de ponta a ponta, sob nosso controle.
+  // Delegar a conversão à biblioteca é o que traz o off-by-one de volta,
+  // porque ela devolve um instante e não um dia de calendário.
+  // `cellNF` traz o formato da célula, que é como se sabe que aquele número é
+  // uma data e não um valor qualquer.
+  const workbook = XLSX.read(dados, { type: 'array', cellNF: true });
+
+  return {
+    abas: workbook.SheetNames,
+    linhasDaAba: (aba: string) => {
+      const sheet = workbook.Sheets[aba] || workbook.Sheets[workbook.SheetNames[0]];
+      if (!sheet || !sheet['!ref']) return [];
+      const range = XLSX.utils.decode_range(sheet['!ref']);
+      const linhas: string[][] = [];
+
+      for (let r = range.s.r; r <= range.e.r; r++) {
+        const celulas: string[] = [];
+        for (let c = range.s.c; c <= range.e.c; c++) {
+          celulas.push(celulaParaTexto(sheet[XLSX.utils.encode_cell({ r, c })]));
+        }
+        // Linha totalmente vazia é ruído de planilha (formatação sobrando), não
+        // um registro a recusar: some antes de chegar ao relatório de erros.
+        if (celulas.some(v => v !== '')) linhas.push(celulas);
+      }
+      return linhas;
+    }
+  };
+}
+
+/** Extensões que o campo de upload aceita. */
+export const EXTENSOES_ACEITAS = '.csv,.xlsx,.xls';
+
+export const ehPlanilhaExcel = (nomeArquivo: string) => /\.xlsx?$/i.test(nomeArquivo);
 
 /** Modelo de planilha para o cliente preencher. */
 export const MODELO_CSV = [

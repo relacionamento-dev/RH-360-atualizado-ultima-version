@@ -9,7 +9,9 @@ import { Badge } from '../ui/Badge';
 import { EmptyState } from '../ui/Misc';
 import { Company } from '../../types';
 import { baixarTexto } from '../../utils/download';
-import { importarPlanilhaDeColaboradores, MODELO_CSV, ResultadoImportacao } from '../../utils/importacao';
+import {
+  abrirPlanilha, EXTENSOES_ACEITAS, importarLinhas, MODELO_CSV, PlanilhaAberta, ResultadoImportacao
+} from '../../utils/importacao';
 
 /**
  * IMPLANTAÇÃO DE CLIENTE — o caminho de colocar uma empresa nova no ar.
@@ -28,6 +30,9 @@ export default function AdminImplantacao() {
   const [form, setForm] = useState({ name: '', document: '' });
   const [empresaId, setEmpresaId] = useState<string | null>(null);
   const [resultado, setResultado] = useState<ResultadoImportacao | null>(null);
+  // Arquivo aberto e aba escolhida — só relevantes para XLSX com várias abas.
+  const [arquivo, setArquivo] = useState<{ nome: string; planilha: PlanilhaAberta; abas: string[] } | null>(null);
+  const [abaEscolhida, setAbaEscolhida] = useState<string | null>(null);
   const inputCsv = useRef<HTMLInputElement>(null);
 
   const empresa = config.empresas.find(e => e.id === empresaId);
@@ -46,34 +51,68 @@ export default function AdminImplantacao() {
     addToast(`${nova.name} cadastrada. Agora importe a base de colaboradores.`, 'success');
   };
 
+  /** Aplica o resultado do parser: fichas + estrutura derivada da planilha. */
+  const aplicarImportacao = (r: ResultadoImportacao) => {
+    if (!empresa) return;
+    setResultado(r);
+    if (r.colaboradores.length === 0) {
+      addToast('Nenhuma linha pôde ser importada. Veja o relatório de erros.', 'error');
+      return;
+    }
+    // A estrutura da planilha vira a parametrização da empresa: setores,
+    // centros de custo, cargos e filiais saem da própria carga.
+    importarColaboradores(empresa.id, r.colaboradores);
+    atualizarParametrizacao(empresa.id, {
+      setores: r.setores,
+      centrosDeCusto: r.centrosDeCusto,
+      cargos: r.cargos,
+      filiais: r.filiais
+    });
+    addToast(
+      `${r.colaboradores.length} de ${r.totalLinhas} linha(s) importadas${r.erros.length ? `, ${r.erros.length} com erro` : ''}.`,
+      r.erros.length ? 'warning' : 'success'
+    );
+  };
+
+  const importarAba = (aba: string, planilha = arquivo?.planilha) => {
+    if (!planilha || !empresa) return;
+    aplicarImportacao(importarLinhas(planilha.linhasDaAba(aba), empresa.name, empresa.id.slice(-4).toUpperCase()));
+  };
+
+  /**
+   * O MESMO campo aceita .csv, .xlsx e .xls. O formato é decidido pela extensão
+   * e pelo conteúdo (`abrirPlanilha`); o parser de validação é um só.
+   */
   const aoEscolherArquivo = (evento: React.ChangeEvent<HTMLInputElement>) => {
-    const arquivo = evento.target.files?.[0];
+    const escolhido = evento.target.files?.[0];
     evento.target.value = '';
-    if (!arquivo || !empresa) return;
+    if (!escolhido || !empresa) return;
 
     const leitor = new FileReader();
     leitor.onload = () => {
-      const r = importarPlanilhaDeColaboradores(String(leitor.result), empresa.name, empresa.id.slice(-4).toUpperCase());
-      setResultado(r);
-      if (r.colaboradores.length === 0) {
-        addToast('Nenhuma linha pôde ser importada. Veja o relatório de erros.', 'error');
-        return;
+      try {
+        const planilha = abrirPlanilha(leitor.result as ArrayBuffer, escolhido.name);
+        setArquivo({ nome: escolhido.name, planilha, abas: planilha.abas });
+
+        // Uma aba só: importa direto. Mais de uma: quem está implantando
+        // escolhe — chutar a primeira faz a carga entrar de "Instruções" ou
+        // "Plan2" sem ninguém perceber.
+        if (planilha.abas.length === 1) {
+          setAbaEscolhida(planilha.abas[0]);
+          importarAba(planilha.abas[0], planilha);
+        } else {
+          setAbaEscolhida(null);
+          setResultado(null);
+          addToast(`${planilha.abas.length} abas encontradas em "${escolhido.name}". Escolha qual importar.`, 'info');
+        }
+      } catch {
+        setArquivo(null);
+        addToast(`Não foi possível ler "${escolhido.name}". Envie .xlsx, .xls ou .csv.`, 'error');
       }
-      // A estrutura da planilha vira a parametrização da empresa: setores,
-      // centros de custo, cargos e filiais saem da própria carga.
-      importarColaboradores(empresa.id, r.colaboradores);
-      atualizarParametrizacao(empresa.id, {
-        setores: r.setores,
-        centrosDeCusto: r.centrosDeCusto,
-        cargos: r.cargos,
-        filiais: r.filiais
-      });
-      addToast(
-        `${r.colaboradores.length} de ${r.totalLinhas} linha(s) importadas${r.erros.length ? `, ${r.erros.length} com erro` : ''}.`,
-        r.erros.length ? 'warning' : 'success'
-      );
     };
-    leitor.readAsText(arquivo, 'utf-8');
+    // ArrayBuffer serve aos dois: o XLSX lê binário e o CSV é decodificado
+    // como UTF-8 dentro de `abrirPlanilha`.
+    leitor.readAsArrayBuffer(escolhido);
   };
 
   const publicar = () => {
@@ -101,7 +140,7 @@ export default function AdminImplantacao() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <input ref={inputCsv} type="file" accept=".csv,text/csv" className="hidden" aria-hidden="true" onChange={aoEscolherArquivo} />
+      <input ref={inputCsv} type="file" accept={EXTENSOES_ACEITAS} className="hidden" aria-hidden="true" onChange={aoEscolherArquivo} />
 
       <div>
         <h2 className="text-xl font-black text-gray-900 tracking-tight">Implantação de Cliente</h2>
@@ -117,7 +156,7 @@ export default function AdminImplantacao() {
           {emImplantacao.map(e => (
             <button
               key={e.id}
-              onClick={() => { setEmpresaId(e.id); setResultado(null); }}
+              onClick={() => { setEmpresaId(e.id); setResultado(null); setArquivo(null); setAbaEscolhida(null); }}
               className={`px-3 py-2 rounded-[8px] border text-[12px] font-bold transition-colors ${
                 e.id === empresaId ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
               }`}
@@ -137,7 +176,7 @@ export default function AdminImplantacao() {
             <Badge variant={empresa.status === 'ativa' ? 'green' : 'amber'} size="sm">
               {empresa.status === 'ativa' ? 'PUBLICADA' : 'EM IMPLANTAÇÃO'}
             </Badge>
-            <Button variant="ghost" size="sm" onClick={() => { setEmpresaId(null); setResultado(null); }}>Trocar</Button>
+            <Button variant="ghost" size="sm" onClick={() => { setEmpresaId(null); setResultado(null); setArquivo(null); setAbaEscolhida(null); }}>Trocar</Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
@@ -166,11 +205,12 @@ export default function AdminImplantacao() {
 
       <Passo n={2} titulo="Importar colaboradores e estrutura (CSV)" feito={quadro.length > 0}>
         <p className="text-[12px] text-gray-500 font-medium">
-          Colunas obrigatórias: <strong>nome, cargo, setor</strong>. Opcionais: e-mail, CPF, centro de custo,
-          filial, gestor, admissão e salário. Setores, centros de custo, cargos e filiais são criados a
-          partir da própria planilha.
+          Aceita o arquivo que sai do ERP (.xlsx/.xls) ou .csv. Colunas obrigatórias:{' '}
+          <strong>nome, cargo, setor</strong>. Opcionais: e-mail, CPF, centro de custo, filial, gestor,
+          admissão e salário. Setores, centros de custo, cargos e filiais são criados a partir da
+          própria planilha.
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
           <Button variant="outline" size="sm" leftIcon={<Download size={14} />}
             onClick={() => baixarTexto('modelo-colaboradores.csv', MODELO_CSV, 'text/csv;charset=utf-8')}>
             Baixar modelo
@@ -178,7 +218,39 @@ export default function AdminImplantacao() {
           <Button size="sm" leftIcon={<Upload size={14} />} disabled={!empresa} onClick={() => inputCsv.current?.click()}>
             Escolher planilha
           </Button>
+          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">.xlsx · .xls · .csv</span>
+          {arquivo && (
+            <span className="text-[12px] font-bold text-gray-600 truncate max-w-[240px]" title={arquivo.nome}>
+              {arquivo.nome}
+            </span>
+          )}
         </div>
+
+        {/* Seletor de aba: só aparece quando o arquivo tem mais de uma. */}
+        {arquivo && arquivo.abas.length > 1 && (
+          <div className="rounded-[12px] border border-gray-100 bg-gray-50/60 p-3 space-y-2">
+            <p className="text-[12px] font-bold text-gray-700">
+              Este arquivo tem {arquivo.abas.length} abas. Qual delas contém os colaboradores?
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {arquivo.abas.map(aba => (
+                <button
+                  key={aba}
+                  type="button"
+                  onClick={() => { setAbaEscolhida(aba); importarAba(aba); }}
+                  aria-pressed={aba === abaEscolhida}
+                  className={`px-3 py-2 rounded-[8px] border text-[12px] font-bold transition-colors ${
+                    aba === abaEscolhida
+                      ? 'bg-orange-50 border-orange-200 text-orange-700'
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                  }`}
+                >
+                  {aba}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {quadro.length > 0 && (
           <p className="text-[13px] font-bold text-green-700 bg-green-50 border border-green-100 rounded-[8px] px-3 py-2">
