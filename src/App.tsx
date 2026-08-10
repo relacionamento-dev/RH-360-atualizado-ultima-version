@@ -115,8 +115,11 @@ function AppContent() {
       case 'portal-colaborador': return <PortalColaboradorModule />;
       case 'global-query':
       case 'consultation': return <GlobalQuery />;
+      // Central Adm: 'admin'/'configuracoes' entram na Visão Geral e cada aba
+      // tem a própria rota ('admin-perfis', 'admin-org'…), tratada no default.
+      // 'integrations' tem item de menu próprio e abre direto naquela aba.
       case 'admin':
-      case 'configuracoes': return <AdminModule view={currentView} />;
+      case 'configuracoes':
       case 'integrations': return <AdminModule view={currentView} />;
       case 'access-management': return <AccessManagement />;
       
@@ -124,6 +127,9 @@ function AppContent() {
       default: 
         if (currentView.startsWith('hr-proc-')) {
           return <RHRequests initialTab="hub" initialProcessId={currentView.split('-').pop()} />;
+        }
+        if (currentView.startsWith('admin-')) {
+          return <AdminModule view={currentView} />;
         }
         return <IntranetModule onNavigate={handleNavigate} />;
     }

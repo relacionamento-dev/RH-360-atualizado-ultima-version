@@ -113,17 +113,28 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
     xl: 'max-w-6xl',
   };
 
+  // O painel é uma COLUNA com teto de altura: cabeçalho fixo, corpo rolável.
+  //
+  // Sem esse teto, um modal de conteúdo alto (a edição de perfil, com telas +
+  // ações + matriz por processo) crescia além da janela. Como a camada é
+  // `fixed`, o excedente ficava FORA da viewport e sem rolagem possível: a tela
+  // aparecia cortada em cima e embaixo, e o overlay ainda cobria menu e
+  // cabeçalho — dando a impressão de que a edição renderizava fora do app.
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose} />
-      <div className={`bg-white w-full rounded-[20px] shadow-2xl relative z-10 animate-in zoom-in-95 fade-in duration-300 ${sizes[size]}`}>
-        <div className="px-8 py-6 border-b border-[var(--color-brand-border)] flex items-center justify-between">
+      <div
+        role="dialog"
+        aria-modal="true"
+        className={`bg-white w-full max-h-[calc(100vh-2rem)] flex flex-col rounded-[20px] shadow-2xl relative z-10 animate-in zoom-in-95 fade-in duration-300 ${sizes[size]}`}
+      >
+        <div className="px-8 py-6 border-b border-[var(--color-brand-border)] flex items-center justify-between shrink-0">
           <h2 className="text-[18px] font-bold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-gray-900">
+          <button onClick={onClose} aria-label="Fechar" className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-gray-900">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
         </div>
-        <div className="p-8">
+        <div className="p-8 overflow-y-auto custom-scrollbar">
           {children}
         </div>
       </div>

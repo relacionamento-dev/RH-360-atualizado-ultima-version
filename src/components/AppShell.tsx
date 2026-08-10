@@ -13,6 +13,7 @@ import { Button } from './ui/Button';
 import { RHProcess, ProcessPermission, RHRequest, User } from '../types';
 import { isSuperAdmin, podeAbrirPeloFluxoGenerico, podeAcessarView, ViewDoMenu } from '../utils/permissions';
 import { empresasDoUsuario, podeTrocarDeEmpresa } from '../utils/empresa';
+import { menuDaView } from '../utils/rotas';
 import RHRequestForm from './RHRequestForm';
 import RequestDetail from './RequestDetail';
 
@@ -287,6 +288,9 @@ export default function AppShell({
   };
 
   const isActive = (item: MenuItem) => {
+    // `menuDaView` (utils/rotas) resolve as telas que vivem DENTRO de outra —
+    // é o que faz as dez sub-telas da Central Adm acenderem "Central Adm".
+    if (item.id === menuDaView(config.activeView)) return true;
     if (item.view === config.activeView) return true;
     if (item.submenus?.some(sub => sub.view === config.activeView)) return true;
     return false;

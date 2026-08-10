@@ -1091,6 +1091,8 @@ export interface AppConfig {
   prefillSolicitacao?: Record<string, any> | null;
   highlightedRequestNumber?: string | null;
   selectedEmployeeId?: string | null;
+  /** Perfil aberto na tela de edição da Central Adm. */
+  perfilEmEdicaoId?: string | null;
   appName?: string;
   primaryColor?: string;
   activeView: string;

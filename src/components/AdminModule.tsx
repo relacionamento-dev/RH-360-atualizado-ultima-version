@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { 
   Building2, Users, Target, Share2, Cpu, 
   Search, Shield, BarChart3, Clock, 
@@ -16,6 +16,8 @@ import AdminOverview from './admin/AdminOverview';
 import AdminOrganization from './admin/AdminOrganization';
 import AdminAccess from './admin/AdminAccess';
 import AdminPerfis from './admin/AdminPerfis';
+import AdminPerfilEditor from './admin/AdminPerfilEditor';
+import { ROTA_PERFIL_EDITAR } from './admin/perfilForm';
 import AdminImplantacao from './admin/AdminImplantacao';
 import AdminProcesses from './admin/AdminProcesses';
 import AdminIntranet from './admin/AdminIntranet';
@@ -25,16 +27,43 @@ import AdminAudit from './admin/AdminAudit';
 
 type AdminTab = 'overview' | 'org' | 'implantacao' | 'access' | 'perfis' | 'processes' | 'intranet' | 'integrations' | 'ai' | 'audit';
 
+const ABAS: AdminTab[] = [
+  'overview', 'org', 'implantacao', 'access', 'perfis', 'processes', 'intranet', 'integrations', 'ai', 'audit'
+];
+
+/** Rota canônica de cada aba: `admin-perfis`, `admin-org`… */
+export const viewDaAbaAdmin = (aba: AdminTab) => `admin-${aba}`;
+
+/**
+ * A aba que a rota pede. Aceita a rota canônica (`admin-perfis`), a entrada
+ * geral (`admin`/`configuracoes`) e o item de menu próprio das Integrações
+ * (`integrations`), que abre a Central Adm já naquela aba.
+ */
+const abaDaView = (view: string): AdminTab => {
+  const canonica = ABAS.find(a => view === viewDaAbaAdmin(a));
+  if (canonica) return canonica;
+  // A edição de perfil é uma tela DENTRO da aba Perfis: a aba segue acesa.
+  if (view === ROTA_PERFIL_EDITAR) return 'perfis';
+  if (view === 'integrations') return 'integrations';
+  if (view === 'intranet-admin') return 'intranet';
+  return 'overview';
+};
+
 export default function AdminModule({ view = 'admin' }: { view?: string }) {
-  const { config } = useAppConfig();
+  const { config, updateConfig } = useAppConfig();
   // Administrador Geral enxerga todas as abas, sem exceção.
   const isAdmin = isSuperAdmin(config.usuarioAtual) || config.usuarioAtual.profile === 'Administrador';
 
-  const [activeTab, setActiveTab] = useState<AdminTab>(() => {
-    if (view.includes('integrations')) return 'integrations';
-    if (view.includes('intranet')) return 'intranet';
-    return 'overview';
-  });
+  const activeTab = abaDaView(view);
+
+  /**
+   * A aba VIRA ROTA. Antes ela era estado interno, então `activeView` ficava
+   * congelada no caminho de entrada: quem chegava por "Integrações" e clicava
+   * em "Perfis de Acesso" continuava com o menu acendendo Integrações, porque
+   * a rota nunca mudava. Mesma correção de rota canônica que 'solicitacoes'
+   * e 'requests' já receberam em App.tsx.
+   */
+  const setActiveTab = (aba: AdminTab) => updateConfig({ activeView: viewDaAbaAdmin(aba) });
 
   const tabs: { id: AdminTab; label: string; icon: React.ReactNode; color: string }[] = [
     { id: 'overview', label: 'Visão Geral', icon: <BarChart3 size={18} />, color: 'bg-blue-500' },
@@ -63,7 +92,7 @@ export default function AdminModule({ view = 'admin' }: { view?: string }) {
       case 'overview': return <AdminOverview onNavigate={setActiveTab} />;
       case 'org': return <AdminOrganization />;
       case 'access': return <AdminAccess />;
-      case 'perfis': return <AdminPerfis />;
+      case 'perfis': return view === ROTA_PERFIL_EDITAR ? <AdminPerfilEditor /> : <AdminPerfis />;
       case 'implantacao': return <AdminImplantacao />;
       case 'processes': return <AdminProcesses />;
       case 'intranet': return <AdminIntranet />;
