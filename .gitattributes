@@ -1,0 +1,29 @@
+# FIM DE LINHA — normalização explícita, dona do repositório
+#
+# Sem este arquivo, o fim de linha dependia do `core.autocrlf` de cada máquina
+# (no Windows o instalador do Git deixa `true` por padrão, no gitconfig do
+# sistema). O repositório sobrevivia porque essa configuração normaliza para LF
+# ao commitar — mas era uma garantia de máquina, não do projeto: bastava um
+# colaborador com `autocrlf=false`, ou um editor gravando CRLF, para entrar
+# CRLF no histórico e o diff seguinte marcar o arquivo INTEIRO como alterado.
+#
+# `text=auto eol=lf` fixa LF no repositório E no disco. Some junto o aviso
+# "LF will be replaced by CRLF" que aparecia a cada `git add`.
+#
+# Não reescreve histórico: vale para o que for gravado daqui em diante. Os
+# arquivos que já estavam no disco com CRLF foram alinhados com
+# `git add --renormalize .`, que é um commit comum.
+* text=auto eol=lf
+
+# Binário: nunca tocar no conteúdo.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.xlsx binary
+*.xls  binary
+*.zip  binary
+*.woff  binary
+*.woff2 binary
