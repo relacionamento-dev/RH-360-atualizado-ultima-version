@@ -19,7 +19,7 @@
  *   INITIAL_GROUPS), a configuração dos processos (INITIAL_RH_PROCESSES) e todo
  *   o motor de resolução de alçada (buildApprovalChain, isPendingApprover).
  * - ESPELHO: `permissaoEfetiva` reproduz `getEffectivePermissions`
- *   (AppConfigContext.tsx:658-745) — perfil como base, grupos somando por cima —
+ *   (AppConfigContext.tsx:662-749) — perfil como base, grupos somando por cima —
  *   que hoje mora dentro do provider React e não é importável fora do browser.
  *   Se aquele arquivo mudar, este espelho precisa acompanhar.
  */
@@ -91,7 +91,7 @@ function permissaoEfetiva(user: User, processId: string): ProcessPermission {
   return efetiva;
 }
 
-/** Espelha `isAuthorized` (AppConfigContext.tsx:793-799). */
+/** Espelha `isAuthorized` (AppConfigContext.tsx:798-804). */
 const autorizado = (user: User, processId: string, acao: keyof ProcessPermission): boolean =>
   isSuperAdmin(user) ? true : permissaoEfetiva(user, processId)[acao];
 
@@ -358,8 +358,9 @@ const DIRETORIA = usuario('DIR-002');
 {
   const G = '6. Central Adm > Perfis de Acesso';
 
-  // A tela lê `emEdicao.permissoes[processo.id]?.[chave]` (AdminPerfis.tsx:290).
-  // Chave ausente rende checkbox apagada mesmo com a permissão valendo.
+  // A tela lê `rascunho.permissoes[processo.id]?.[chave]`
+  // (AdminPerfilEditor.tsx:264). Chave ausente rende checkbox apagada mesmo com
+  // a permissão valendo — e o cliente "corrige" desmarcando o que já era falso.
   const CHAVES: (keyof ProcessPermission)[] =
     ['ver', 'solicitar', 'aprovar', 'executar', 'devolver', 'cancelar', 'verSigiloso'];
 
