@@ -81,7 +81,7 @@ A falha era o `conditionField: 'salario'` do processo 1, que apontava para um ca
 ## Estado atual (13/08/2026)
 
 ```
-simular-aprovacoes: 180 verificações · 0 falhas · 4 alertas
+simular-aprovacoes: 180 verificações · 0 falhas · 0 alertas
 simular-permissoes:  79 verificações · 0 falhas · 0 alertas
 simular-formulario:  25 verificações · 0 falhas
 simular-acabamento:  18 verificações · 0 falhas
@@ -89,4 +89,6 @@ simular-verbas:      40 verificações · 0 falhas
 mapear-campos:      163 chaves · 47 órfãs · 10 com declaração múltipla
 ```
 
-Os 4 alertas de `simular-aprovacoes` são divergência entre as `etapas` declaradas no processo e o nº de níveis da cascata (processos 1, 6, 8 e 10) — rótulo de tela, não roteamento.
+Os 4 alertas de `etapas` que existiam aqui foram fechados: a lista deixou de ser escrita à mão e passa a ser **derivada da cascata** (`etapasDaCascata`, em `src/data.ts`). Cada processo declara só o que a cascata não sabe — o que vem antes da primeira alçada e o que vem depois da última — e os níveis entram no miolo, na ordem, a partir de `approvals`.
+
+A conferência também mudou de forma. Contar rótulos que "parecem aprovação" (`/aprova|valida|audit|board/`) era um proxy: dava falso positivo em "Validado" (estado final do processo 1, não alçada) e falso negativo em todo processo cujas etapas não usavam a palavra — os processos 2, 3, 4 e 14 divergiam do mesmo jeito e passavam calados. Agora a checagem é posicional: os níveis têm de aparecer em `etapas` em sequência, e nenhuma etapa fora desse trecho pode se anunciar como decisão.

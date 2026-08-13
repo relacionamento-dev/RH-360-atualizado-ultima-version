@@ -1425,10 +1425,16 @@ const snapshotDoUsuario = (userId: string) => {
 // quem aprova o quê sai das alçadas declaradas, não de um número escrito à mão.
 
 // PROCESSES (15)
-export const INITIAL_RH_PROCESSES: RHProcess[] = [
-  { 
-    id: '1', 
-    name: 'Requisição de Vaga', 
+//
+// A lista `etapas` de cada processo NÃO é escrita aqui: ela é derivada da
+// cascata logo abaixo (ver ETAPAS_POR_PROCESSO). Escrita à mão, ela envelhecia
+// em silêncio — prometia "Aprovação Financeira" num processo que não tem essa
+// alçada, contava três aprovações onde a cascata roda duas, e chamava de
+// "Validação RH" um nível que o motor chama de "Aprovação".
+const PROCESSOS_BASE: Omit<RHProcess, 'etapas'>[] = [
+  {
+    id: '1',
+    name: 'Requisição de Vaga',
     description: 'Abertura de novas vagas ou substituições', 
     icon: 'UserPlus', 
     pendingCount: 3, 
@@ -1437,7 +1443,6 @@ export const INITIAL_RH_PROCESSES: RHProcess[] = [
     viewType: 'generic', 
     targetMode: TargetMode.OBJECT,
     roles: { employee: false, manager: true, hr: true, director: true }, 
-    etapas: ['Abertura', 'Aprovação Gestor', 'Aprovação Diretor', 'Validado'],
     version: 1,
     isSensitive: false,
     allowDraft: true,
@@ -1464,7 +1469,6 @@ export const INITIAL_RH_PROCESSES: RHProcess[] = [
     viewType: 'recruitment', 
     targetMode: TargetMode.OBJECT,
     roles: { employee: false, manager: true, hr: true, director: false }, 
-    etapas: ['Triagem', 'Entrevista RH', 'Entrevista Técnica', 'Proposta'],
     version: 1,
     isSensitive: false,
     allowDraft: false,
@@ -1475,18 +1479,18 @@ export const INITIAL_RH_PROCESSES: RHProcess[] = [
   },
   // Rótulo "Admissão Digital"; o id continua '3' — rotas, permissões, handoffs e
   // processDefinitions apontam para ele.
-  { id: '3', name: 'Admissão Digital', description: 'Link de admissão, documentos pelo portal e aprovação do RH', icon: 'CheckCircle2', pendingCount: 3, ativo: true, category: 'Recrutamento', viewType: 'admission', targetMode: TargetMode.CANDIDATE_ZOOM, roles: { employee: false, manager: true, hr: true, director: false }, etapas: ['Documentação', 'Exame Médico', 'Contrato', 'Finalizado'], version: 1, isSensitive: true, allowDraft: true, allowCancel: true, approvals: [], handoffs: { updateProfile: true, createRecord360: true, createTask: false, generateDoc: true, requireSignature: true, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
-  { id: '4', name: 'Onboarding', description: 'Checklist de integração de novos colaboradores', icon: 'Flag', pendingCount: 3, ativo: true, category: 'Recrutamento', viewType: 'onboarding', targetMode: TargetMode.EMPLOYEE_ZOOM, roles: { employee: true, manager: true, hr: true, director: false }, etapas: ['Pré-admissão', 'Primeiro Dia', 'Primeira Semana', 'Primeiro Mês'], version: 1, isSensitive: false, allowDraft: false, allowCancel: false, approvals: [], handoffs: { updateProfile: false, createRecord360: false, createTask: true, generateDoc: false, requireSignature: false, handoffType: 'desativado' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
-  { id: '5', name: 'Recebimento de VR/VA', description: 'Confirmação mensal de recebimento de benefícios', icon: 'CreditCard', pendingCount: 3, ativo: true, category: 'Benefícios', viewType: 'vr-va', targetMode: TargetMode.CURRENT_USER, roles: { employee: true, manager: false, hr: true, director: false }, etapas: ['Crédito Lançado', 'Confirmação do Colaborador', 'Recebimento Registrado'], version: 1, isSensitive: false, allowDraft: false, allowCancel: false, approvals: [], handoffs: { updateProfile: false, createRecord360: false, createTask: false, generateDoc: true, requireSignature: true, handoffType: 'desativado' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
-  { id: '6', name: 'Gestão de Dependentes', description: 'Inclusão ou alteração de dependentes', icon: 'Users', pendingCount: 3, ativo: true, category: 'Benefícios', viewType: 'generic', targetMode: TargetMode.CURRENT_USER, roles: { employee: true, manager: false, hr: true, director: false }, etapas: ['Solicitado', 'Validação RH', 'Concluído'], version: 1, isSensitive: false, allowDraft: true, allowCancel: true, approvals: [], handoffs: { updateProfile: true, createRecord360: true, createTask: false, generateDoc: false, requireSignature: false, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
-  { id: '7', name: 'Alteração de Cargos e Salários', description: 'Promoções e ajustes salariais', icon: 'TrendingUp', pendingCount: 3, ativo: true, category: 'Carreira', viewType: 'generic', targetMode: TargetMode.EMPLOYEE_ZOOM, roles: { employee: false, manager: true, hr: true, director: true }, etapas: ['Solicitado', 'Análise RH', 'Aprovação Financeira', 'Aprovação Diretor', 'Concluído'], version: 1, isSensitive: true, allowDraft: true, allowCancel: true, approvals: [{ id: 'app-7-1', name: 'RH', order: 1, active: true, responsibilityType: 'rh-filial', sla: 24, slaUnit: 'h', isMandatory: true }, { id: 'app-7-2', name: 'Diretoria', order: 2, active: true, responsibilityType: 'diretoria', sla: 48, slaUnit: 'h', isMandatory: true }], handoffs: { updateProfile: true, createRecord360: true, createTask: true, generateDoc: true, requireSignature: false, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
-  { id: '8', name: 'Prestação de Contas', description: 'Reembolso de despesas e viagens', icon: 'DollarSign', pendingCount: 3, ativo: true, category: 'Operacional', viewType: 'generic', targetMode: TargetMode.CURRENT_USER, roles: { employee: true, manager: true, hr: true, director: false }, etapas: ['Enviado', 'Validação Gestor', 'Audit RH', 'Pagamento'], version: 1, isSensitive: false, allowDraft: true, allowCancel: true, approvals: [{ id: 'app-8-1', name: 'Gestor', order: 1, active: true, responsibilityType: 'gestor-direto', sla: 24, slaUnit: 'h', isMandatory: true }], handoffs: { updateProfile: false, createRecord360: false, createTask: true, generateDoc: false, requireSignature: false, handoffType: 'sugestao' }, aiConfig: { enabled: true, points: [], model: 'gemini-1.5-flash', purpose: 'Auditoria de recibos', requireReview: true } },
-  { id: '9', name: 'Solicitação de Férias', description: 'Agendamento de descanso anual', icon: 'Palmtree', pendingCount: 3, ativo: true, category: 'Benefícios', viewType: 'generic', targetMode: TargetMode.CURRENT_USER, roles: { employee: true, manager: true, hr: true, director: false }, etapas: ['Solicitado', 'Aprovação Gestor', 'Agendado'], version: 1, isSensitive: false, allowDraft: true, allowCancel: true, approvals: [{ id: 'app-9-1', name: 'Gestor', order: 1, active: true, responsibilityType: 'gestor-direto', sla: 24, slaUnit: 'h', isMandatory: true }], handoffs: { updateProfile: true, createRecord360: true, createTask: false, generateDoc: false, requireSignature: false, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
-  { id: '10', name: 'Medida Disciplinar', description: 'Advertências, suspensões e registros disciplinares', icon: 'AlertCircle', pendingCount: 3, ativo: true, category: 'Operacional', viewType: 'generic', targetMode: TargetMode.EMPLOYEE_ZOOM, roles: { employee: false, manager: true, hr: true, director: false }, etapas: ['Registro', 'Ciência Colaborador', 'Arquivado'], version: 1, isSensitive: true, allowDraft: true, allowCancel: false, approvals: [{ id: 'app-10-1', name: 'RH', order: 1, active: true, responsibilityType: 'rh-filial', sla: 24, slaUnit: 'h', isMandatory: true }], handoffs: { updateProfile: false, createRecord360: true, createTask: false, generateDoc: true, requireSignature: true, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
-  { id: '11', name: 'Movimentação de Pessoal', description: 'Transferências entre unidades ou departamentos', icon: 'Move', pendingCount: 3, ativo: true, category: 'Operacional', viewType: 'generic', targetMode: TargetMode.EMPLOYEE_ZOOM, roles: { employee: false, manager: true, hr: true, director: false }, etapas: ['Solicitado', 'Aprovação Origem', 'Aprovação Destino', 'Efetivado'], version: 1, isSensitive: false, allowDraft: true, allowCancel: true, approvals: [{ id: 'app-11-1', name: 'Gestor Origem', order: 1, active: true, responsibilityType: 'gestor-direto', sla: 24, slaUnit: 'h', isMandatory: true }, { id: 'app-11-2', name: 'Gestor Destino', order: 2, active: true, responsibilityType: 'gestor-setor', sla: 24, slaUnit: 'h', isMandatory: true }], handoffs: { updateProfile: true, createRecord360: true, createTask: true, generateDoc: false, requireSignature: false, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
-  { id: '12', name: 'Gestão de Horas Extra', description: 'Autorização e controle de jornada extra', icon: 'Clock', pendingCount: 3, ativo: true, category: 'Operacional', viewType: 'generic', targetMode: TargetMode.CURRENT_USER, roles: { employee: true, manager: true, hr: true, director: false }, etapas: ['Solicitado', 'Aprovação Gestor', 'Processado'], version: 1, isSensitive: false, allowDraft: false, allowCancel: true, approvals: [{ id: 'app-12-1', name: 'Gestor', order: 1, active: true, responsibilityType: 'gestor-direto', sla: 24, slaUnit: 'h', isMandatory: true }], handoffs: { updateProfile: false, createRecord360: false, createTask: true, generateDoc: false, requireSignature: false, handoffType: 'desativado' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
-  { id: '13', name: 'Gestão de Hierarquia', description: 'Estrutura organizacional e departamentos', icon: 'Shield', pendingCount: 3, ativo: true, category: 'Operacional', viewType: 'hierarchy', targetMode: TargetMode.EMPLOYEE_ZOOM, roles: { employee: false, manager: false, hr: true, director: true }, etapas: ['Alteração', 'Aprovação Board', 'Publicado'], version: 1, isSensitive: true, allowDraft: true, allowCancel: true, approvals: [{ id: 'app-13-1', name: 'Diretoria', order: 1, active: true, responsibilityType: 'diretoria', sla: 48, slaUnit: 'h', isMandatory: true }], handoffs: { updateProfile: false, createRecord360: false, createTask: false, generateDoc: false, requireSignature: false, handoffType: 'desativado' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
-  { id: '14', name: 'Treinamento', description: 'Inscrição e registro de capacitações', icon: 'GraduationCap', pendingCount: 3, ativo: true, category: 'Carreira', viewType: 'generic', targetMode: TargetMode.CURRENT_USER, roles: { employee: true, manager: true, hr: true, director: false }, etapas: ['Inscrição', 'Realização', 'Certificação'], version: 1, isSensitive: false, allowDraft: true, allowCancel: true, approvals: [], handoffs: { updateProfile: false, createRecord360: true, createTask: false, generateDoc: false, requireSignature: false, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
+  { id: '3', name: 'Admissão Digital', description: 'Link de admissão, documentos pelo portal e aprovação do RH', icon: 'CheckCircle2', pendingCount: 3, ativo: true, category: 'Recrutamento', viewType: 'admission', targetMode: TargetMode.CANDIDATE_ZOOM, roles: { employee: false, manager: true, hr: true, director: false }, version: 1, isSensitive: true, allowDraft: true, allowCancel: true, approvals: [], handoffs: { updateProfile: true, createRecord360: true, createTask: false, generateDoc: true, requireSignature: true, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
+  { id: '4', name: 'Onboarding', description: 'Checklist de integração de novos colaboradores', icon: 'Flag', pendingCount: 3, ativo: true, category: 'Recrutamento', viewType: 'onboarding', targetMode: TargetMode.EMPLOYEE_ZOOM, roles: { employee: true, manager: true, hr: true, director: false }, version: 1, isSensitive: false, allowDraft: false, allowCancel: false, approvals: [], handoffs: { updateProfile: false, createRecord360: false, createTask: true, generateDoc: false, requireSignature: false, handoffType: 'desativado' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
+  { id: '5', name: 'Recebimento de VR/VA', description: 'Confirmação mensal de recebimento de benefícios', icon: 'CreditCard', pendingCount: 3, ativo: true, category: 'Benefícios', viewType: 'vr-va', targetMode: TargetMode.CURRENT_USER, roles: { employee: true, manager: false, hr: true, director: false }, version: 1, isSensitive: false, allowDraft: false, allowCancel: false, approvals: [], handoffs: { updateProfile: false, createRecord360: false, createTask: false, generateDoc: true, requireSignature: true, handoffType: 'desativado' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
+  { id: '6', name: 'Gestão de Dependentes', description: 'Inclusão ou alteração de dependentes', icon: 'Users', pendingCount: 3, ativo: true, category: 'Benefícios', viewType: 'generic', targetMode: TargetMode.CURRENT_USER, roles: { employee: true, manager: false, hr: true, director: false }, version: 1, isSensitive: false, allowDraft: true, allowCancel: true, approvals: [], handoffs: { updateProfile: true, createRecord360: true, createTask: false, generateDoc: false, requireSignature: false, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
+  { id: '7', name: 'Alteração de Cargos e Salários', description: 'Promoções e ajustes salariais', icon: 'TrendingUp', pendingCount: 3, ativo: true, category: 'Carreira', viewType: 'generic', targetMode: TargetMode.EMPLOYEE_ZOOM, roles: { employee: false, manager: true, hr: true, director: true }, version: 1, isSensitive: true, allowDraft: true, allowCancel: true, approvals: [{ id: 'app-7-1', name: 'RH', order: 1, active: true, responsibilityType: 'rh-filial', sla: 24, slaUnit: 'h', isMandatory: true }, { id: 'app-7-2', name: 'Diretoria', order: 2, active: true, responsibilityType: 'diretoria', sla: 48, slaUnit: 'h', isMandatory: true }], handoffs: { updateProfile: true, createRecord360: true, createTask: true, generateDoc: true, requireSignature: false, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
+  { id: '8', name: 'Prestação de Contas', description: 'Reembolso de despesas e viagens', icon: 'DollarSign', pendingCount: 3, ativo: true, category: 'Operacional', viewType: 'generic', targetMode: TargetMode.CURRENT_USER, roles: { employee: true, manager: true, hr: true, director: false }, version: 1, isSensitive: false, allowDraft: true, allowCancel: true, approvals: [{ id: 'app-8-1', name: 'Gestor', order: 1, active: true, responsibilityType: 'gestor-direto', sla: 24, slaUnit: 'h', isMandatory: true }], handoffs: { updateProfile: false, createRecord360: false, createTask: true, generateDoc: false, requireSignature: false, handoffType: 'sugestao' }, aiConfig: { enabled: true, points: [], model: 'gemini-1.5-flash', purpose: 'Auditoria de recibos', requireReview: true } },
+  { id: '9', name: 'Solicitação de Férias', description: 'Agendamento de descanso anual', icon: 'Palmtree', pendingCount: 3, ativo: true, category: 'Benefícios', viewType: 'generic', targetMode: TargetMode.CURRENT_USER, roles: { employee: true, manager: true, hr: true, director: false }, version: 1, isSensitive: false, allowDraft: true, allowCancel: true, approvals: [{ id: 'app-9-1', name: 'Gestor', order: 1, active: true, responsibilityType: 'gestor-direto', sla: 24, slaUnit: 'h', isMandatory: true }], handoffs: { updateProfile: true, createRecord360: true, createTask: false, generateDoc: false, requireSignature: false, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
+  { id: '10', name: 'Medida Disciplinar', description: 'Advertências, suspensões e registros disciplinares', icon: 'AlertCircle', pendingCount: 3, ativo: true, category: 'Operacional', viewType: 'generic', targetMode: TargetMode.EMPLOYEE_ZOOM, roles: { employee: false, manager: true, hr: true, director: false }, version: 1, isSensitive: true, allowDraft: true, allowCancel: false, approvals: [{ id: 'app-10-1', name: 'RH', order: 1, active: true, responsibilityType: 'rh-filial', sla: 24, slaUnit: 'h', isMandatory: true }], handoffs: { updateProfile: false, createRecord360: true, createTask: false, generateDoc: true, requireSignature: true, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
+  { id: '11', name: 'Movimentação de Pessoal', description: 'Transferências entre unidades ou departamentos', icon: 'Move', pendingCount: 3, ativo: true, category: 'Operacional', viewType: 'generic', targetMode: TargetMode.EMPLOYEE_ZOOM, roles: { employee: false, manager: true, hr: true, director: false }, version: 1, isSensitive: false, allowDraft: true, allowCancel: true, approvals: [{ id: 'app-11-1', name: 'Gestor Origem', order: 1, active: true, responsibilityType: 'gestor-direto', sla: 24, slaUnit: 'h', isMandatory: true }, { id: 'app-11-2', name: 'Gestor Destino', order: 2, active: true, responsibilityType: 'gestor-setor', sla: 24, slaUnit: 'h', isMandatory: true }], handoffs: { updateProfile: true, createRecord360: true, createTask: true, generateDoc: false, requireSignature: false, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
+  { id: '12', name: 'Gestão de Horas Extra', description: 'Autorização e controle de jornada extra', icon: 'Clock', pendingCount: 3, ativo: true, category: 'Operacional', viewType: 'generic', targetMode: TargetMode.CURRENT_USER, roles: { employee: true, manager: true, hr: true, director: false }, version: 1, isSensitive: false, allowDraft: false, allowCancel: true, approvals: [{ id: 'app-12-1', name: 'Gestor', order: 1, active: true, responsibilityType: 'gestor-direto', sla: 24, slaUnit: 'h', isMandatory: true }], handoffs: { updateProfile: false, createRecord360: false, createTask: true, generateDoc: false, requireSignature: false, handoffType: 'desativado' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
+  { id: '13', name: 'Gestão de Hierarquia', description: 'Estrutura organizacional e departamentos', icon: 'Shield', pendingCount: 3, ativo: true, category: 'Operacional', viewType: 'hierarchy', targetMode: TargetMode.EMPLOYEE_ZOOM, roles: { employee: false, manager: false, hr: true, director: true }, version: 1, isSensitive: true, allowDraft: true, allowCancel: true, approvals: [{ id: 'app-13-1', name: 'Diretoria', order: 1, active: true, responsibilityType: 'diretoria', sla: 48, slaUnit: 'h', isMandatory: true }], handoffs: { updateProfile: false, createRecord360: false, createTask: false, generateDoc: false, requireSignature: false, handoffType: 'desativado' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
+  { id: '14', name: 'Treinamento', description: 'Inscrição e registro de capacitações', icon: 'GraduationCap', pendingCount: 3, ativo: true, category: 'Carreira', viewType: 'generic', targetMode: TargetMode.CURRENT_USER, roles: { employee: true, manager: true, hr: true, director: false }, version: 1, isSensitive: false, allowDraft: true, allowCancel: true, approvals: [], handoffs: { updateProfile: false, createRecord360: true, createTask: false, generateDoc: false, requireSignature: false, handoffType: 'automatico' }, aiConfig: { enabled: false, points: [], model: '', purpose: '', requireReview: true } },
   { 
     id: '15', 
     name: 'Solicitação de Desligamento', 
@@ -1498,9 +1502,6 @@ export const INITIAL_RH_PROCESSES: RHProcess[] = [
     viewType: 'generic',
     targetMode: TargetMode.EMPLOYEE_ZOOM,
     roles: { employee: false, manager: true, hr: true, director: true },
-    // A rescisão não é o último passo do fluxo: depois da aprovação vem a etapa
-    // de Benefícios e Encerramento (RH/DP), que é o que conclui o processo.
-    etapas: ['Solicitado', 'Aprovação Diretor', ETAPA_ENCERRAMENTO, 'Conclusão'],
     version: 1, 
     isSensitive: true, 
     allowDraft: true, 
@@ -1510,6 +1511,79 @@ export const INITIAL_RH_PROCESSES: RHProcess[] = [
     aiConfig: { enabled: true, points: [], model: 'gemini-1.5-flash', purpose: 'Análise de turnover', requireReview: true }
   }
 ];
+
+// ETAPAS DERIVADAS DA CASCATA
+//
+// `etapas` descreve por onde o pedido passa. Escrita à mão, virava promessa: o
+// processo 7 anunciava "Aprovação Financeira" sem ter essa alçada, o 8 anunciava
+// "Audit RH" sem nível de RH, o 1 contava três aprovações para uma cascata de
+// duas e o 6 prometia "Validação RH" sem declarar alçada nenhuma.
+//
+// Aqui cada processo declara só o que a cascata NÃO sabe: o que acontece antes
+// da primeira alçada e o que acontece depois da última. O miolo — os níveis de
+// aprovação, na ordem — sai de `approvals`, que é o que o motor de fato executa.
+// Incluir ou remover uma alçada passa a acertar a descrição sozinho.
+interface MoldeDeEtapas {
+  /** O que o solicitante percorre antes de qualquer alçada. */
+  antes: string[];
+  /**
+   * Etapas OPERACIONAIS depois da última alçada — trabalho de execução, não
+   * decisão. É onde entra "Benefícios e Encerramento" do desligamento.
+   */
+  depois: string[];
+  /**
+   * Protocolo (Recebimento de VR/VA): não tem cascata nenhuma — o RH credita, o
+   * colaborador confirma e assina, e o registro nasce concluído. Sem esta marca,
+   * a derivação injetaria uma aprovação que o processo não roda.
+   */
+  semAlcada?: true;
+}
+
+/**
+ * Nome do nível que o motor injeta quando o processo não declara alçadas
+ * (`defaultLevel`, utils/approvalFlow). A descrição precisa citá-lo pelo mesmo
+ * nome que a tela mostra.
+ */
+const NIVEL_IMPLICITO = 'Aprovação';
+
+const ETAPAS_POR_PROCESSO: Record<string, MoldeDeEtapas> = {
+  '1': { antes: ['Abertura'], depois: ['Concluído'] },
+  '2': { antes: ['Triagem'], depois: ['Entrevista RH', 'Entrevista Técnica', 'Proposta'] },
+  '3': { antes: ['Documentação', 'Exame Médico'], depois: ['Contrato', 'Finalizado'] },
+  '4': { antes: ['Pré-admissão'], depois: ['Primeiro Dia', 'Primeira Semana', 'Primeiro Mês'] },
+  '5': { antes: ['Crédito Lançado', 'Confirmação do Colaborador'], depois: ['Recebimento Registrado'], semAlcada: true },
+  '6': { antes: ['Solicitado'], depois: ['Concluído'] },
+  '7': { antes: ['Solicitado'], depois: ['Concluído'] },
+  '8': { antes: ['Enviado'], depois: ['Pagamento'] },
+  '9': { antes: ['Solicitado'], depois: ['Agendado'] },
+  '10': { antes: ['Registro'], depois: ['Ciência Colaborador', 'Arquivado'] },
+  '11': { antes: ['Solicitado'], depois: ['Efetivado'] },
+  '12': { antes: ['Solicitado'], depois: ['Processado'] },
+  '13': { antes: ['Alteração'], depois: ['Publicado'] },
+  '14': { antes: ['Inscrição'], depois: ['Realização', 'Certificação'] },
+  // A rescisão não é o último passo do fluxo: depois da aprovação vem a etapa
+  // de Benefícios e Encerramento (RH/DP), que é o que conclui o processo.
+  '15': { antes: ['Solicitado'], depois: [ETAPA_ENCERRAMENTO, 'Conclusão'] }
+};
+
+/** As etapas do processo: abertura → alçadas configuradas → operação → fecho. */
+export const etapasDaCascata = (processo: Omit<RHProcess, 'etapas'>): string[] => {
+  const molde = ETAPAS_POR_PROCESSO[processo.id];
+  if (!molde) return [NIVEL_IMPLICITO];
+  const niveis = molde.semAlcada
+    ? []
+    : processo.approvals.filter(a => a.active !== false).map(a => a.name);
+  return [
+    ...molde.antes,
+    ...(molde.semAlcada || niveis.length ? niveis : [NIVEL_IMPLICITO]),
+    ...molde.depois
+  ];
+};
+
+export const INITIAL_RH_PROCESSES: RHProcess[] = PROCESSOS_BASE.map(p => ({
+  ...p,
+  etapas: etapasDaCascata(p)
+}));
 
 // MATRIZ DE PERMISSÃO POR PROCESSO
 //

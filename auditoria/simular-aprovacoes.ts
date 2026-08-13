@@ -311,32 +311,73 @@ function auditarCamposDeCondicao(process: RHProcess) {
   }
 }
 
-/** Confere a lista `etapas` do processo contra a trilha real gerada pela cascata. */
+/** Palavras que anunciam uma decisão de alçada no rótulo de uma etapa. */
+const PALAVRA_DE_APROVACAO = /aprova|valida|audit|board/i;
+
+/**
+ * Confere a lista `etapas` do processo contra a trilha real gerada pela cascata.
+ *
+ * A conferência é ESTRUTURAL, não por contagem de palavras. Contar rótulos que
+ * "parecem aprovação" era um proxy: dava falso positivo em "Validado" (estado
+ * final do processo 1, não alçada) e falso negativo em toda etapa cujo nome não
+ * carrega a palavra — os processos 2, 3, 4 e 14 divergiam do mesmo jeito e
+ * passavam calados, porque nenhuma etapa deles casava com a regex.
+ *
+ * Agora as etapas nomeiam os níveis, então a pergunta certa é de posição:
+ *
+ *   (a) os níveis da cascata aparecem em `etapas`, na ordem e em sequência —
+ *       a descrição não pode omitir nem reordenar por onde o pedido passa;
+ *   (b) nenhuma etapa FORA desse trecho anuncia aprovação — senão o painel
+ *       promete uma alçada que o motor não roda.
+ */
 function auditarEtapas(process: RHProcess, req: SolicitacaoSimulada) {
   const nomesDaCascata = req.approvalChain.map(l => l.name);
-  const etapasComAprovacao = process.etapas.filter(e => /aprova|valida|audit|board/i.test(e));
+  const etapas = process.etapas;
 
-  if (process.approvals.length === 0 && etapasComAprovacao.length > 0) {
+  // (a) trecho contíguo com os níveis, na ordem.
+  const inicio = etapas.indexOf(nomesDaCascata[0]);
+  const contiguo =
+    inicio >= 0 && nomesDaCascata.every((nome, i) => etapas[inicio + i] === nome);
+
+  if (!contiguo) {
+    registrar(
+      process.id,
+      'etapas',
+      'ALERTA',
+      'etapas não descrevem os níveis da cascata',
+      `etapas = [${etapas.join(' → ')}] não contém, em sequência, os níveis ` +
+        `[${nomesDaCascata.join(' → ')}] que o motor executa.`
+    );
+    return;
+  }
+
+  // (b) fora do trecho da cascata, nada pode se anunciar como aprovação.
+  const foraDaCascata = [
+    ...etapas.slice(0, inicio),
+    ...etapas.slice(inicio + nomesDaCascata.length)
+  ];
+  const prometidas = foraDaCascata.filter(e => PALAVRA_DE_APROVACAO.test(e));
+
+  if (prometidas.length > 0) {
     registrar(
       process.id,
       'etapas',
       'ALERTA',
       'etapas prometem aprovação que não existe',
-      `etapas = [${process.etapas.join(' → ')}] cita ${etapasComAprovacao.length} etapa(s) de aprovação, ` +
-        `mas approvals = [] (o motor injeta o nível implícito "Aprovação", approvalFlow.ts:110-121).`
+      `[${prometidas.join(', ')}] se anuncia(m) como decisão, mas está(ão) fora da cascata ` +
+        `[${nomesDaCascata.join(' → ')}]. Etapa operacional não deve usar palavra de aprovação no rótulo.`
     );
-  } else if (etapasComAprovacao.length !== nomesDaCascata.length && process.approvals.length > 0) {
-    registrar(
-      process.id,
-      'etapas',
-      'ALERTA',
-      'nº de etapas de aprovação ≠ nº de níveis da cascata',
-      `etapas cita ${etapasComAprovacao.length} (${etapasComAprovacao.join(', ') || '—'}) e a cascata tem ` +
-        `${nomesDaCascata.length} (${nomesDaCascata.join(', ') || '—'}).`
-    );
-  } else {
-    registrar(process.id, 'etapas', 'OK', 'etapas coerentes com a cascata', `[${process.etapas.join(' → ')}]`);
+    return;
   }
+
+  registrar(
+    process.id,
+    'etapas',
+    'OK',
+    'etapas coerentes com a cascata',
+    `[${etapas.join(' → ')}] · níveis nas posições ${inicio + 1}–${inicio + nomesDaCascata.length}` +
+      (foraDaCascata.length ? ` · operacionais: ${foraDaCascata.join(', ')}` : '')
+  );
 }
 
 /** Abre uma solicitação e percorre a cascata inteira, verificando cada invariante. */

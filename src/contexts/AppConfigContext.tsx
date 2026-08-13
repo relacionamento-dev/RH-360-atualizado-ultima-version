@@ -193,7 +193,11 @@ const INITIAL_STATE: AppConfig = {
   // quadro de vagas próprio da TechFlow. Sem o bump, o localStorage antigo
   // devolveria vagas de uma empresa que não existe e o recorte por empresa
   // esconderia todas elas.
-  version: '1.14.0',
+  // 1.15.0 — `etapas` de cada processo derivada da cascata em vez de escrita à
+  // mão. Sem o bump, o localStorage antigo devolveria a descrição velha, que
+  // prometia alçadas inexistentes ("Aprovação Financeira" no processo 7, "Audit
+  // RH" no 8) e omitia as que o motor roda.
+  version: '1.15.0',
   empresaAtual: COMPANIES[0],
   parametrizacao: PARAMETRIZACAO_INICIAL,
   usuarioAtual: DEMO_USERS[0], // Admin by default
