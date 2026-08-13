@@ -1,4 +1,5 @@
 import {
+  AccessProfile,
   ApprovalResponsibilityType,
   ApprovalStep,
   CostCenter,
@@ -11,7 +12,7 @@ import {
   Sector,
   User
 } from '../types';
-import { podeAprovarPropriaSolicitacao } from './permissions';
+import { isSuperAdmin, perfilDoUsuario, podeAprovarPropriaSolicitacao } from './permissions';
 import {
   cadeiaDeGestores,
   centroDeCustoDe,
@@ -90,6 +91,12 @@ export interface Organizacao {
   setores: Sector[];
   centrosDeCusto: CostCenter[];
   usuarios: User[];
+  /**
+   * Os perfis de acesso, para a cascata saber QUEM PODE DECIDIR cada processo.
+   * Opcional: sem eles a resolução é a de antes — a estrutura escolhe sozinha,
+   * sem consultar a matriz de permissão.
+   */
+  perfis?: AccessProfile[];
 }
 
 export interface ContextoDeAlcada extends Organizacao {
@@ -102,6 +109,12 @@ export interface ContextoDeAlcada extends Organizacao {
    * aprovar e mais ninguém foi designado.
    */
   solicitante?: Employee;
+  /**
+   * O processo da solicitação. Quem preenche é `buildApprovalChain`, a partir do
+   * processo que recebeu — é o que permite perguntar "esta pessoa aprova ESTE
+   * processo?" na hora de escalar.
+   */
+  processId?: string;
 }
 
 /**
@@ -114,6 +127,7 @@ export const organizacaoDoConfig = (config: {
   setores: Sector[];
   centrosDeCusto: CostCenter[];
   usuariosDemo: User[];
+  perfis?: AccessProfile[];
   empresaAtual?: { name: string };
 }): Organizacao => ({
   // Só gente da empresa ativa. Sem este recorte, uma alçada institucional
@@ -125,7 +139,8 @@ export const organizacaoDoConfig = (config: {
     : config.colaboradores,
   setores: config.setores,
   centrosDeCusto: config.centrosDeCusto,
-  usuarios: config.usuariosDemo
+  usuarios: config.usuariosDemo,
+  perfis: config.perfis
 });
 
 /**
@@ -225,6 +240,30 @@ function substitutoDaAlcada(
 }
 
 /**
+ * O perfil desta pessoa aprova ESTE processo?
+ *
+ * É a metade que faltava para as duas camadas concordarem. A hierarquia sabe
+ * escolher QUEM decide; a matriz de permissão diz SE essa pessoa pode. Sem a
+ * pergunta, um nível conflitado (o RH abrindo o pedido de que ele mesmo seria o
+ * aprovador) escalava para o gestor do alvo — que recebia o item na fila e não
+ * via o botão "Aprovar", porque o perfil dele nega a ação naquele processo.
+ *
+ * Responde `true` sempre que não dá para afirmar o contrário: sem `perfis` no
+ * contexto, sem processo, sem conta de usuário ou sem registro de perfil, a
+ * pergunta não tem resposta — e não é ela que vai tirar alguém da fila.
+ */
+function podeDecidirOProcesso(emp: Employee, ctx: ContextoDeAlcada): boolean {
+  const { perfis, processId, usuarios } = ctx;
+  if (!perfis?.length || !processId) return true;
+  const usuario = usuarios.find(u => u.employeeId === emp.id);
+  if (!usuario) return true;
+  if (isSuperAdmin(usuario)) return true;
+  const registro = perfilDoUsuario(usuario, perfis);
+  if (!registro) return true;
+  return registro.ativo && registro.permissoes[processId]?.aprovar === true;
+}
+
+/**
  * Alguém que NÃO seja inferior ao alvo, na melhor ordem disponível. É o que
  * impede a Prestação de Contas do Diretor Geral de cair na fila de um Gerente
  * de TI.
@@ -233,10 +272,15 @@ function substitutoDaAlcada(
  * qualquer par de mesma altura. O último degrau existe porque o alvo pode estar
  * no topo, e aí "acima" não existe — mas um par ainda não é um inferior.
  */
-function primeiroNaoInferiorAoAlvo(ctx: ContextoDeAlcada, excluir?: Employee): Employee | undefined {
+function buscarNaoInferiorAoAlvo(
+  ctx: ContextoDeAlcada,
+  excluir: Employee | undefined,
+  exigirDecisor: boolean
+): Employee | undefined {
   const { alvo, colaboradores, solicitante } = ctx;
   const elegivel = (e: Employee) =>
-    estaDisponivel(e) && e.id !== alvo?.id && e.id !== solicitante?.id && e.id !== excluir?.id;
+    estaDisponivel(e) && e.id !== alvo?.id && e.id !== solicitante?.id && e.id !== excluir?.id &&
+    (!exigirDecisor || podeDecidirOProcesso(e, ctx));
 
   const naCadeia = cadeiaDeGestores(alvo, colaboradores).find(elegivel);
   if (naCadeia) return naCadeia;
@@ -251,6 +295,18 @@ function primeiroNaoInferiorAoAlvo(ctx: ContextoDeAlcada, excluir?: Employee): E
     .filter(e => elegivel(e) && !estaAbaixoDe(e, alvo, colaboradores))
     .sort((a, b) => profundidade(a, colaboradores) - profundidade(b, colaboradores))[0];
 }
+
+/**
+ * Quem assume quando o titular sai de cena. Passa duas vezes pela estrutura:
+ * primeiro só entre quem PODE decidir o processo, depois sem esse filtro.
+ *
+ * A segunda passada existe de propósito. Fila sem dono é pior que fila com dono
+ * que não decide — sem ela, um cliente que negue `aprovar` a todo mundo num
+ * processo deixaria o pedido sem responsável nenhum, em vez de deixá-lo com a
+ * pessoa que a estrutura aponta e um erro visível na Central Adm.
+ */
+const primeiroNaoInferiorAoAlvo = (ctx: ContextoDeAlcada, excluir?: Employee): Employee | undefined =>
+  buscarNaoInferiorAoAlvo(ctx, excluir, true) || buscarNaoInferiorAoAlvo(ctx, excluir, false);
 
 /**
  * O responsável de um nível, resolvido pela estrutura.
@@ -456,14 +512,18 @@ export function buildApprovalChain(
   data: Record<string, any> = {},
   ctx?: ContextoDeAlcada
 ): RequestApprovalLevel[] {
+  // O processo entra no contexto aqui — é o que permite à resolução perguntar
+  // "esta pessoa aprova ESTE processo?" antes de escalar o nível para ela.
+  const ctxDoProcesso = ctx && { ...ctx, processId: ctx.processId || process?.id };
+
   const steps = (process?.approvals || [])
     .filter(step => isStepApplicable(step, data))
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-  if (steps.length === 0) return [defaultLevel(ctx)];
+  if (steps.length === 0) return [defaultLevel(ctxDoProcesso)];
 
   return steps.map((step, index) => {
-    const resolvido = resolverResponsavel(step, ctx);
+    const resolvido = resolverResponsavel(step, ctxDoProcesso);
     return {
       id: step.id,
       name: step.name || `Aprovação ${index + 1}`,

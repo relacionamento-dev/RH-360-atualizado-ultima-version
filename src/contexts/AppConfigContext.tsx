@@ -183,7 +183,12 @@ const INITIAL_STATE: AppConfig = {
   // troca de empresa ativa, recorte de dados por empresa e a base própria da
   // TechFlow. Sem o bump o localStorage antigo viria sem parametrizacao e sem o
   // quadro da segunda empresa, e o seletor trocaria de nome sem trocar de dados.
-  version: '1.12.0',
+  // 1.13.0 — matriz de permissão por PAPEL nos perfis e grupos de fábrica:
+  // Colaborador só abre os cinco processos de autosserviço e o Gestor aprova os
+  // processos em que a hierarquia o designa. Sem o bump, o localStorage antigo
+  // devolveria os perfis e grupos do laço genérico — Colaborador abrindo o
+  // próprio desligamento e Gestor sem o botão "Aprovar" na fila dele.
+  version: '1.13.0',
   empresaAtual: COMPANIES[0],
   parametrizacao: PARAMETRIZACAO_INICIAL,
   usuarioAtual: DEMO_USERS[0], // Admin by default

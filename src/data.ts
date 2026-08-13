@@ -1420,147 +1420,9 @@ const snapshotDoUsuario = (userId: string) => {
   };
 };
 
-// Helper for default permissions
-const defaultPerms = () => {
-  const perms: Record<string, any> = {};
-  for (let i = 1; i <= 15; i++) {
-    perms[String(i)] = {
-      ver: true,
-      solicitar: true,
-      executar: false,
-      aprovar: false,
-      devolver: true,
-      cancelar: true,
-      reabrir: false,
-      verHistorico: true,
-      verSigiloso: false
-    };
-  }
-  return perms;
-};
-
-const adminPerms = () => {
-  const perms: Record<string, any> = {};
-  for (let i = 1; i <= 15; i++) {
-    perms[String(i)] = {
-      ver: true,
-      solicitar: true,
-      executar: true,
-      aprovar: true,
-      devolver: true,
-      cancelar: true,
-      reabrir: true,
-      verHistorico: true,
-      verSigiloso: true
-    };
-  }
-  return perms;
-};
-
-const defaultSensitive = (isFull: boolean) => ({
-  visualizarSalario: isFull,
-  editarSalario: isFull,
-  visualizarCPF: isFull,
-  visualizarDocumentosPessoais: isFull,
-  visualizarDadosBancarios: isFull,
-  visualizarASO: isFull,
-  visualizarMedidaDisciplinar: isFull,
-  visualizarDesligamento: isFull,
-  visualizarJuridico: isFull,
-  visualizarAuditoria: isFull
-});
-
-// PERFIS DE ACESSO
-//
-// Os seis perfis que acompanham o produto, agora como REGISTRO e não como union
-// type. O `telas` e as `acoesDeTela` de cada um saem das mesmas tabelas que o
-// código usava (utils/permissions), então o comportamento de fábrica é
-// idêntico ao de antes — a diferença é que agora dá para editar, desativar e
-// criar perfis novos pela Central Adm.
-const perfilDeSistema = (
-  id: string,
-  nome: NomeDePerfil,
-  escopo: EscopoDeDados,
-  descricao: string,
-  permissoes: Record<string, ProcessPermission>,
-  sensiveis: boolean
-): AccessProfile => ({
-  id,
-  nome,
-  descricao,
-  escopo,
-  ativo: true,
-  sistema: true,
-  telas: telasDoPerfilPadrao(nome),
-  acoesDeTela: acoesDoPerfilPadrao(nome),
-  permissoes,
-  dadosSensiveis: defaultSensitive(sensiveis)
-});
-
-export const INITIAL_ACCESS_PROFILES: AccessProfile[] = [
-  perfilDeSistema('perf-admin-geral', 'Administrador Geral', 'global',
-    'Acesso irrestrito a todas as empresas. Reservado às contas @jynx.com.br.', adminPerms(), true),
-  perfilDeSistema('perf-admin', 'Administrador', 'empresa',
-    'Administra a empresa ativa: processos, acessos e parametrização.', adminPerms(), true),
-  perfilDeSistema('perf-diretoria', 'Diretoria', 'empresa',
-    'Visão executiva da empresa, com aprovação de alçadas superiores.', adminPerms(), true),
-  perfilDeSistema('perf-rh-dp', 'RH/DP', 'empresa',
-    'Opera os processos de pessoas e responde pelo dado sensível.', adminPerms(), true),
-  // Gestor: escopo de EQUIPE e sem dado sensível — é o recorte que faltava.
-  perfilDeSistema('perf-gestor', 'Gestor', 'equipe',
-    'Enxerga a própria equipe. Sem acesso a remuneração, salvo permissão explícita.', defaultPerms(), false),
-  perfilDeSistema('perf-colaborador', 'Colaborador', 'proprio',
-    'Enxerga apenas os próprios registros.', defaultPerms(), false)
-];
-
-// GROUPS
-export const INITIAL_GROUPS: Group[] = [
-  {
-    id: 'g-admin',
-    nome: 'Administradores',
-    setor: 'TI',
-    escopo: 'global',
-    membros: ['ADMIN-001'],
-    permissoes: adminPerms(),
-    dadosSensiveis: defaultSensitive(true)
-  },
-  {
-    id: 'g-diretoria',
-    nome: 'Diretoria',
-    setor: 'Board',
-    escopo: 'global',
-    membros: ['ADMIN-001', 'DIR-001'],
-    permissoes: adminPerms(),
-    dadosSensiveis: defaultSensitive(true)
-  },
-  {
-    id: 'g-rh',
-    nome: 'RH Corporativo',
-    setor: 'RH',
-    escopo: 'global',
-    membros: ['ADMIN-001', 'RH-001'],
-    permissoes: adminPerms(),
-    dadosSensiveis: defaultSensitive(true)
-  },
-  {
-    id: 'g-gestores',
-    nome: 'Gestores',
-    setor: 'Geral',
-    escopo: 'equipe',
-    membros: ['ADMIN-001', 'GEST-001'],
-    permissoes: defaultPerms(),
-    dadosSensiveis: defaultSensitive(false)
-  },
-  {
-    id: 'g-colaboradores',
-    nome: 'Colaboradores',
-    setor: 'Geral',
-    escopo: 'proprio',
-    membros: ['COLAB-001'],
-    permissoes: defaultPerms(),
-    dadosSensiveis: defaultSensitive(false)
-  }
-];
+// PERFIS E GRUPOS ficam DEPOIS de INITIAL_RH_PROCESSES (logo abaixo da lista),
+// porque a matriz de cada perfil é DERIVADA da configuração dos processos —
+// quem aprova o quê sai das alçadas declaradas, não de um número escrito à mão.
 
 // PROCESSES (15)
 export const INITIAL_RH_PROCESSES: RHProcess[] = [
@@ -1644,8 +1506,255 @@ export const INITIAL_RH_PROCESSES: RHProcess[] = [
     allowDraft: true, 
     allowCancel: false, 
     approvals: [{ id: 'app-15-1', name: 'Diretoria', order: 1, active: true, responsibilityType: 'diretoria', sla: 24, slaUnit: 'h', isMandatory: true }], 
-    handoffs: { updateProfile: true, createRecord360: true, createTask: true, generateDoc: true, requireSignature: true, handoffType: 'automatico' }, 
-    aiConfig: { enabled: true, points: [], model: 'gemini-1.5-flash', purpose: 'Análise de turnover', requireReview: true } 
+    handoffs: { updateProfile: true, createRecord360: true, createTask: true, generateDoc: true, requireSignature: true, handoffType: 'automatico' },
+    aiConfig: { enabled: true, points: [], model: 'gemini-1.5-flash', purpose: 'Análise de turnover', requireReview: true }
+  }
+];
+
+// MATRIZ DE PERMISSÃO POR PROCESSO
+//
+// Era um laço `for (let i = 1; i <= 15; i++)` que dava a MESMA linha para os 15
+// processos, com `solicitar: true` e `aprovar: false`. As duas metades estavam
+// erradas, e pelo mesmo motivo — uma matriz que não olha para o papel:
+//
+//   - o Colaborador via os 15 processos em "Nova Solicitação" e podia abrir uma
+//     Medida Disciplinar contra si mesmo, ou o próprio desligamento;
+//   - o Gestor recebia a solicitação na fila dele (a hierarquia roteia certo) e
+//     não via "Aprovar" no detalhe, porque `aprovar: false` negava a ação. A
+//     camada de hierarquia e a matriz discordavam, e o item parava numa fila
+//     cujo dono não podia decidir.
+//
+// Agora cada papel tem a matriz dele, DERIVADA da configuração dos processos
+// acima — não de uma lista escrita à mão que envelhece calada. Continua sendo
+// só o SEED: a Central Adm (Perfis de Acesso) edita tudo isto por cliente.
+
+/**
+ * Monta a matriz aplicando uma regra por processo. Toda permissão é explícita:
+ * o que a regra não conceder fica `false`, e não herdado de um padrão genérico.
+ */
+const matrizPorProcesso = (
+  regra: (processo: RHProcess) => Partial<ProcessPermission>
+): Record<string, ProcessPermission> =>
+  Object.fromEntries(INITIAL_RH_PROCESSES.map(processo => [processo.id, {
+    ver: false,
+    solicitar: false,
+    executar: false,
+    aprovar: false,
+    devolver: false,
+    cancelar: false,
+    reabrir: false,
+    verHistorico: false,
+    verSigiloso: false,
+    ...regra(processo)
+  }]));
+
+/**
+ * AUTOSSERVIÇO — o que uma pessoa abre sobre si mesma, sem passar por ninguém.
+ *
+ * São os cinco processos de `targetMode: CURRENT_USER` que o colaborador de
+ * fato inicia. Fora daqui, o alvo é outra pessoa (ou a estrutura da empresa) e
+ * quem abre é o gestor ou o RH — é justamente o que fazia a lista de "Nova
+ * Solicitação" oferecer Desligamento e Medida Disciplinar a quem seria o alvo.
+ *
+ * Treinamento ('14') também é CURRENT_USER, mas a inscrição do seed passa pelo
+ * gestor (ele é quem tem o orçamento de capacitação da equipe), então fica com
+ * ele. Um cliente que queira inscrição livre marca "Solicitar" em Treinamento
+ * no perfil Colaborador — é um clique na Central Adm, não uma alteração aqui.
+ */
+export const PROCESSOS_AUTOSSERVICO = ['5', '6', '8', '9', '12'];
+
+/**
+ * Processos em que o GESTOR é aprovador pela hierarquia: os que têm alçada de
+ * 'gestor-direto' ou 'gestor-setor' configurada. Sai da própria lista de
+ * processos, então incluir (ou tirar) um nível de gestor num processo já
+ * acerta a matriz — a discordância entre as duas camadas não volta.
+ */
+export const PROCESSOS_APROVADOS_PELO_GESTOR = INITIAL_RH_PROCESSES
+  .filter(p => p.approvals.some(a =>
+    a.active !== false && (a.responsibilityType === 'gestor-direto' || a.responsibilityType === 'gestor-setor')))
+  .map(p => p.id);
+
+/**
+ * Esteiras que o RH opera de ponta a ponta. O gestor participa delas (entrevista
+ * o candidato, acompanha a integração), mas não é ele quem as ABRE: elas nascem
+ * do handoff da Requisição de Vaga ou de um botão próprio dentro da tela do
+ * processo — a Admissão Digital, inclusive, já está fora do fluxo genérico
+ * (`PROCESSOS_SEM_ABERTURA_GENERICA`).
+ */
+const ESTEIRAS_DO_RH = ['2', '3', '4'];
+
+/**
+ * COLABORADOR — autosserviço e mais nada.
+ *
+ * `ver` fica ligado nos 15: quem recorta o que ele enxerga é o ESCOPO 'proprio'
+ * (utils/escopo), que devolve só os registros dele. Desligar `ver` aqui seria
+ * uma segunda trava sobre a mesma coisa, e esconderia dele o registro que fala
+ * dele — a advertência que ele precisa dar ciência, o próprio desligamento.
+ * O conteúdo sigiloso continua fora: `verSigiloso: false` nos 15.
+ */
+const permissoesDoColaborador = (): Record<string, ProcessPermission> =>
+  matrizPorProcesso(processo => {
+    const proprio = PROCESSOS_AUTOSSERVICO.includes(processo.id);
+    return {
+      ver: true,
+      verHistorico: true,
+      solicitar: proprio,
+      // Cancela o que ele mesmo abriu — nunca o que abriram sobre ele.
+      cancelar: proprio
+    };
+  });
+
+/**
+ * GESTOR — decide o que a hierarquia manda para ele e abre o que a equipe pede.
+ *
+ * `aprovar`/`devolver` acompanham as alçadas de gestor declaradas no processo,
+ * que é o que faz o botão "Aprovar" aparecer para o item que caiu na fila dele.
+ * `solicitar` cobre o que ele abre PARA A EQUIPE (`roles.manager`) e o que abre
+ * para si — ele também tira férias e presta contas, e tirar o autosserviço dele
+ * seria trocar um buraco por outro.
+ */
+const permissoesDoGestor = (): Record<string, ProcessPermission> =>
+  matrizPorProcesso(processo => {
+    // Só os processos de que ele participa: 'Gestão de Hierarquia' é de RH e
+    // Diretoria (`roles`), e aparecia no Hub dele sem nada para fazer.
+    const participa = processo.roles.manager || processo.roles.employee;
+    const decide = PROCESSOS_APROVADOS_PELO_GESTOR.includes(processo.id);
+    const abre = (processo.roles.manager && !ESTEIRAS_DO_RH.includes(processo.id)) ||
+      PROCESSOS_AUTOSSERVICO.includes(processo.id);
+    return {
+      ver: participa,
+      verHistorico: participa,
+      solicitar: abre,
+      cancelar: abre,
+      aprovar: decide,
+      devolver: decide
+    };
+  });
+
+/** ADMINISTRADOR / DIRETORIA / RH/DP — acesso pleno aos 15, como antes. */
+const adminPerms = (): Record<string, ProcessPermission> =>
+  matrizPorProcesso(() => ({
+    ver: true,
+    solicitar: true,
+    executar: true,
+    aprovar: true,
+    devolver: true,
+    cancelar: true,
+    reabrir: true,
+    verHistorico: true,
+    verSigiloso: true
+  }));
+
+const defaultSensitive = (isFull: boolean) => ({
+  visualizarSalario: isFull,
+  editarSalario: isFull,
+  visualizarCPF: isFull,
+  visualizarDocumentosPessoais: isFull,
+  visualizarDadosBancarios: isFull,
+  visualizarASO: isFull,
+  visualizarMedidaDisciplinar: isFull,
+  visualizarDesligamento: isFull,
+  visualizarJuridico: isFull,
+  visualizarAuditoria: isFull
+});
+
+// PERFIS DE ACESSO
+//
+// Os seis perfis que acompanham o produto, agora como REGISTRO e não como union
+// type. O `telas` e as `acoesDeTela` de cada um saem das mesmas tabelas que o
+// código usava (utils/permissions), então o comportamento de fábrica é
+// idêntico ao de antes — a diferença é que agora dá para editar, desativar e
+// criar perfis novos pela Central Adm.
+const perfilDeSistema = (
+  id: string,
+  nome: NomeDePerfil,
+  escopo: EscopoDeDados,
+  descricao: string,
+  permissoes: Record<string, ProcessPermission>,
+  sensiveis: boolean
+): AccessProfile => ({
+  id,
+  nome,
+  descricao,
+  escopo,
+  ativo: true,
+  sistema: true,
+  telas: telasDoPerfilPadrao(nome),
+  acoesDeTela: acoesDoPerfilPadrao(nome),
+  permissoes,
+  dadosSensiveis: defaultSensitive(sensiveis)
+});
+
+export const INITIAL_ACCESS_PROFILES: AccessProfile[] = [
+  perfilDeSistema('perf-admin-geral', 'Administrador Geral', 'global',
+    'Acesso irrestrito a todas as empresas. Reservado às contas @jynx.com.br.', adminPerms(), true),
+  perfilDeSistema('perf-admin', 'Administrador', 'empresa',
+    'Administra a empresa ativa: processos, acessos e parametrização.', adminPerms(), true),
+  perfilDeSistema('perf-diretoria', 'Diretoria', 'empresa',
+    'Visão executiva da empresa, com aprovação de alçadas superiores.', adminPerms(), true),
+  perfilDeSistema('perf-rh-dp', 'RH/DP', 'empresa',
+    'Opera os processos de pessoas e responde pelo dado sensível.', adminPerms(), true),
+  // Gestor: escopo de EQUIPE e sem dado sensível — é o recorte que faltava.
+  perfilDeSistema('perf-gestor', 'Gestor', 'equipe',
+    'Aprova o que a hierarquia encaminha e abre solicitações para a equipe. Sem acesso a remuneração, salvo permissão explícita.',
+    permissoesDoGestor(), false),
+  perfilDeSistema('perf-colaborador', 'Colaborador', 'proprio',
+    'Enxerga apenas os próprios registros e abre os processos de autosserviço.',
+    permissoesDoColaborador(), false)
+];
+
+// GROUPS
+//
+// Grupo SOMA por cima do perfil (`getEffectivePermissions`): é assim que o
+// cliente concede exceção pontual sem criar um perfil novo. Por isso a matriz
+// de cada grupo tem de ser a MESMA do perfil correspondente — com o laço
+// genérico, "Colaboradores" devolvia por fora o `solicitar` nos 15 processos
+// que o perfil acabou de negar, e o vazamento não aparecia em lugar nenhum.
+export const INITIAL_GROUPS: Group[] = [
+  {
+    id: 'g-admin',
+    nome: 'Administradores',
+    setor: 'TI',
+    escopo: 'global',
+    membros: ['ADMIN-001'],
+    permissoes: adminPerms(),
+    dadosSensiveis: defaultSensitive(true)
+  },
+  {
+    id: 'g-diretoria',
+    nome: 'Diretoria',
+    setor: 'Board',
+    escopo: 'global',
+    membros: ['ADMIN-001', 'DIR-001'],
+    permissoes: adminPerms(),
+    dadosSensiveis: defaultSensitive(true)
+  },
+  {
+    id: 'g-rh',
+    nome: 'RH Corporativo',
+    setor: 'RH',
+    escopo: 'global',
+    membros: ['ADMIN-001', 'RH-001'],
+    permissoes: adminPerms(),
+    dadosSensiveis: defaultSensitive(true)
+  },
+  {
+    id: 'g-gestores',
+    nome: 'Gestores',
+    setor: 'Geral',
+    escopo: 'equipe',
+    membros: ['ADMIN-001', 'GEST-001'],
+    permissoes: permissoesDoGestor(),
+    dadosSensiveis: defaultSensitive(false)
+  },
+  {
+    id: 'g-colaboradores',
+    nome: 'Colaboradores',
+    setor: 'Geral',
+    escopo: 'proprio',
+    membros: ['COLAB-001'],
+    permissoes: permissoesDoColaborador(),
+    dadosSensiveis: defaultSensitive(false)
   }
 ];
 
@@ -1719,7 +1828,11 @@ const ORGANIZACAO_DO_SEED = () => ({
   colaboradores: INITIAL_EMPLOYEES,
   setores: SECTORS,
   centrosDeCusto: COST_CENTERS,
-  usuarios: DEMO_USERS
+  usuarios: DEMO_USERS,
+  // Os perfis entram aqui pelo mesmo motivo que entram em `organizacaoDoConfig`:
+  // a cascata gravada no seed tem de ser a MESMA que o app resolveria agora. Sem
+  // eles, o pedido do seed nasceria numa fila que o app nunca criaria.
+  perfis: INITIAL_ACCESS_PROFILES
 });
 
 const cascataDoSeed = (processo: RHProcess, alvo?: Employee, solicitanteId?: string, dados: Record<string, any> = {}) =>
