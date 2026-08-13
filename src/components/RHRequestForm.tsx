@@ -17,7 +17,7 @@ import { isEmptyFieldValue } from '../utils/formValues';
 import { buildApprovalChain, organizacaoDoConfig } from '../utils/approvalFlow';
 import { ETAPA_ENCERRAMENTO } from '../utils/desligamento';
 import { resolverSolicitante } from '../utils/identidade';
-import { resolverAlvo } from '../utils/hierarquia';
+import { gestorDe, resolverAlvo } from '../utils/hierarquia';
 import { Button } from './ui/Button';
 import RequesterCard from './RequesterCard';
 
@@ -210,8 +210,8 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
     if (mode === TargetMode.CURRENT_USER || (mode === TargetMode.CONDITIONAL && isColaborador)) {
       const employee = config.colaboradores.find(e => e.id === config.usuarioAtual.employeeId);
       if (employee) {
-        setCurrentFormData(prev => ({ 
-          ...prev, 
+        setCurrentFormData(prev => ({
+          ...prev,
           employeeId: employee.id,
           colaborador: employee.name,
           matricula: employee.registration,
@@ -219,8 +219,11 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
           setorAtual: employee.department,
           salarioAtual: employee.salary,
           ccAtual: employee.costCenter,
-          empresaAtual: employee.branch,
-          gestorAtual: 'Ana Paula Lima' // Mock gestor for demo
+          // O gestor sai da MESMA leitura da estrutura que resolve o aprovador
+          // (utils/hierarquia). Era um nome fixo — 'Ana Paula Lima' — e a tela
+          // do detalhe acabava mostrando dois gestores para a mesma pessoa: o
+          // "Gestor Direto" da cascata e este, que não vinha de lugar nenhum.
+          gestorAtual: gestorDe(employee, config.colaboradores)?.name || ''
         }));
       }
     }

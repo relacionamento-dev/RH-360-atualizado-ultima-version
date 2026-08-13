@@ -17,7 +17,8 @@ import { useToast } from './ToastContext';
 import { AnexoComunicado, Announcement, Employee } from '../types';
 import { ACOES_DE_TELA, podeAcessarView, podeExecutarAcao, podeGerenciarComunicado } from '../utils/permissions';
 import { listarMinhasAprovacoes, organizacaoDoConfig } from '../utils/approvalFlow';
-import { listarTarefasDaCentral } from '../utils/tarefas';
+import { listarTarefasDaCentral, recorteDeTarefasDoConfig } from '../utils/tarefas';
+import { colaboradorDaEmpresa } from '../utils/empresa';
 
 interface IntranetModuleProps {
   onNavigate?: (view: string) => void;
@@ -293,8 +294,8 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
     [config.solicitacoes, config.processos, config.usuarioAtual, config.grupos]
   );
   const tarefasPendentes = useMemo(
-    () => listarTarefasDaCentral(config.tarefas).length,
-    [config.tarefas]
+    () => listarTarefasDaCentral(config.tarefas, recorteDeTarefasDoConfig(config)).length,
+    [config.tarefas, config.empresaAtual, config.solicitacoes, config.colaboradores]
   );
 
   const enviarPauta = () => {
@@ -305,20 +306,27 @@ export default function IntranetModule({ onNavigate }: IntranetModuleProps) {
   };
 
   // --- Gente & Celebrações: sai do cadastro real, não de uma lista fixa ---
+  //
+  // E do cadastro DA EMPRESA ATIVA: lendo `config.colaboradores` direto, a
+  // Intranet de um cliente parabenizava gente do outro.
   const mesAtual = new Date().getMonth() + 1;
+  const colaboradoresDaEmpresa = useMemo(
+    () => config.colaboradores.filter(e => colaboradorDaEmpresa(e, config.empresaAtual)),
+    [config.colaboradores, config.empresaAtual]
+  );
   const aniversariantesDoMes = useMemo(
     () =>
-      config.colaboradores
+      colaboradoresDaEmpresa
         .filter(e => e.status !== 'Desligado' && diaMes(e.birthDate)?.mes === mesAtual)
         .sort((a, b) => diaMes(a.birthDate)!.dia - diaMes(b.birthDate)!.dia),
-    [config.colaboradores, mesAtual]
+    [colaboradoresDaEmpresa, mesAtual]
   );
   const novosDoMes = useMemo(
     () =>
-      config.colaboradores
+      colaboradoresDaEmpresa
         .filter(e => e.status !== 'Desligado' && diaMes(e.admissionDate)?.mes === mesAtual)
         .sort((a, b) => diaMes(a.admissionDate)!.dia - diaMes(b.admissionDate)!.dia),
-    [config.colaboradores, mesAtual]
+    [colaboradoresDaEmpresa, mesAtual]
   );
 
   // --- Foto de quem assina o post/comentário do feed ---

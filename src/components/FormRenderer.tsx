@@ -5,6 +5,7 @@ import { computeDerivedFields } from '../utils/computedFields';
 import { isEmptyFieldValue } from '../utils/formValues';
 import { getBenefitCredit } from '../utils/benefitCredit';
 import { localDateFromString } from '../utils/dateLocal';
+import { gestorDe } from '../utils/hierarquia';
 import { FormField, ProcessDefinition } from '../types';
 import { Button } from './ui/Button';
 import { READONLY_INPUT, READONLY_SURFACE, READONLY_TEXT } from './ui/ReadOnlyField';
@@ -113,8 +114,11 @@ export function FormRenderer({
           filial: emp.branch,
           empresa: emp.company,
           admissao: emp.admissionDate,
-          periodoaquisitivo: '2024/2025',
-          saldo: 30,
+          // `periodoaquisitivo: '2024/2025'` e `saldo: 30` saíram daqui: eram
+          // chaves que não casam com campo nenhum (o campo é `periodoAquisitivo`,
+          // com A maiúsculo, e o saldo é CALC derivado do histórico). Só
+          // engordavam o `data` da solicitação com valor fixo — e apareciam no
+          // detalhe como rótulo cru, já que rótulo elas não têm.
           // Histórico de dias já usufruídos no período aquisitivo (NÃO a
           // solicitação atual). Alimenta o campo CALC "Dias Já Gozados".
           diasGozadosHist: emp.vacationRecords?.[0]?.daysTaken ?? 0
@@ -708,7 +712,14 @@ export function FormRenderer({
                     if (fName === 'setor' || fName === 'deptoorigem' || fName === 'setoratual' || fName === 'setororigem') updates[f_id] = emp.department;
                     if (fName === 'filial' || fName === 'filialatual' || fName === 'filialorigem') updates[f_id] = emp.branch;
                     if (fName === 'centrocusto' || fName === 'centrocustoatual' || fName === 'ccatual' || fName === 'ccorigem' || fName === 'centro-custo') updates[f_id] = emp.costCenter;
-                    if (fName === 'gestor' || fName === 'gestordireto' || fName === 'gestoratual' || fName === 'gestororigem') updates[f_id] = emp.manager;
+                    // O gestor sai da leitura da ESTRUTURA (utils/hierarquia),
+                    // que é a mesma que resolve o aprovador da cascata. O campo
+                    // `manager` da ficha é texto denormalizado: quando ele e o
+                    // `managerId` discordam, a tela do detalhe mostra um gestor
+                    // no cadastro e outro na alçada, para o mesmo colaborador.
+                    if (fName === 'gestor' || fName === 'gestordireto' || fName === 'gestoratual' || fName === 'gestororigem') {
+                      updates[f_id] = gestorDe(emp, config.colaboradores)?.name || emp.manager || '';
+                    }
                     if (fName === 'unidade' || fName === 'unidadeatual' || fName === 'empresa' || fName === 'empresaatual' || fName === 'empresaorigem') updates[f_id] = emp.company;
                     if (fName === 'dataadmissao' || fName === 'admissao') updates[f_id] = emp.admissionDate;
                     if (fName === 'salario' || fName === 'salarioatual' || fName === 'salariorigem') updates[f_id] = emp.salary;

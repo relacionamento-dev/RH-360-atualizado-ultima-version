@@ -15,6 +15,7 @@ import { PageHeader } from './ui/FormAndHeader';
 import { Avatar, SLABar, EmptyState } from './ui/Misc';
 import { getStatusVariant, isPendingStatus } from '../utils/requestStatus';
 import { colaboradoresNoEscopo, contextoDeEscopoDoConfig, solicitacoesNoEscopo } from '../utils/escopo';
+import { tarefaDaEmpresa, vagaDaEmpresa } from '../utils/empresa';
 
 interface DashboardProps {
   onNavigate: (view: string, id?: string) => void;
@@ -28,12 +29,20 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
   const ctxEscopo = contextoDeEscopoDoConfig(config);
   const colaboradoresVisiveis = colaboradoresNoEscopo(config.usuarioAtual, ctxEscopo);
   const solicitacoesVisiveis = solicitacoesNoEscopo(config.usuarioAtual, config.solicitacoes, ctxEscopo);
+  // Vagas e tarefas não passam pelo escopo de PERFIL (não são fichas nem
+  // solicitações), mas passam pelo recorte de EMPRESA como todo o resto —
+  // senão trocar de empresa mudava "Colaboradores ativos" e deixava "Vagas
+  // abertas" e "SLA vencido" com o mesmo número nas duas.
+  const vagasDaEmpresa = config.vagas.filter(v => vagaDaEmpresa(v, config.empresaAtual));
+  const tarefasDaEmpresa = config.tarefas.filter(
+    t => tarefaDaEmpresa(t, config.empresaAtual, config.solicitacoes, config.colaboradores)
+  );
   const totalEmployeesCount = colaboradoresVisiveis.filter(c => c.status === 'Ativo').length;
-  const openJobsCount = config.vagas.filter(v => v.status === 'Aberto').length;
+  const openJobsCount = vagasDaEmpresa.filter(v => v.status === 'Aberto').length;
   // Aprovações pendentes derivam das solicitações (mesma fonte/status das listas),
   // não de tarefas por assignedTo que não casava com o usuário logado.
   const pendingApprovalsCount = solicitacoesVisiveis.filter(s => isPendingStatus(s.status)).length;
-  const overdueCount = config.tarefas.filter(t => t.status === 'Atrasada' || (t.status === 'Pendente' && new Date(t.dueDate) < new Date())).length;
+  const overdueCount = tarefasDaEmpresa.filter(t => t.status === 'Atrasada' || (t.status === 'Pendente' && new Date(t.dueDate) < new Date())).length;
 
   // trendType reflete o SIGNIFICADO (pos = melhora → verde, neg = piora → vermelho);
   // direction segue o sinal do número (seta pra cima/baixo).
@@ -170,7 +179,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
             <Card title="Vagas por Departamento">
               <div className="space-y-4">
                 {Object.entries(
-                  config.vagas.reduce((acc, job) => {
+                  vagasDaEmpresa.reduce((acc, job) => {
                     acc[job.department] = (acc[job.department] || 0) + 1;
                     return acc;
                   }, {} as Record<string, number>)
@@ -190,15 +199,18 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
 
             <Card title="Próximos Eventos">
               <div className="space-y-4">
+                {/* Mesma lista de gente dos KPIs: quem o perfil alcança dentro
+                    da empresa ativa. Lendo `config.colaboradores` direto, a
+                    agenda anunciava aniversário de gente de outra empresa. */}
                 {[
-                  ...config.colaboradores
+                  ...colaboradoresVisiveis
                     .filter(c => {
                       const birthday = new Date(c.birthDate);
                       const today = new Date();
                       return birthday.getMonth() === today.getMonth();
                     })
                     .map(c => ({ title: `Aniversário: ${c.name}`, date: `${new Date(c.birthDate).getDate()}/${new Date(c.birthDate).getMonth() + 1}`, type: 'Comemoração' })),
-                  ...config.colaboradores
+                  ...colaboradoresVisiveis
                     .filter(c => {
                       const admission = new Date(c.admissionDate);
                       const today = new Date();

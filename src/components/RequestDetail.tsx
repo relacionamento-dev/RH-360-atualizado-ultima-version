@@ -313,15 +313,26 @@ export default function RequestDetail({ requestId, onBack }: RequestDetailProps)
               <div className="p-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-10 gap-x-12">
                   {Object.entries(request.data).map(([key, value]) => {
-                    // Find label from process definition
-                    let label = key;
-                    let gridCols = 1;
                     const field = findFieldDef(key);
-                    if (field) {
-                      label = field.label;
-                      gridCols = field.gridCols || 1;
-                      if (field.type === 'section' || field.type === 'info') return null;
-                    }
+
+                    // SÓ O QUE O PROCESSO DECLARA.
+                    //
+                    // `request.data` guarda mais do que a tela mostra: o
+                    // pré-preenchimento grava o que os campos CALC precisam
+                    // (`diasGozadosHist` alimenta "Dias Já Gozados") e chaves
+                    // que só existem noutros processos. Sem definição não há
+                    // rótulo, e o que saía era a CHAVE CRUA em caixa alta —
+                    // DIASGOZADOSHIST, CARGOATUAL, PERIODOAQUISITIVO — ao lado
+                    // do campo amigável correspondente, parecendo duplicata.
+                    //
+                    // Dado de bastidor não é para ler aqui: sem rótulo, não
+                    // entra. Vale também para o campo declarado sem `label`,
+                    // que renderizaria um rótulo vazio.
+                    if (!field?.label) return null;
+                    if (field.type === 'section' || field.type === 'info') return null;
+
+                    const label = field.label;
+                    const gridCols = field.gridCols || 1;
 
                     // Skip internal fields
                     if (key.endsWith('Id') || key === 'colaborador' || key === 'matricula') return null;

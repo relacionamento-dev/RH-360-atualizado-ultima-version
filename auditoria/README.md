@@ -9,6 +9,7 @@ Diagnóstico dos 15 processos do RH360. **Nada aqui altera código de produção
 | [simular-aprovacoes.ts](simular-aprovacoes.ts) | Simula a abertura de uma solicitação em cada processo e percorre a cascata de alçadas, conferindo condição, status final, histórico e tarefas. |
 | [simular-permissoes.ts](simular-permissoes.ts) | Confere a matriz de permissão por processo dos perfis e grupos de fábrica: o que cada papel abre, o que decide e se alguma solicitação para numa fila cujo dono não pode aprovar. |
 | [simular-formulario.tsx](simular-formulario.tsx) | Monta o FormRenderer real em jsdom e digita como uma pessoa digita, tecla a tecla. Confere que número, data e select retêm o que foi informado e que a validação de saldo de férias bloqueia com a mensagem à vista. |
+| [simular-acabamento.ts](simular-acabamento.ts) | Acabamento do dado exibido: rótulo cru na tela de detalhe, KPI que não muda ao trocar de empresa e gestor do cadastro divergindo do aprovador da alçada. |
 | [mapear-campos.ts](mapear-campos.ts) | Cruza cada campo de `processDefinitions.ts` com o uso real no `src/`, apontando campos órfãos e chaves declaradas mais de uma vez. |
 
 ## Rodar
@@ -25,11 +26,14 @@ npx tsx auditoria/simular-permissoes.ts --json   # saída JSON
 npx tsx auditoria/simular-formulario.tsx         # retenção de valor nos campos
 npx tsx auditoria/simular-formulario.tsx --json  # saída JSON
 
+npx tsx auditoria/simular-acabamento.ts          # rótulos, KPI por empresa, gestor
+npx tsx auditoria/simular-acabamento.ts --json   # saída JSON
+
 npx tsx auditoria/mapear-campos.ts               # mapa completo de campos
 npx tsx auditoria/mapear-campos.ts --orfaos      # só os órfãos
 ```
 
-`simular-aprovacoes.ts`, `simular-permissoes.ts` e `simular-formulario.tsx` saem com código 1 se houver falha — dá para plugar em CI como teste de regressão do motor de aprovação, do RBAC e do formulário.
+`simular-aprovacoes.ts`, `simular-permissoes.ts`, `simular-formulario.tsx` e `simular-acabamento.ts` saem com código 1 se houver falha — dá para plugar em CI como teste de regressão do motor de aprovação, do RBAC, do formulário e do dado exibido.
 
 `simular-formulario.tsx` precisa de `jsdom` (devDependency): ele monta os componentes de verdade fora do browser.
 
@@ -57,6 +61,14 @@ O defeito que ele guarda: o pai devolvia ao `FormRenderer`, como `initialData`, 
 
 As seções 1-4 usam **a fiação antiga de propósito** (o pai ecoando o próprio espelho): é o caso difícil, e provar que passa é provar que o `FormRenderer` ficou imune por conta própria, para qualquer chamador. Um laço de re-render é acusado como falha em vez de pendurar o processo.
 
+### O que `simular-acabamento.ts` verifica
+
+1. **Rótulos** — nenhum campo exibido no detalhe sai com a chave crua (`diasGozadosHist` virava DIASGOZADOSHIST) nem com rótulo vazio; campo de bastidor só aparece onde o processo o declara.
+2. **KPIs por empresa** — os quatro cartões de topo mudam ao trocar de empresa, cada vaga e cada tarefa pertencem a exatamente uma empresa (soma das partes = total) e toda vaga aponta para uma empresa do cadastro.
+3. **Gestor** — o texto `manager` da ficha concorda com a resolução por `managerId`, o gestor do cadastro é o mesmo que assume a alçada de gestor direto, e nenhuma tela tem nome de gestor escrito à mão.
+
+A comparação de gestor ignora os níveis com substituição, escalonamento ou fallback: ali o aprovador é outro **de propósito**, e a trilha da solicitação diz o motivo.
+
 ## Estado na data da auditoria (29/07/2026, commit `4fea884`)
 
 ```
@@ -72,6 +84,8 @@ A falha era o `conditionField: 'salario'` do processo 1, que apontava para um ca
 simular-aprovacoes: 180 verificações · 0 falhas · 4 alertas
 simular-permissoes:  79 verificações · 0 falhas · 0 alertas
 simular-formulario:  25 verificações · 0 falhas
+simular-acabamento:  18 verificações · 0 falhas
+simular-verbas:      40 verificações · 0 falhas
 mapear-campos:      163 chaves · 47 órfãs · 10 com declaração múltipla
 ```
 

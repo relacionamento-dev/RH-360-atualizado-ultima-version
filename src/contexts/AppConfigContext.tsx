@@ -188,7 +188,12 @@ const INITIAL_STATE: AppConfig = {
   // processos em que a hierarquia o designa. Sem o bump, o localStorage antigo
   // devolveria os perfis e grupos do laço genérico — Colaborador abrindo o
   // próprio desligamento e Gestor sem o botão "Aprovar" na fila dele.
-  version: '1.13.0',
+  // 1.14.0 — vagas com empresa e filial REAIS (as antigas diziam "RH360
+  // Holding" / "Escritório", que não são nem empresa nem filial do cadastro) e
+  // quadro de vagas próprio da TechFlow. Sem o bump, o localStorage antigo
+  // devolveria vagas de uma empresa que não existe e o recorte por empresa
+  // esconderia todas elas.
+  version: '1.14.0',
   empresaAtual: COMPANIES[0],
   parametrizacao: PARAMETRIZACAO_INICIAL,
   usuarioAtual: DEMO_USERS[0], // Admin by default

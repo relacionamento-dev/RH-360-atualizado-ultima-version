@@ -1,5 +1,5 @@
 import {
-  AppConfig, Company, Employee, ParametrizacaoEmpresa, RHRequest, User
+  AppConfig, Company, Employee, Job, ParametrizacaoEmpresa, RHRequest, Task, User
 } from '../types';
 import { hasGlobalScope } from './permissions';
 
@@ -37,6 +37,31 @@ export const solicitacaoDaEmpresa = (
   if (req.empresa) return mesmaEmpresa(req.empresa, empresa.name);
   const alvo = colaboradores.find(e => e.id === req.employeeId || e.name === req.alvo);
   return alvo ? mesmaEmpresa(alvo.company, empresa.name) : true;
+};
+
+/** A vaga pertence à empresa? Sem empresa na vaga, fica com a ativa. */
+export const vagaDaEmpresa = (vaga: Job, empresa?: Company): boolean =>
+  !empresa || !vaga.company || mesmaEmpresa(vaga.company, empresa.name);
+
+/**
+ * A tarefa pertence à empresa?
+ *
+ * Tarefa não guarda empresa — ela NASCE de uma solicitação, e a empresa é a
+ * dela. Sem vínculo com solicitação (tarefa avulsa), fica com a empresa ativa,
+ * pelo mesmo motivo que a ficha sem `company` fica: esconder um item por falta
+ * de metadado é pior que mostrá-lo onde ele foi criado.
+ */
+export const tarefaDaEmpresa = (
+  tarefa: Task,
+  empresa: Company | undefined,
+  solicitacoes: RHRequest[],
+  colaboradores: Employee[]
+): boolean => {
+  if (!empresa) return true;
+  const reqId = tarefa.requestId || tarefa.relatedRequestId;
+  const req = reqId ? solicitacoes.find(r => r.id === reqId) : undefined;
+  if (!req) return true;
+  return solicitacaoDaEmpresa(req, empresa, colaboradores);
 };
 
 /** Empresas que este usuário pode operar. */
