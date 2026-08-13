@@ -65,6 +65,12 @@ const formatDateForDisplay = (value: any) => {
   return str;
 };
 
+/**
+ * Mensagem de "não preenchido". Só o envio a grava; a validação ao vivo a
+ * preserva em vez de apagá-la junto com os erros de negócio já corrigidos.
+ */
+const CAMPO_OBRIGATORIO = 'Campo obrigatório';
+
 const maskDateValue = (value: string) => {
   const digits = value.replace(/[^\d]/g, '').slice(0, 8);
   if (digits.length <= 2) return digits;
@@ -148,8 +154,28 @@ export function FormRenderer({
     });
   }, [definition.processId, config.beneficios]);
 
+  // ECO DO PRÓPRIO ESTADO ≠ DADO EXTERNO
+  //
+  // `onDataChange` entrega ao pai o objeto de `formData`. O pai costuma guardá-lo
+  // e devolvê-lo como `initialData` — era o que o RHRequestForm fazia. Só que o
+  // eco chega ATRASADO: entre a emissão e a volta, o usuário já digitou a tecla
+  // seguinte. Reaplicar esse eco sobrepunha a cópia velha sobre o valor novo.
+  //
+  // O efeito não perdia "a última tecla": os dois estados passavam a se
+  // perseguir. Digitando "40" o formulário oscilava 4 → 40 → 4 → 40 até o React
+  // abortar com "Maximum update depth exceeded", parando no 4. O mesmo ocorria
+  // com a data (a última posição não fixava) e com o select (o clique do mouse
+  // gera UMA mudança, e era ela que o eco desfazia — pelo teclado as mudanças
+  // intermediárias davam a impressão de funcionar).
+  //
+  // Guardar o que foi emitido resolve na raiz e protege qualquer chamador: o que
+  // saiu daqui não volta como dado de fora. O WeakSet não segura memória — o
+  // snapshot é coletado junto com o objeto.
+  const snapshotsEmitidos = useRef<WeakSet<object>>(new WeakSet());
+
   // Sync with initialData if it changes
   useEffect(() => {
+    if (initialData && snapshotsEmitidos.current.has(initialData)) return;
     setFormData(prev => {
       // Only update if it's actually different to avoid infinite loops with onDataChange
       const next = { ...prev, ...initialData };
@@ -218,14 +244,28 @@ export function FormRenderer({
   // Notify parent of changes and validity
   useEffect(() => {
     if (onDataChange) {
+      // Marca ANTES de emitir: quando este mesmo objeto voltar como
+      // `initialData`, o efeito de sync sabe que é eco e não dado externo.
+      snapshotsEmitidos.current.add(formData);
       onDataChange(formData);
     }
-    
+
     const currentStep = definition.steps[0];
     if (!currentStep) return;
     const fields = currentStep.fields;
     let isValid = true;
-    
+
+    // Erro de NEGÓCIO (saldo de férias excedido, por exemplo) aparece AO VIVO no
+    // campo. Antes ele só bloqueava: o botão "Confirmar e Enviar" apagava e nada
+    // explicava por quê. A mensagem vinha de `validate()`, que roda no submit
+    // interno do FormRenderer — e quem usa `hideActions` com botão próprio (o
+    // RHRequestForm) nunca chega lá.
+    //
+    // "Campo obrigatório" continua de fora: quem não foi preenchido AINDA não é
+    // erro, e um formulário recém-aberto não deve nascer vermelho. Esse continua
+    // saindo no envio, junto com o scroll até o primeiro campo.
+    const errosDeNegocio: Record<string, string> = {};
+
     fields.forEach(field => {
       if (field.condition && !field.condition(formData)) return;
 
@@ -238,10 +278,26 @@ export function FormRenderer({
       // Validações de negócio também bloqueiam o envio ao vivo (ex.: dias
       // solicitados acima do saldo disponível).
       if (field.validation && value !== undefined && value !== '') {
-        if ((field.validation as any)(value, formData)) {
+        const mensagem = (field.validation as any)(value, formData);
+        if (mensagem) {
           isValid = false;
+          errosDeNegocio[fieldId] = mensagem;
         }
       }
+    });
+
+    setErrors(prev => {
+      const next = { ...prev };
+      let mudou = false;
+      Object.entries(errosDeNegocio).forEach(([id, msg]) => {
+        if (next[id] !== msg) { next[id] = msg; mudou = true; }
+      });
+      // Some sozinho quando o valor é corrigido. O 'Campo obrigatório' gravado
+      // pelo envio não é apagado aqui — quem o limpa é o preenchimento.
+      Object.keys(next).forEach(id => {
+        if (!errosDeNegocio[id] && next[id] !== CAMPO_OBRIGATORIO) { delete next[id]; mudou = true; }
+      });
+      return mudou ? next : prev;
     });
 
     if (onValidityChange) {
@@ -363,7 +419,7 @@ export function FormRenderer({
       const fieldId = (field as any).id || field.name;
       const value = formData[fieldId];
       if (field.required && isEmptyFieldValue(field, value)) {
-        newErrors[fieldId] = 'Campo obrigatório';
+        newErrors[fieldId] = CAMPO_OBRIGATORIO;
         if (!firstErrorField) firstErrorField = fieldId;
       }
       if (field.validation && value !== undefined) {

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RHProcess, Employee, TargetMode } from '../types';
 import { 
@@ -59,6 +59,26 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
   // colaborador escolhido.
   const [currentFormData, setCurrentFormData] = useState<any>(
     existingRequest?.data || config.prefillSolicitacao || {}
+  );
+
+  // O prefill é consumido uma vez, na montagem — o efeito abaixo o apaga do
+  // config logo em seguida, então a semente precisa guardá-lo aqui.
+  const prefillDaAbertura = useRef(config.prefillSolicitacao);
+
+  // SEMENTE do formulário: com o que ele NASCE preenchido.
+  //
+  // Não é o mesmo que `currentFormData`. Este espelha o que está sendo digitado
+  // (alimenta a prévia de alçadas, o contador de obrigatórios e o payload do
+  // envio); a semente só muda quando muda o ASSUNTO — outra solicitação, outro
+  // processo. Passar o espelho como `initialData` fechava um laço: o
+  // FormRenderer emitia o estado, recebia de volta o eco atrasado e o
+  // reaplicava por cima da tecla seguinte, oscilando entre os dois valores até
+  // o React abortar a atualização. Digitar "40" gravava "4".
+  const seedData = useMemo(
+    () => existingRequest?.data || prefillDaAbertura.current || {},
+    // Só o assunto: reagir a `existingRequest.data` traria o eco de volta.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [requestId, processId]
   );
   const [isFormValid, setIsFormValid] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -393,9 +413,12 @@ export default function RHRequestForm({ requestId, onBack }: RHRequestFormProps)
                 <h3 className="text-xs font-black uppercase tracking-widest">Dados da Solicitação</h3>
               </div>
             <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
-              <FormRenderer 
+              <FormRenderer
+                // Trocar de solicitação (ou de processo) é outro formulário:
+                // remonta em vez de mesclar os dados de um sobre os do outro.
+                key={requestId || processId}
                 definition={definition}
-                initialData={currentFormData}
+                initialData={seedData}
                 onSubmit={() => handleSave(false)}
                 onCancel={onBack}
                 onDataChange={(data) => {
